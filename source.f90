@@ -2,29 +2,29 @@
 
 ! Fall 2015
 
-! Note: This document wraps at column 99. 
+! Note: This document wraps at column 80. 
 
-! Note: Fortran is caps-insensitive. This code uses camelCase strictly for legibility. 
+! Note: This code uses camelCase for legibility. Fortran is caps-insensitive. 
 
+! #############################################################################
+! ################################################################### Main Loop
+! #############################################################################
 
-! ################################################################################################
-! ###################################################################################### Main Loop
-! ################################################################################################
-
-! To encourage the compiler to optimize it as much as possible, the main loop does not bring in
-! any other modules. All arrays and helper functions used within the loop module, are defined
-! within the loop module. On the other hand, the loop module is used by several other modules --
-! the fields module initializes and outputs the field arrays, for example. 
+! To encourage the compiler to optimize it as much as possible, the main loop
+! does not bring in any other modules. All arrays and helper functions used
+! within the loop module, are defined within the loop module. On the other 
+! hand, the loop module is used by several other modules -- the fields module
+! initializes and outputs the field arrays, for example. 
 
 module loop
   implicit none
 
-  ! ==============================================================================================
-  ! =========================================================================== Physical Constants
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================== Physical Constants
+  ! ===========================================================================
 
-  ! Most of these constants aren't used in the main loop, but it seems best to have them all in
-  ! the same place. 
+  ! Most of these constants aren't used in the main loop, but it seems best to
+  ! have them all in the same place. 
   double precision, parameter :: pi = 3.14159265358979
   ! Speed of light squared in (Mm/s)**2
   double precision, parameter :: cc = 299.792458**2
@@ -39,70 +39,81 @@ module loop
   double precision, parameter :: RE = 6.378388
   double precision            :: RI
 
-  ! ==============================================================================================
-  ! ================================================================================ Grid Indexing
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================================================= Grid Indexing
+  ! ===========================================================================
 
-  ! Grid size: number of field lines and number of points per field line respectively. 
+  ! Number of field lines and number of points per field line respectively. 
   integer                            :: n1, n3
   ! First and last indeces for easy handling of the edges. 
   integer, dimension(0:1)            :: hh, ii, kk, zz
   ! Azimuthal modenumber. 
   integer                            :: azm
 
-  ! ==============================================================================================
-  ! ========================================================================================= Time
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ====================================================================== Time
+  ! ===========================================================================
 
-  ! Time step, time between outputs, maximum time, current time. Note that while several of these
-  ! are user parameters, time step is computed based on the Alfven speed. 
+  ! Time step, time between outputs, maximum time, current time. Several of 
+  ! these are user parameters. The time step is not -- it's computed based on 
+  ! the Alfven speed. 
   double precision                              :: dt, dtout, tmax, t = 0
 
-  ! ==============================================================================================
-  ! ======================================================================================= Fields
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ==================================================================== Fields
+  ! ===========================================================================
 
-  ! Electric and magnetic fields in the bulk of the simulation. Also field-aligned current. 
+  ! Electric and magnetic fields in the bulk of the simulation. Also 
+  ! field-aligned current. 
   double complex, dimension(:,:), allocatable   :: B1, B2, B3, E1, E2, E3, j3
-  ! Curl components of the bulk electric and magnetic fields. The J concedes that these are
-  ! actually off by a factor of the Jacobian, which gets bundled with the coefficients. 
-  double complex, dimension(:,:), allocatable   :: JCsup1, JCsup2, JCsup3, JFsup1, JFsup2, JFsup3
-  ! Scalar magnetic potential at the boundary, and resulting magnetic fields. 
-  double complex, dimension(:,:), allocatable   :: B1E, B1I, B2E, B2I, PsiE, PsiI
+  ! Curl components of the bulk electric and magnetic fields. The J concedes
+  ! that these are actually off by a factor of the Jacobian, which gets bundled
+  ! with the coefficients. 
+  double complex, dimension(:,:), allocatable   :: JCsup1, JCsup2, JCsup3,    &
+                                                   JFsup1, JFsup2, JFsup3
+  ! Magnetic fields and scalar magnetic potential at the atmospheric boundary. 
+  double complex, dimension(:,:), allocatable   :: B1E, B1I, B2E, B2I, PsiE,  &
+                                                   PsiI
   ! Driving fields for compressional and current driving respectively. 
   double precision, dimension(:), allocatable   :: B3drive
   double precision, dimension(:,:), allocatable :: j2drive
 
-  ! ==============================================================================================
-  ! ================================================================================= Coefficients
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================================================== Coefficients
+  ! ===========================================================================
 
   ! For updating bulk magnetic fields. 
-  double precision, dimension(:,:), allocatable   :: B1_JCsup1, B1_JCsup3, B2_JCsup2, B3_JCsup1, &
+  double precision, dimension(:,:), allocatable   :: B1_JCsup1, B1_JCsup3,    &
+                                                     B2_JCsup2, B3_JCsup1,    &
                                                      B3_JCsup3
   ! For updating bulk electric fields and field-aligned current. 
-  double precision, dimension(:,:), allocatable   :: E1_E1, E1_E2, E1_E3, E1_JFsup1, E1_JFsup2,  &
-                                                     E1_j2drive, E1_JFsup3, E2_E1, E2_E2,        &
-                                                     E2_JFsup1, E2_JFsup2, E2_j2drive,           &
-                                                     E3_JFsup1, E3_JFsup3, E3_j3, j3_j3, j3_E3
+  double precision, dimension(:,:), allocatable   :: E1_E1, E1_E2, E1_E3,     &
+                                                     E1_JFsup1, E1_JFsup2,    &
+                                                     E1_j2drive, E1_JFsup3,   &
+                                                     E2_E1, E2_E2, E2_JFsup1, &
+                                                     E2_JFsup2, E2_j2drive,   &
+                                                     E3_JFsup1, E3_JFsup3,    &
+                                                     E3_j3, j3_j3, j3_E3
   ! For computing the scalar magnetic potential. 
-  double precision, dimension(:,:,:), allocatable :: PsiE_B1, PsiE_B3, PsiI_B1, PsiI_B3
+  double precision, dimension(:,:,:), allocatable :: PsiE_B1, PsiE_B3,        &
+                                                     PsiI_B1, PsiI_B3
   ! For computing edge electric field values from the scalar magnetic potential. 
-  double precision, dimension(:,:), allocatable   :: E1_B1I, E1_B2I, E2_B1I, E2_B2I
+  double precision, dimension(:,:), allocatable   :: E1_B1I, E1_B2I, E2_B1I,  &
+                                                     E2_B2I
 
-  ! ==============================================================================================
-  ! ============================================== Linearized Derivative and Interpolation Weights
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ====================== Linearized Differentiation and Interpolation Weights
+  ! ===========================================================================
 
-  ! These linearized weights allow us to compute derivatives with respect to usup1 and usup3. 
+  ! For computing derivatives with respect to usup1 and usup3. 
   double precision, allocatable, dimension(:,:) :: d1w, d3w
-  ! Each field is defined only on a single parity in each dimension. When an off-parity field 
-  ! value is needed, it's obtained using these interpolation weights. 
+  ! Each field is defined only on a single parity in each dimension. When an 
+  ! off-parity field value is needed, it's interpolated with these weights. 
   double precision, allocatable, dimension(:,:) :: i1w, i3w
 
-  ! ==============================================================================================
-  ! =========================================================================== Driving Parameters
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================== Driving Parameters
+  ! ===========================================================================
 
   ! Waveform index, angular frequency, characteristic time. 
   integer                                         :: idrive
@@ -113,13 +124,14 @@ module loop
 
   contains
 
-  ! ==============================================================================================
-  ! ============================================================== Time Component of Driving Field
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! =========================================== Time Component of Driving Field
+  ! ===========================================================================
 
-  ! The driving is broken down into a static array (either B3drive or E2drive) which indicates the
-  ! relative strangth of driving at different locations, and a time-dependent scale factor. This
-  ! factor is recomputed each time step. Its waveform depends on the input parameter idrive. 
+  ! The driving is broken down into a static array (either B3drive or j2drive)
+  ! which indicates the relative strangth of driving at different locations, 
+  ! and a time-dependent scale factor, which is recomputed each time step. The
+  ! scale factor waveform depends on the input parameter idrive. 
   double precision function getDriveScale(t0)
     double precision, intent(in) :: t0
     ! The shape of the driving waveform in time is set by idrive. 
@@ -160,19 +172,30 @@ module loop
     end select
   end function getDriveScale
 
-  ! ==============================================================================================
-  ! =========================================== Differentiation and Interpolation Helper Functions
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================== Differentiation and Interpolation Helper Functions
+  ! ===========================================================================
 
-  ! These functions are actually used during the main loop. We include them in the loop module in
-  ! hopes that the compiler will inline them. 
+  ! These functions are actually used during the main loop. We include them in
+  ! the loop module in hopes that the compiler will inline them. 
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ---------------------------------------------- Differentiation (Dirichlet Boundary Conditions)
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ----------------------------------------------- Differentiation (Azimuthal)
+  ! ---------------------------------------------------------------------------
 
-  ! With a Dirichlet boundary condition, we specify the value of the function at the edge. We
-  ! choose to have the fields go to zero. 
+  ! There are no boundaries to worry about in the azimuthal direction. 
+  double complex function d2(field, i, k)
+    double complex, intent(in), dimension(0:, 0:) :: field
+    integer, intent(in)                           :: i, k
+    d2 = (0., 1.)*azm*field(i, k)
+  end function d2
+
+  ! ---------------------------------------------------------------------------
+  ! --------------------------- Differentiation (Dirichlet Boundary Conditions)
+  ! ---------------------------------------------------------------------------
+
+  ! With a Dirichlet boundary condition, we specify the value of the function
+  ! at the edge. We choose to have the fields go to zero. 
 
   double complex function d1D(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
@@ -186,13 +209,6 @@ module loop
     end if
   end function d1D
 
-  ! The azimuthal derivative is the same for Dirichlet and Neumann -- it has no boundaries. 
-  double complex function d2(field, i, k)
-    double complex, intent(in), dimension(0:, 0:) :: field
-    integer, intent(in)                           :: i, k
-    d2 = (0., 1.)*azm*field(i, k)
-  end function d2
-
   double complex function d3D(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
     integer, intent(in)                           :: i, k
@@ -205,43 +221,12 @@ module loop
     end if
   end function d3D
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------ Interpolation (Dirichlet Boundary Conditions)
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ----------------------------- Differentiation (Neumann Boundary Conditions)
+  ! ---------------------------------------------------------------------------
 
-  ! With a Dirichlet boundary condition, we specify the value of the function at the edge. We
-  ! choose to have the fields go to zero. 
-
-  double complex function i1D(field, i, k)
-    double complex, intent(in), dimension(0:, 0:) :: field
-    integer, intent(in)                           :: i, k
-    if (i .eq. 0) then
-      i1D = 0
-    else if (i .eq. n1) then
-      i1D = 0
-    else
-      i1D = i1w(i, 0)*field(i-1, k) + i1w(i, 1)*field(i+1, k)
-    end if
-  end function i1D
-
-  double complex function i3D(field, i, k)
-    double complex, intent(in), dimension(0:, 0:) :: field
-    integer, intent(in)                           :: i, k
-    if (k .eq. 0) then
-      i3D = 0
-    else if (k .eq. n3) then
-      i3D = 0
-    else
-      i3D = i3w(k, 0)*field(i, k-1) + i3w(k, 1)*field(i, k+1)
-    end if
-  end function i3D
-
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------ Differentiation (Neumann Boundary Conditions)
-  ! ----------------------------------------------------------------------------------------------
-
-  ! Under Neumann boundary conditions, we specify the value of the derivative. We choose to have
-  ! field derivatives go to zero. 
+  ! Under Neumann boundary conditions, we specify the value of the derivative. 
+  ! We choose to have field derivatives go to zero. 
 
   double complex function d1N(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
@@ -267,13 +252,45 @@ module loop
     end if
   end function d3N
 
-  ! ----------------------------------------------------------------------------------------------
-  ! -------------------------------------------------- Interpolation (Neumann Boundary Conditions)
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ----------------------------- Interpolation (Dirichlet Boundary Conditions)
+  ! ---------------------------------------------------------------------------
 
-  ! Under Neumann boundary conditions, we specify the value of the derivative. We choose to have
-  ! field derivatives go to zero. That means that the value of a function at the edge is the same
-  ! as the value of that function just inside the edge. 
+  ! With a Dirichlet boundary condition, we specify the value of the function 
+  ! at the edge. We choose to have the fields go to zero. 
+
+  double complex function i1D(field, i, k)
+    double complex, intent(in), dimension(0:, 0:) :: field
+    integer, intent(in)                           :: i, k
+    if (i .eq. 0) then
+      i1D = 0
+    else if (i .eq. n1) then
+      i1D = 0
+    else
+      i1D = i1w(i, 0)*field(i-1, k) + i1w(i, 1)*field(i+1, k)
+    end if
+  end function i1D
+
+  double complex function i3D(field, i, k)
+    double complex, intent(in), dimension(0:, 0:) :: field
+    integer, intent(in)                           :: i, k
+    if (k .eq. 0) then
+      i3D = 0
+    else if (k .eq. n3) then
+      i3D = 0
+    else
+      i3D = i3w(k, 0)*field(i, k-1) + i3w(k, 1)*field(i, k+1)
+    end if
+  end function i3D
+
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------- Interpolation (Neumann Boundary Conditions)
+  ! ---------------------------------------------------------------------------
+
+  ! Under Neumann boundary conditions, we specify the value of the derivative. 
+  ! We choose to have field derivatives go to zero. That means that the value
+  ! of a function at the edge is the same as the value of that function just
+  ! inside the edge. 
 
   double complex function i1N(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
@@ -299,13 +316,13 @@ module loop
     end if
   end function i3N
 
-  ! ==============================================================================================
-  ! ============================================================================= Main Loop Driver
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ========================================================== Main Loop Driver
+  ! ===========================================================================
 
-  ! This subroutine uses the coefficients to advance the fields through an amount of time dtOut. 
-  ! It then returns to the main program for error checking and output. The computation is 
-  ! parallelized using OpenMP. 
+  ! This subroutine uses the coefficients to advance the fields through an
+  ! amount of time dtOut. It then returns to the main program for error
+  ! checking and output. The computation is parallelized using OpenMP. 
   subroutine advanceFields()
     use omp_lib
     double precision :: tLoop, driveScale
@@ -314,17 +331,17 @@ module loop
     tLoop = 0
     do while (tloop < dtOut)
 
-      ! ------------------------------------------------------------------------------------------
-      ! ----------------------------------------------------------------------- Get Driving Factor
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------------------- Get Driving Factor
+      ! -----------------------------------------------------------------------
 
       !$omp single
       driveScale = getDriveScale(t + tLoop)
       !$omp end single
 
-      ! ------------------------------------------------------------------------------------------
-      ! -------------------------------------------------------------------------------- Compute C
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Compute C
+      ! -----------------------------------------------------------------------
 
       ! Compute JCsup1 on odd i, odd k.
       !$omp do
@@ -351,9 +368,9 @@ module loop
       end do
       !$omp end do
 
-      ! -------------------------------------------------------------------------------------------
-      ! --------------------------------------------------------------------------------- Advance B
-      ! -------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Advance B
+      ! -----------------------------------------------------------------------
 
       ! Interpolate C3 to odd i. 
       !$omp do
@@ -368,7 +385,8 @@ module loop
       do k=1,n3,2
         do i=1,n1,2
           JCsup3(i, k) = i3N(JCsup3, i, k)
-          B1(i, k) = B1(i, k) + B1_JCsup1(i, k)*JCsup1(i, k) + B1_JCsup3(i, k)*JCsup3(i, k)
+          B1(i, k) = B1(i, k) + B1_JCsup1(i, k)*JCsup1(i, k) +                &
+                                B1_JCsup3(i, k)*JCsup3(i, k)
         end do
       end do
       !$omp end do
@@ -393,22 +411,23 @@ module loop
       do k=0,n3,2
         do i=0,n1,2
           JCsup1(i, k) = i3N(JCsup1, i, k)
-          B3(i, k) = B3(i, k) + B3_JCsup1(i, k)*JCsup1(i, k) + B3_JCsup3(i, k)*JCsup3(i, k)
+          B3(i, k) = B3(i, k) + B3_JCsup1(i, k)*JCsup1(i, k) +                &
+                                B3_JCsup3(i, k)*JCsup3(i, k)
         end do
       end do
       !$omp end do
 
-      ! -------------------------------------------------------------------------------------------
-      ! ------------------------------------------------------------------------ Apply Driving to B
-      ! -------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------------------- Apply Driving to B
+      ! -----------------------------------------------------------------------
 
       !$omp single
       B3(n1, 0:n3:2) = B3(n1, 0:n3:2) + B3drive(0:n3:2)*driveScale
       !$omp end single
 
-      ! ------------------------------------------------------------------------------------------
-      ! -------------------------------------------------------------------------------- Compute F
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Compute F
+      ! -----------------------------------------------------------------------
 
       ! Compute JFsup1 on even i, even k.
       !$omp do
@@ -435,9 +454,9 @@ module loop
       end do
       !$omp end do
 
-      ! ------------------------------------------------------------------------------------------
-      ! -------------------------------------------------------------------------------- Advance j
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Advance j
+      ! -----------------------------------------------------------------------
 
       ! Advance j3 on odd i, odd k. 
       !$omp do
@@ -448,11 +467,12 @@ module loop
       end do
       !$omp end do
 
-      ! ------------------------------------------------------------------------------------------
-      ! -------------------------------------------------------------------------------- Advance E
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Advance E
+      ! -----------------------------------------------------------------------
 
-      ! E1 and E2 depend on each other. Both must be interpolated before either can be updated. 
+      ! E1 and E2 depend on each other. Both must be interpolated before either
+      ! can be updated. 
       !$omp do
       do k=0,n3,2
         do i=1,n1,2
@@ -490,8 +510,9 @@ module loop
       !$omp do
       do k=0,n3,2
         do i=0,n1,2
-          E1(i, k) = E1_E1(i, k)*E1(i, k)         + E1_E2(i, k)*E2(i, k)         +               &
-                     E1_JFsup1(i, k)*JFsup1(i, k) + E1_JFsup2(i, k)*JFsup2(i, k)
+          E1(i, k) = E1_E1(i, k)*E1(i, k) + E1_E2(i, k)*E2(i, k) +            &
+                     E1_JFsup1(i, k)*JFsup1(i, k) +                           &
+                     E1_JFsup2(i, k)*JFsup2(i, k)
         end do
       end do
       !$omp end do
@@ -499,12 +520,13 @@ module loop
       !$omp do
       do k=0,n3,2
         do i=1,n1,2
-          E2(i, k) = E2_E1(i, k)*E1(i, k)         + E2_E2(i, k)*E2(i, k)         +               &
-                     E2_JFsup1(i, k)*JFsup1(i, k) + E2_JFsup2(i, k)*JFsup2(i, k)
+          E2(i, k) = E2_E1(i, k)*E1(i, k) + E2_E2(i, k)*E2(i, k) +             &
+                     E2_JFsup1(i, k)*JFsup1(i, k) +                            &
+                     E2_JFsup2(i, k)*JFsup2(i, k)
         end do
       end do
       !$omp end do
-      ! We already have E1 at odd i, even k. Now interpolate it again, to odd i, odd k. 
+      ! We already have E1 at odd i, even k. Now get it to odd i, odd k.
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
@@ -517,17 +539,18 @@ module loop
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
-          E3(i, k) = E3(i, k) + E3_JFsup1(i, k)*JFsup1(i, k) + E3_JFsup3(i, k)*JFsup3(i, k) +    &
-                     E3_j3(i, k)*j3(i, k)
+          E3(i, k) = E3(i, k) + E3_JFsup1(i, k)*JFsup1(i, k) +                &
+                     E3_JFsup3(i, k)*JFsup3(i, k) + E3_j3(i, k)*j3(i, k)
         end do
       end do
       !$omp end do
 
-      ! ------------------------------------------------------------------------------------------
-      ! ----------------------------------------------------------------------- Apply Driving to E
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------------------- Apply Driving to E
+      ! -----------------------------------------------------------------------
 
-      ! This would be marginally more efficient if handled above, but it's clearer here. 
+      ! It would be marginally more efficient to handle this above, but it's 
+      ! more legible here. 
 
       ! Apply current driving to E1 on even i, even k. 
       !$omp do
@@ -546,9 +569,9 @@ module loop
       end do
       !$omp end do
 
-      ! ------------------------------------------------------------------------------------------
-      ! ------------------------------------------------------------------------------ Compute Psi
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ----------------------------------------------------------- Compute Psi
+      ! -----------------------------------------------------------------------
 
       ! Interpolate B1 and B3 to both i at the edges. 
       !$omp do
@@ -570,14 +593,15 @@ module loop
       !$omp do
       do i=0,n1
         do h=0,1
-          PsiI(i, h) = sum( PsiI_B1(i, :, h)*B1(:, h*n3) + PsiI_B3(i, :, h)*B3(:, h*n3) )
+          PsiI(i, h) = sum( PsiI_B1(i, :, h)*B1(:, h*n3) +                    &
+                            PsiI_B3(i, :, h)*B3(:, h*n3) )
         end do
       end do
       !$omp end do
 
-      ! ----------------------------------------------------------------------------------------
-      ! -------------------------------------------------------------------- Advance Edge Fields
-      ! ----------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! --------------------------------------------------- Advance Edge Fields
+      ! -----------------------------------------------------------------------
 
       ! Interpolate B2 to both i at the edges. 
       !$omp do
@@ -594,7 +618,8 @@ module loop
         end do
       end do
       !$omp end do
-      ! Compute B1I and B2I, the fields below the ionospheric current sheet, from PsiI on all i. 
+      ! Compute B1I and B2I, the fields below the ionospheric current sheet, 
+      ! from PsiI on all i. 
       !$omp do
       do i=0,n1
         do h=0,1
@@ -603,28 +628,28 @@ module loop
         end do
       end do
       !$omp end do
-      ! Based on the jump in B1 and B2 over the current sheet, advance E1 on even i. 
+      ! Based on the jump over the current sheet, advance E1 on even i. 
       !$omp do
       do i=0,n1,2
         do h=0,1
-          E1(i, h*n3) = E1_B1I(i, h)*( B1(i, h*n3) - B1I(i, h) ) +                               &
+          E1(i, h*n3) = E1_B1I(i, h)*( B1(i, h*n3) - B1I(i, h) ) +            &
                         E1_B2I(i, h)*( B2(i, h*n3) - B2I(i, h) )
         end do
       end do
       !$omp end do
-      ! Based on the jump in B1 and B2 over the current sheet, advance E2 on odd i. 
+      ! Based on the jump over the current sheet, advance E2 on odd i. 
       !$omp do
       do i=1,n1,2
         do h=0,1
-          E2(i, h*n3) = E2_B1I(i, h)*( B1(i, h*n3) - B1I(i, h) ) +                               &
+          E2(i, h*n3) = E2_B1I(i, h)*( B1(i, h*n3) - B1I(i, h) ) +            &
                         E2_B2I(i, h)*( B2(i, h*n3) - B2I(i, h) )
         end do
       end do
       !$omp end do
 
-      ! ------------------------------------------------------------------------------------------
-      ! ------------------------------------------------------------------------- End of Time Loop
-      ! ------------------------------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------ End of Time Loop
+      ! -----------------------------------------------------------------------
 
       !$omp single
       tLoop = tLoop + dt
@@ -636,12 +661,11 @@ module loop
     t = t + dtOut
   end subroutine advanceFields
 
-  ! ==============================================================================================
-  ! ====================================================================== End of Main Loop Module
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! =================================================== End of Main Loop Module
+  ! ===========================================================================
 
 end module loop
-
 
 ! ################################################################################################
 ! ################################################################################### Input Module
@@ -856,7 +880,6 @@ module io
   ! ==============================================================================================
 
 end module io
-
 
 ! ################################################################################################
 ! ####################################################################################### Geometry
@@ -1387,7 +1410,6 @@ module geometry
 
 end module geometry
 
-
 ! ################################################################################################
 ! ############################################################################ Ionospheric Profile
 ! ################################################################################################
@@ -1686,7 +1708,6 @@ module ionos
 
 end module ionos
 
-
 ! ################################################################################################
 ! ################################################################################### Coefficients
 ! ################################################################################################
@@ -1878,7 +1899,6 @@ module coefficients
   ! ==============================================================================================
 
 end module coefficients
-
 
 ! ################################################################################################
 ! ######################################################################################### Fields
@@ -2229,7 +2249,6 @@ module fields
   ! ---------------------------------------------------------- Bulk Electric Field Curl Components
   ! ----------------------------------------------------------------------------------------------
 
-
   function Cx()
     double complex, dimension(0:n1, 0:n3) :: Cx
     Cx = h1()*JCsup1/J()
@@ -2307,7 +2326,6 @@ module fields
   ! ==============================================================================================
 
 end module fields
-
 
 ! ################################################################################################
 ! ########################################################################################## Debug
@@ -2481,7 +2499,6 @@ module debug
   ! ==============================================================================================
 
 end module debug
-
 
 ! ################################################################################################
 ! ################################################################################# Program Driver
