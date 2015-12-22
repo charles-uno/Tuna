@@ -92,8 +92,8 @@ module loop
                                                      E1_j2drive, E1_JFsup3,   &
                                                      E2_E1, E2_E2, E2_JFsup1, &
                                                      E2_JFsup2, E2_j2drive,   &
-                                                     E3_JFsup1, E3_JFsup3,    &
-                                                     E3_j3, j3_j3, j3_E3
+                                                     E3_E3, E3_j3, E3_JFsup1, &
+                                                     E3_JFsup3, j3_j3, j3_E3
   ! For computing the scalar magnetic potential. 
   double precision, dimension(:,:,:), allocatable :: PsiE_B1, PsiE_B3,        &
                                                      PsiI_B1, PsiI_B3
@@ -510,9 +510,13 @@ module loop
       !$omp do
       do k=0,n3,2
         do i=0,n1,2
-          E1(i, k) = E1_E1(i, k)*E1(i, k) + E1_E2(i, k)*E2(i, k) +            &
-                     E1_JFsup1(i, k)*JFsup1(i, k) +                           &
-                     E1_JFsup2(i, k)*JFsup2(i, k)
+          ! Note that E3 depends on tons of different things. This is because 
+          ! there are contributions from both Esup1 (in the xhat direction) and
+          ! E3 (in the zhat direction). We keep track of E1 because that's what
+          ! we need to take derivatives of.  
+          E1(i, k) = E1_E1(i, k)*E1(i, k) + E1_JFsup1(i, k)*JFsup1(i, k) +    &
+                     E1_E2(i, k)*E2(i, k) + E1_JFsup2(i, k)*JFsup2(i, k) +    &
+                     E1_E3(i, k)*E3(i, k) + E1_JFsup3(i, k)*JFsup3(i, k)
         end do
       end do
       !$omp end do
@@ -539,8 +543,9 @@ module loop
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
-          E3(i, k) = E3(i, k) + E3_JFsup1(i, k)*JFsup1(i, k) +                &
-                     E3_JFsup3(i, k)*JFsup3(i, k) + E3_j3(i, k)*j3(i, k)
+          E3(i, k) = E3_E3(i, k)*E3(i, k) + E3_j3(i, k)*j3(i, k) +            &
+                     E3_JFsup1(i, k)*JFsup1(i, k) +                           &
+                     E3_JFsup3(i, k)*JFsup3(i, k)
         end do
       end do
       !$omp end do
@@ -1455,16 +1460,16 @@ module ionos
         ! Electric constant in mF/m. Convert from units of eps0. 
         getIonos = eps0*readColumn(ionosfile, 1)
       case ('sigP')
-        ! Hall conductivity in mS/s. Convert from cgs. 
+        ! Hall conductivity in mS/m. Convert from cgs. 
         getIonos = 4*pi*eps0*readColumn(ionosfile, 2)
       case ('sigH')
-        ! Pedersen conductivity in mS/s. Convert from cgs. 
+        ! Pedersen conductivity in mS/m. Convert from cgs. 
         getIonos = 4*pi*eps0*readColumn(ionosfile, 3)
       case ('eta')
-        ! Diffusivity in Mm/s. Convert from km**2/s. 
+        ! Diffusivity in Mm**2/s. Convert from km**2/s. 
         getIonos = 1e-6*readColumn(ionosfile, 4)
       case ('sig0')
-        ! Parallel conductivity in mS/s. Convert from diffusivity in km**2/s. 
+        ! Parallel conductivity in mS/m. Convert from diffusivity in km**2/s. 
         getIonos = 1e6/( mu0*readColumn(ionosfile, 4) )
       case default
         ! Radius in Mm. Convert from altitude in km. 
@@ -1515,9 +1520,10 @@ module ionos
     nLines = lines(ionosfile)
     allocate( rIon(0:nLines), vIon(0:nLines) )
     rIon = getIonos('r')
-    vIon = getIonos(varname)
-    ! Above the ionospheric profile, the values follow a power law or just go to 0. 
-    mapIonos = 0.
+    vIon = abs( getIonos(varname) )
+    ! Above the ionospheric profile, the values follow a power law or just go to 0. Well, not
+    ! quite zero, since we don't want to deal with infinity when we invert. 
+    mapIonos = 1e-20
     if ( present(power) ) mapIonos = vIon(nLines) * ( r/rIon(nLines) )**power
     ! For each line of the ionos profile, update the grid points that fall at that radius. 
     do line=1,nLines
@@ -1531,15 +1537,16 @@ module ionos
   end function mapIonos
 
   subroutine profileSetup()
+    allocate( epsPerp(0:n1, 0:n3), sig0(0:n1, 0:n3), sigH(0:n1, 0:n3), sigP(0:n1, 0:n3) )
     ! We can change the parallel dielectric constant to affect the speed of light, allowing us to
     ! investigate electron inertial effects (which would ordinarily be much too fast). 
     epsPara = eps0*readParam('boris')
-    allocate( epsPerp(0:n1, 0:n3), sig0(0:n1, 0:n3), sigH(0:n1, 0:n3), sigP(0:n1, 0:n3) )
-
-
+    ! The perpendicular electric constant comes from (isotropic) tabulated values, then we add a
+    ! term for the plasmaspheric density contribution. 
     epsPerp = mapIonos('epsp', power=5) + mp*mmm()*n()/BB()
-
-
+    ! The mapIonos function drops profiles to zero at large distances, but field-aligned
+    ! conuctivity should actually go to infinity. We handle that by letting eta go to zero, then
+    ! taking its inverse. 
     sig0 = 1/( mu0*mapIonos('eta') )
     sigH = mapIonos('sigH')
     sigP = mapIonos('sigP')
@@ -1631,13 +1638,6 @@ module ionos
     call dtSetup()
     ! Write out ionos profiles lined up with our grid. 
     call writeIonos()
-
-
-
-    stop
-
-
-
   end subroutine ionosSetup
 
   ! ==============================================================================================
@@ -1771,20 +1771,22 @@ module coefficients
     B3_JCsup3 = -g33()*dt/J()
     ! Only use E3 and j3 if we're worrying about electron inertial effects. 
     if (readParam('inertia') .gt. 0) then
-      ! j3 coefficients.
+      ! j3 coefficients (solved with integrating factors).
       j3_j3 = exp( -dt*n()*qe**2 / (me*sig0) )
       j3_E3 = dt*n()*qe**2/me * exp( -dt*n()*qe**2 / (2*me*sig0) )
-      ! E3 coefficients. 
+      ! E3 coefficients (advanced directly). 
+      E3_E3 = 1
       E3_JFsup1 = dt*g31() / ( mu0*epsPara*J() )
       E3_JFsup3 = dt*g33() / ( mu0*epsPara*J() )
       E3_j3 = -dt/epsPara
     else
-      ! j3 coefficients. 
+      ! j3 coefficients (without electron inertia, we don't have j3). 
       j3_j3 = 0
       j3_E3 = 0
-      ! E3 coefficients. 
-      E3_JFsup1 = 0
-      E3_JFsup3 = 0
+      ! E3 coefficients (solved with integrating factors like E1 and E2). 
+      E3_E3 = exp(-sig0*dt/epsPara)
+      E3_JFsup1 = dt * exp(-sig0*dt/epsPara) * g31() / ( mu0*epsPara*J() )
+      E3_JFsup3 = dt * exp(-sig0*dt/epsPara) * g33() / ( mu0*epsPara*J() )
       E3_j3 = 0
     end if
     ! E1 coefficients. Note that some E1 coefficients are defined in terms of E3 coefficients. 
@@ -1793,25 +1795,17 @@ module coefficients
     E1_E1 =                       cose * expe
     E1_E2 = gsup22() *     gg12 * sine * expe / gsup11()
     E1_E3 = gsup13()/gsup11()
-    E1_JFsup1 = vA()**2 * dt *        cosf * expf  / ( gsup11()*J() ) +                          &
+    E1_j2drive = dt * gg12 * sinf * expf * gsup22() / ( epsPerp*gsup11() )
+    E1_JFsup1 = vA()**2 * dt *        cosf * expf  / ( gsup11()*J() ) +       &
                 gsup13()*E3_JFsup1/gsup11()
     E1_JFsup2 = vA()**2 * dt * gg12 * sinf * expf  / ( gsup11()*J() )
-
-
-    E1_j2drive = dt * gg12 * sinf * expf * gsup22() / ( epsPerp*gsup11() )
-
-
     E1_JFsup3 = gsup13()*E3_JFsup3/gsup11()
     ! E2 coefficients. 
     E2_E1 = -gg21 * gsup11() * g22() * sine * expe
     E2_E2 =                          cose * expe
     E2_JFsup1 = -gg21 * g22() * dt * sinf * expf * vA()**2 / J()
     E2_JFsup2 =         g22() * dt * cosf * expf * vA()**2 / J()
-
-
     E2_j2drive =         dt * cosf * expf / epsPerp
-
-
   end subroutine bulkCoefficientSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -1883,8 +1877,9 @@ module coefficients
               E1_E2(0:n1, 0:n3), E1_E3(0:n1, 0:n3), E1_JFsup1(0:n1, 0:n3),                       &
               E1_JFsup2(0:n1, 0:n3), E1_JFsup3(0:n1, 0:n3), E1_j2drive(0:n1, 0:n3),              &
               E2_E1(0:n1, 0:n3), E2_E2(0:n1, 0:n3), E2_JFsup1(0:n1, 0:n3),                       &
-              E2_JFsup2(0:n1, 0:n3), E2_j2drive(0:n1, 0:n3), E3_JFsup1(0:n1, 0:n3),              &
-              E3_JFsup3(0:n1, 0:n3), E3_j3(0:n1, 0:n3), j3_j3(0:n1, 0:n3), j3_E3(0:n1, 0:n3) )
+              E2_JFsup2(0:n1, 0:n3), E2_j2drive(0:n1, 0:n3), E3_E3(0:n1, 0:n3),                  &
+              E3_j3(0:n1, 0:n3), E3_JFsup1(0:n1, 0:n3), E3_JFsup3(0:n1, 0:n3),                   &
+              j3_j3(0:n1, 0:n3), j3_E3(0:n1, 0:n3) )
 
   allocate( E1_B1I(0:n1, 0:1), E1_B2I(0:n1, 0:1), E2_B1I(0:n1, 0:1), E2_B2I(0:n1, 0:1),          &
             PsiE_B1(0:n1, 0:n1, 0:1), PsiE_B3(0:n1, 0:n1, 0:1), PsiI_B1(0:n1, 0:n1, 0:1),        &
@@ -2536,6 +2531,9 @@ program tuna
   ! coefficients. Geometric scale factors and ionospheric parameter values are combined here, so
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
+
+
+
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
   write(*,*) ''

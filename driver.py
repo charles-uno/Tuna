@@ -25,12 +25,12 @@ from time import localtime as lt, time
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[10], 
+           'tmax':[20], 
            'dtout':[1],
            'azm':[4],
-#           'boris':[1e3],
+           'boris':[1, 1e5],
 #           'inertia':[1],
-           'model':[1, 4],
+           'model':[1],
 #           'azm':[1, 4, 16, 64, 256],
 #           'fdrive':[1./40, 1./50, 1./60, 1./70, 1./80],
            'latdrive':[5],
@@ -68,8 +68,6 @@ def main():
 
   # Let's just look at the Alfven speed profile. 
   return vPlot()
-
-
 
   # Plot T000 for debugging. 
   ax = initPlot()
