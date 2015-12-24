@@ -278,6 +278,94 @@ class tunaPlotter:
     else:
       return PW.show()
 
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------------ Dst Plot
+  # ---------------------------------------------------------------------------
+
+  def plotDst(self):
+    # Shorthand for legibility. 
+    symh = 'Sym\\text{-}H'
+    # Set up the window. 
+    PW = plotWindow(2, 1, colorbar=False, xPad=2)
+    PW.setTitle('\mathrm{' + symh + ' \;\; Frequency \;\; Breakdown \;\; ' +
+                ' for \;\; June \;\; 2013 \;\; Storm}')
+    # Grab the data that we downloaded from NASA CDAWeb. 
+    filename = '/home/user1/mceachern/Desktop/tuna-old/symh/symh_20130601.txt'
+    data = [ line for line in open(filename, 'r').readlines() if line.strip() ]
+    t, SYMH = [], []
+    for line in data:
+      year, day, hour, minute, value = [ int(col) for col in line.split() ]
+      t.append( 24*60*day + 60*hour + minute )
+      SYMH.append(value) 
+    t = np.array(t) - t[0]
+    dt, tRange = t[1], t[-1]
+    SYMH = np.array(SYMH)
+    # Break SYMH down into Fourier modes. 
+    nModes = 4000
+    amplitudes = np.zeros(nModes, dtype=np.float)
+    for m in range(nModes):
+      harmonic = np.cos( m*np.pi*t / tRange )
+      amplitudes[m] = np.sum( SYMH*harmonic*dt ) / np.sum( dt*harmonic**2 )
+    # Plot SYMH. 
+    PW.setLine(t, SYMH, pos=(0, 0), color='b')
+    # Set title and labels. 
+    PW.setTitle( '\mathrm{' + symh + '\;\; Data \;\; from \;\; NASA \;\; ' + 
+                 'CDAWeb}', pos=(0, 0) )
+    PW.setYlabel( '\mathrm{' + symh + ' \;\; (nT)}', pos=(0, 0) )
+    PW.setXlabel( '\mathrm{Time \;\; (Minutes)}', pos=(0, 0) )
+    # Optionally, put a few Fourier components over the data. 
+    if True:
+      nShow = 20
+      PW.setTitle( '\mathrm{' + symh + ' \;\; from \;\; NASA \;\; CDAWeb ' +
+                   ' \;\; with \;\; ' + str(nShow) + ' \;\; Fourier \;\; ' +  
+                   'Modes}', pos=(0, 0) )
+      # Reconstruct the data from cosines...
+      reconstruction = np.zeros(len(t), dtype=np.float)
+      for m in range(nShow):
+        harmonic = np.cos( m*np.pi*t / tRange )
+        amplitude = np.sum( SYMH*harmonic*dt ) / np.sum( dt*harmonic**2 )
+        reconstruction = reconstruction + amplitude*harmonic
+      # Add it to the plot. 
+      PW.setLine(t, reconstruction, pos=(0, 0), color='r')
+    # Plot Fourier amplitudes against their frequencies in mHz. 
+    frequencies = np.array( range(nModes) )*1000./(60*2*tRange)
+    PW.setLine( frequencies[1:], amplitudes[1:], pos=(1, 0), color='b' )
+    PW.setXlog( pos=(1, 0) )
+    PW.setYlog( pos=(1, 0) )
+    # Set title and labels. 
+    PW.setTitle( '\mathrm{' + symh + ' \;\; Fourier \;\; Amplitudes}', 
+                 pos=(1, 0) )
+    PW.setYlabel( '\mathrm{Amplitude \;\; (nT)}', pos=(1, 0) )
+    PW.setXlabel( '\mathrm{Frequency \;\; (mHz)}', pos=(1, 0) )
+    # Set limits. They don't quite line up with the data, but that's OK. 
+    fMin, fMax = 1e-2, 10
+    PW.setXlimits( (fMin, fMax), pos=(1, 0) )
+    f = np.linspace(fMin, fMax, 10000)
+    # Let's not do a fit, per se -- let's eyeball the top of the distribution. 
+    # Work in units of 20mHz. 
+    intercept, slope = np.log(1.e-2), -0.9
+    scale = 20. 
+    # Plot the fit. 
+    fit = np.exp(intercept) * np.power(f/scale, slope)
+    label = (format( np.exp(intercept), '.2f' ) + '\; \mathrm{nT} ' + 
+            '\cdot \left( \\frac{f}{' + format(scale, '.0f') +
+            ' \; \mathrm{mHz} } \\right) ^{' + 
+            format(slope, '.1f') + '}')
+    PW.setLine( f, fit, pos=(1, 0), color='r', label=label)
+    # Display the legend. 
+    PW.setLegend( pos=(1, 0) )
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # Either save the plot or show the plot. 
+    if '-i' in self.flags:
+      filename = self.outDir + 'SYMH.png'
+      PW.save(filename)
+      return
+    else:
+      return PW.show()
+
+
 
 
 
@@ -878,112 +966,6 @@ class tunaPlotter:
       return PW.show()
 
 
-  # ---------------------------------------------------------------------------
-  # ------------------------------------------------------------------ Dst Plot
-  # ---------------------------------------------------------------------------
-
-
-
-  def plotDst(self):
-    PW = plotWindow(2, 1, colorbar=False, xPad=2)
-
-    filename = '/home/user1/mceachern/Desktop/tuna/symh/symh_20130601.txt'
-
-    data = [ line for line in open(filename, 'r').readlines() if line.strip() ]
-
-    t, SYMH = [], []
-
-    for line in data:
-      year, day, hour, minute, value = [ int(col) for col in line.split() ]
-      t.append( 24*60*day + 60*hour + minute )
-      SYMH.append(value) 
-
-    t = np.array(t)
-    t = t - t[0]
-    SYMH = np.array(SYMH)
-
-    # Plot SYMH. 
-    PW.setLine(t, SYMH, pos=(0, 0), color='b')
-
-    # Get a few Fourier components. 
-    nModes = 20
-    dt = t[1] - t[0]
-    tRange = t[-1] - t[0]
-    reconstruction = np.zeros(len(t), dtype=np.float)
-    for m in range(nModes):
-      harmonic = np.cos( m*np.pi*t / tRange )
-      amplitude = np.sum( SYMH*harmonic*dt ) / np.sum( dt*harmonic**2 )
-      reconstruction = reconstruction + amplitude*harmonic
-
-    PW.setTitle( '\mathrm{SYMH \;\; Frequency \;\; Breakdown \;\; for \;\; June \;\; 2013 \;\; Storm}')
-
-#    # Plot the fourier components. 
-#    PW.setLine(t, reconstruction, pos=(0, 0), color='r')
-
-#    PW.setTitle( '\mathrm{SYMH \;\; with \;\; ' + str(nModes) + ' \;\; Fourier \;\; Modes}', pos=(0, 0) )
-    PW.setTitle( '\mathrm{SYMH \;\; Data \;\; from \;\; NASA \;\; CDAWeb}', pos=(0, 0) )
-    PW.setYlabel( '\mathrm{SYMH \;\; (nT)}', pos=(0, 0) )
-    PW.setXlabel( '\mathrm{Time \;\; (Minutes)}', pos=(0, 0) )
-
-    # Now let's get a ton of Fourier components. 
-    nModes = 4000
-
-    amplitudes = np.zeros(nModes, dtype=np.float)
-
-    for m in range(nModes):
-      harmonic = np.cos( m*np.pi*t / tRange )
-      amplitudes[m] = np.sum( SYMH*harmonic*dt ) / np.sum( dt*harmonic**2 )
-    # Periods are in minutes. 
-    periods = tRange*2./np.array( range(nModes) )
-    # To get frequencies in seconds, multiply period by 60 then invert. For
-    # mHz, put in a factor of 1000. 
-    frequencies = 1000/(60*periods)
-    PW.setLine( frequencies[1:], amplitudes[1:], pos=(1, 0), color='b' )
-    PW.setXlog( pos=(1, 0) )
-    PW.setYlog( pos=(1, 0) )
-    # Set title and labels. 
-    PW.setTitle( '\mathrm{SYMH \;\; Fourier \;\; Amplitudes}', pos=(1, 0) )
-    PW.setYlabel( '\mathrm{Amplitude \;\; (nT)}', pos=(1, 0) )
-    PW.setXlabel( '\mathrm{Frequency \;\; (mHz)}', pos=(1, 0) )
-    # Set limits. They don't quite line up with the data, but that's OK. 
-    fMin, fMax = 1e-2, 10
-    PW.setXlimits( (fMin, fMax), pos=(1, 0) )
-    f = np.linspace(fMin, fMax, 10000)
-    # Let's not do a fit, per se -- let's eyeball the top of the distribution. 
-    intercept = np.log(1.e-2)
-    slope = -0.9
-    # Scale to 20 mHz. 
-    scale = 20. 
-
-#    # Scale to a frequency of 16.7 mHz... 1000/(60s). 
-#    scale = 1000/60.
-
-    fit = np.exp(intercept) * np.power(f/scale, slope)
-
-    label = ('$ ' + format( np.exp(intercept), '.2f' ) + '\; \mathrm{nT} ' + 
-            '\cdot \left( \\frac{f}{' + format(scale, '.0f') +
-            ' \; \mathrm{mHz} } \\right) ^{' + 
-            format(slope, '.1f') + '}$')
-
-    PW.setLine( f, fit, pos=(1, 0), color='r', label=label)
-
-    PW.setLegend( pos=(1, 0) )
-
-
-
-
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # Either save the plot or show the plot. 
-    if '-i' in self.flags:
-      filename = self.outDir + 'SYMH.png'
-      PW.save(filename)
-      return
-    else:
-      return PW.show()
-
-
 
 
 
@@ -1176,7 +1158,7 @@ class plotWindow:
     return
 
   # If no position is given, all plots will draw the line. 
-  def setLine(self, X, Y, pos=None, color='k', label=''):
+  def setLine(self, X, Y, pos=None, color='k', label=None):
     if pos is None:
       for column in self.cells:
         [ cell.setLine(X, Y, color=color, label=label) for cell in column ]
@@ -1316,7 +1298,7 @@ class plotCell:
     self.X, self.Y, self.Z = X, Y, Z
     return
 
-  def setLine(self, X, Y, color='k', label='$ \mathrm{label} $'):
+  def setLine(self, X, Y, color='k', label=None):
     self.lines = self.lines + ( (X, Y, color, label), )
     return
 
@@ -1379,7 +1361,8 @@ class plotCell:
       self.ax.contourf(self.X, self.Y, self.Z, **colorParams)
     # On top of that, draw any lines. 
     for line in self.lines:
-      self.ax.plot( line[0], line[1], line[2], label=line[3] )
+      label = None if line[3] is None else '$' + line[3] + '$'
+      self.ax.plot( line[0], line[1], line[2], label=label )
     # Draw the legend. 
     if self.legend:
       self.ax.legend(loc='best')
