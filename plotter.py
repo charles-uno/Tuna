@@ -71,6 +71,9 @@ def main():
   if 'g' in names:
     TP.plotGrid()
 
+  if 'l' in names:
+    TP.plotLazy()
+
   if 'm' in names:
     TP.plotM(4)
 
@@ -109,8 +112,6 @@ class tunaPlotter:
     self.flags = flags
     # If we'll be saving output, figure out where to put it. 
     self.outDir = '/home/user1/mceachern/Desktop/plots/plots_' + now() + '/'
-    # The plotter needs to know where to find all the data we'll be plotting. 
-    self.paths = paths
     # Let's also match up those paths with run parameters. We do this by
     # opening up the params file for each path and taking a peek inside. 
     self.runs = dict( (p, {'azm':'?', 'tau':'?', 'side':'?'} ) for p in paths )
@@ -118,13 +119,32 @@ class tunaPlotter:
       # Grab the entire contents of the parameters input file. 
       params = '\n'.join( open(p + 'params.in', 'r').readlines() )
       # Split out the azimuthal modenumber. 
-      self.runs[p]['azm'] = params.split('azm')[1].split('\n')[0].strip(' =')
+      if 'azm' in params:
+        self.runs[p]['azm'] = params.split('azm')[1].split('\n')[0].strip(' =')
+      else:
+        self.runs[p]['azm'] = None
       # Get the drive frequency. 
-      fdrive = float( params.split('fdrive')[1].split('\n')[0].strip(' =') )
-      self.runs[p]['fdrive'] = format(1000*fdrive, '.0f')
+      if 'fdrive' in params:
+        fdrive = float( params.split('fdrive')[1].split('\n')[0].strip(' =') )
+        self.runs[p]['fdrive'] = format(1000*fdrive, '.0f')
+      else:
+        self.runs[p]['fdrive'] = None
       # Get the model number and spell out what it means. 
-      model = params.split('model')[1].split('\n')[0].strip(' =')
-      self.runs[p]['side'] = 'Day' if model=='1' else 'Night'
+      if 'model' in params:
+        model = params.split('model')[1].split('\n')[0].strip(' =')
+        self.runs[p]['model'] = model
+
+
+        self.runs[p]['side'] = 'Day' if model=='1' else 'Night'
+
+
+      else:
+
+
+        self.runs[p]['side'] = None
+
+
+        self.runs[p]['model'] = None
     return
 
   # ---------------------------------------------------------------------------
@@ -135,7 +155,7 @@ class tunaPlotter:
   # parameters are stored as strings! 
   def getRunPath(self, **kargs):
     # Start out with a list of all paths. 
-    candidates = [ p for p in self.paths ]
+    candidates = [ p for p in self.runs ]
     # For each keyword parameter, remove candidates that don't match. 
     for key in kargs:
       candidates = [ p for p in candidates if self.runs[p][key]==kargs[key] ]
@@ -186,6 +206,88 @@ class tunaPlotter:
     # longer being used. 
     print 'Collecting garbage... ', gc.collect()
     return
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------- Coordinate Handling
+  # ---------------------------------------------------------------------------
+
+  # Coordinate arrays for dipole or unwrapped plots. 
+  def getCoords(self, path):
+    # Grab the coordinates. 
+    r, q = self.getArray(path + 'r.out'), self.getArray(path + 'q.out')
+    # If this run is on the dayside, flip theta (which in effect flips X). 
+    if path in self.runs and self.runs[path]['model']<3:
+      q = -q
+    # Dipole plots want GSE X and Z. 
+    if '-u' not in self.flags:
+      return r*np.sin(q), r*np.cos(q)
+    # Unwrapped plots use McIlwain parameter and normalized cos theta. 
+    else:
+      L = r/np.sin(q)**2
+      return np.cos(q)/np.sqrt(1 - np.min(r)/L), L
+
+  # Axis labels for dipole or unwrapped plots. 
+  def getCoordNames(self):
+    if '-u' not in self.flags:
+      return 'X_{GSE} \;\; (R_E)', 'Z_{GSE} \;\; (R_E)'
+    else:
+      return ('\\cos \\theta / \\cos \\theta_0', 
+              'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)')
+
+  # ---------------------------------------------------------------------------
+  # ----------------------------------------------------------------- Lazy Plot
+  # ---------------------------------------------------------------------------
+
+  def plotLazy(self, step=-1):
+    # Fields to plot, and which of them will be real vs imaginary. 
+    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
+    reals = ('Bx', 'Ey', 'Bz')
+    # Each run gets a row. We'll do all six field components. 
+    nRows = len(self.runs)
+    PW = plotWindow(len(fields), nRows, colorbar='sym', xPad=1, yPad = 1)
+    # Each run gets a row. 
+    for row, path in enumerate(self.runs):
+      # Label the row. 
+      PW.setRowLabel(path.split('/')[-2].split('_')[0], row)
+      # Grab the coordinates and label the axes. 
+      x, y = self.getCoords(path)
+      xLabel, yLabel = self.getCoordNames()
+      PW.setXlabel(xLabel)
+      PW.setYlabel(yLabel)
+      # Each field gets a column. 
+      for col, name in enumerate(fields):
+        # Label column. 
+        ReIm = '\mathbb{' + ( 'R' if name in reals else 'I' ) + '}'
+        PW.setTitle( ReIm + ' \quad ' + name, pos=(col, 0) )
+        # Grab the data. 
+        comp = np.real if name in reals else np.imag
+        z = comp( self.getArray(path + name + '.out')[:, :, step] )
+        # Put it on the plot. 
+        PW.setContour( x, y, z, (col, row) )
+        # Draw the dipole outline. 
+        [ PW.setLine( x[i, :], y[i, :], (col, row) ) for i in (0, -1) ]
+        [ PW.setLine( x[:, k], y[:, k], (col, row) ) for k in (0, -1) ]
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # Either save the plot or show the plot. 
+    if '-i' in self.flags:
+      # Come up with a filename for the output. 
+      filename = self.outDir + 'lazy.png'
+      return PW.save(filename)
+    else:
+      return PW.show()
+
+
+
+
+
+
+
+
+
+
+
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------- Magnetic Field Plot
@@ -592,7 +694,7 @@ class tunaPlotter:
 
   def plotGrid(self):
     # All of the grids should be the same, really. 
-    path = self.paths[0]
+    path = self.runs.items[0][0]
     PW = plotWindow(colorbar=False)
     # Coordinate arrays. Note that the sign of X is flipped. 
     r, q = self.getArray(path + 'r.out'), self.getArray(path + 'q.out')
@@ -774,18 +876,6 @@ class tunaPlotter:
       return
     else:
       return PW.show()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
   # ---------------------------------------------------------------------------
@@ -1713,6 +1803,12 @@ def readArray(filename):
   # Check if the array is full before returning it. If it's not, the run may
   # have crashed or run out of time. Return as many time steps as possible. 
   if i==nVals:
+    # Dump a pickle so we can read it fast next time. 
+    picklename = filename[:filename.rfind('.')] + '.pkl'
+    with open(picklename, 'wb') as handle:
+        pickle.dump(arr, handle, protocol=-1)
+    print '\tCreated ' + '/'.join(picklename.split('/')[-2:])
+    # Then return the array. 
     return arr
   else:
     actualDims = dims[:-1] + [ np.int( i/np.prod(dims[:-1]) ) ]

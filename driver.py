@@ -25,11 +25,11 @@ from time import localtime as lt, time
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[20], 
-           'dtout':[1],
+           'tmax':[5], 
+           'dtout':[0.1],
            'azm':[4],
-           'boris':[1, 1e5],
-#           'inertia':[1],
+           'boris':[1e6, 1e4, 1e2, 1],
+           'inertia':[1],
            'model':[1],
 #           'azm':[1, 4, 16, 64, 256],
 #           'fdrive':[1./40, 1./50, 1./60, 1./70, 1./80],

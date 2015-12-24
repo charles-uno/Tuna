@@ -2533,7 +2533,6 @@ program tuna
   call coefficientSetup()
 
 
-
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
   write(*,*) ''
