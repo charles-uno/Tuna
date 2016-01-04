@@ -22,7 +22,7 @@
 #import gzip
 
 import gc
-
+from sys import argv
 import numpy as np
 import os
 # The cPickle module is faster, but not always available. 
@@ -39,7 +39,12 @@ from time import time
 def main():
 
   # Start here. 
-  path = '/export/scratch/users/mceachern/2015nov23'
+  if len(argv)>1:
+    path = argv[1] 
+  else:
+    path = '/export/scratch/users/mceachern/2015nov23'
+
+  print 'Pickling starting at ', path
 
   # Starting at the given path, walk through all (dir, subdir, files). Keep
   # directories containing a file 'params.in'.  

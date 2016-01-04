@@ -90,7 +90,8 @@ module loop
   double precision, dimension(:,:), allocatable   :: E1_E1, E1_E2, E1_E3,     &
                                                      E1_JFsup1, E1_JFsup2,    &
                                                      E1_j2drive, E1_JFsup3,   &
-                                                     E2_E1, E2_E2, E2_JFsup1, &
+                                                     E1_j3, E2_E1, E2_E2,     &
+                                                     E2_E3, E2_JFsup1,        &
                                                      E2_JFsup2, E2_j2drive,   &
                                                      E3_E3, E3_j3, E3_JFsup1, &
                                                      E3_JFsup3, j3_j3, j3_E3
@@ -471,8 +472,13 @@ module loop
       ! ------------------------------------------------------------- Advance E
       ! -----------------------------------------------------------------------
 
-      ! E1 and E2 depend on each other. Both must be interpolated before either
-      ! can be updated. 
+      ! Electric field components all depend on each other -- none can be
+      ! updated until they have all been interpolated. Luckily, we don't have
+      ! to worry too much about old and new values. E1 and E2 depend on the
+      ! last time step's E3 values, for example, which is exactly what they'll
+      ! see, regardless of what order the fields are updated in. 
+      ! Interpolate E1 and JFsup1 to odd i, even k (for E2). Interpolate JFsup1
+      ! to odd i, odd k (for E3). 
       !$omp do
       do k=0,n3,2
         do i=1,n1,2
@@ -482,6 +488,14 @@ module loop
       end do
       !$omp end do
       !$omp do
+      do k=1,n3,2
+        do i=1,n1,2
+          JFsup1(i, k) = i3D(JFsup1, i, k)
+        end do
+      end do
+      !$omp end do
+      ! Interpolate E2 and JFsup2 to even i, even k (for E1). 
+      !$omp do
       do k=0,n3,2
         do i=0,n1,2
           E2(i, k) = i1D(E2, i, k)
@@ -489,20 +503,24 @@ module loop
         end do
       end do
       !$omp end do
-      ! Interpolate E3 and JFsup3 to even i, even k. 
+      ! Interpolate E3, JFsup3, and j3 to even i, even k (for E1). Along the
+      ! way, interpolate E3 at odd i, even k (for E2). 
+
       !$omp do
-      do k=1,n3,2
-        do i=0,n1,2
-          E3(i, k) = i1D(E3, i, k)
-          JFsup3(i, k) = i1D(JFsup3, i, k)
+      do k=0,n3,2
+        do i=1,n1,2
+          E3(i, k) = i3D(E3, i, k)
+          JFsup3(i, k) = i3D(JFsup3, i, k)
+          j3(i, k) = i3D(j3, i, k)
         end do
       end do
       !$omp end do
       !$omp do
       do k=0,n3,2
         do i=0,n1,2
-          E3(i, k) = i3D(E3, i, k)
-          JFsup3(i, k) = i3D(JFsup3, i, k)
+          E3(i, k) = i1D(E3, i, k)
+          JFsup3(i, k) = i1D(JFsup3, i, k)
+          j3(i, k) = i1D(j3, i, k)
         end do
       end do
       !$omp end do
@@ -516,7 +534,8 @@ module loop
           ! we need to take derivatives of.  
           E1(i, k) = E1_E1(i, k)*E1(i, k) + E1_JFsup1(i, k)*JFsup1(i, k) +    &
                      E1_E2(i, k)*E2(i, k) + E1_JFsup2(i, k)*JFsup2(i, k) +    &
-                     E1_E3(i, k)*E3(i, k) + E1_JFsup3(i, k)*JFsup3(i, k)
+                     E1_E3(i, k)*E3(i, k) + E1_JFsup3(i, k)*JFsup3(i, k) +    &
+                     E1_j3(i, k)*j3(i, k)
         end do
       end do
       !$omp end do
@@ -524,18 +543,9 @@ module loop
       !$omp do
       do k=0,n3,2
         do i=1,n1,2
-          E2(i, k) = E2_E1(i, k)*E1(i, k) + E2_E2(i, k)*E2(i, k) +             &
-                     E2_JFsup1(i, k)*JFsup1(i, k) +                            &
-                     E2_JFsup2(i, k)*JFsup2(i, k)
-        end do
-      end do
-      !$omp end do
-      ! We already have E1 at odd i, even k. Now get it to odd i, odd k.
-      !$omp do
-      do k=1,n3,2
-        do i=1,n1,2
-          E1(i, k) = i3D(E1, i, k)
-          JFsup1(i, k) = i3D(JFsup1, i, k)
+          E2(i, k) = E2_E1(i, k)*E1(i, k) + E2_JFsup1(i, k)*JFsup1(i, k) +    &
+                     E2_E2(i, k)*E2(i, k) + E2_JFsup2(i, k)*JFsup2(i, k) +    &
+                     E2_E3(i, k)*E3(i, k)
         end do
       end do
       !$omp end do
@@ -543,9 +553,9 @@ module loop
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
-          E3(i, k) = E3_E3(i, k)*E3(i, k) + E3_j3(i, k)*j3(i, k) +            &
-                     E3_JFsup1(i, k)*JFsup1(i, k) +                           &
-                     E3_JFsup3(i, k)*JFsup3(i, k)
+          E3(i, k) =                        E3_JFsup1(i, k)*JFsup1(i, k) +    &
+                     E3_E3(i, k)*E3(i, k) + E3_JFsup3(i, k)*JFsup3(i, k) +    &
+                     E3_j3(i, k)*j3(i, k)
         end do
       end do
       !$omp end do
@@ -672,27 +682,27 @@ module loop
 
 end module loop
 
-! ################################################################################################
-! ################################################################################### Input Module
-! ################################################################################################
+! #############################################################################
+! ################################################################ Input Module
+! #############################################################################
 
-! The IO module also exists at the top level, bringing in no other modules. It's used for
-! accessing input from files, and also provides convenient output handling. 
+! The IO module also exists at the top level, bringing in no other modules. 
+! It's used for accessing files, and provides convenient output handling. 
 
 module io
   implicit none
   ! Location of the file with input parameters. 
   character(128) :: paramfile = 'params.in'
-  ! Location of the file with ionospheric profiles. Change the 0 to select a model. 
+  ! Location of the ionospheric profiles. Change the 0 to select a model. 
   character(21)  :: ionosfile = '../models/ionpar0.dat'
   ! Format for writing out eigenvectors for inspection. 
   character(11)  :: evecfile = 'evec000.out'
 
   contains
 
-  ! ==============================================================================================
-  ! ======================================================================== Count Lines in a File
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ===================================================== Count Lines in a File
+  ! ===========================================================================
 
   integer function lines(filename)
     character(len=*), intent(in) :: filename
@@ -707,9 +717,9 @@ module io
     10 close(99)
   end function lines
 
-  ! ==============================================================================================
-  ! ====================================================================== Read Column from a File
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! =================================================== Read Column from a File
+  ! ===========================================================================
 
   function readColumn(filename, column)
     character(len=*), intent(in)                :: filename
@@ -720,7 +730,7 @@ module io
     nLines = lines(filename)
     allocate( readColumn(0:nLines) )
     open(unit=99, file=filename, action='read')
-    ! Grab values out to columnNum, store the last one, and move on to the next line. 
+    ! Grab columnNum values, store the last one, and move on to the next line. 
     do line=0,nLines
       read(99,*,end=20) lineData
       readColumn(line) = lineData(column)
@@ -728,16 +738,16 @@ module io
     20 close(99)
   end function readColumn
 
-  ! ==============================================================================================
-  ! ========================================================================== Get Parameter Value
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================= Get Parameter Value
+  ! ===========================================================================
 
   double precision function readParam(varname)
     character(len=*), intent(in) :: varname
     character(128)               :: label, eq
     open(unit=99, file=paramfile(1:len_trim(paramfile)), action='read')
     do
-      ! Read parameter label and value. If it matches what we're looking for, return it. 
+      ! Read parameter label and value. If it matches varname, return it. 
       read(99,*,end=30) label, eq, readParam
       if ( varname .eq. label(1:len_trim(label)) ) then
         close(99)
@@ -749,19 +759,27 @@ module io
     readParam = defaultParam(varname)
   end function readParam
 
-  ! ==============================================================================================
-  ! ===================================================================== Default Parameter Values
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ================================================== Default Parameter Values
+  ! ===========================================================================
 
   double precision function defaultParam(varname)
     character(len=*), intent(in) :: varname
     ! Geometric parameters.
-    if (varname .eq. 'n1'  ) defaultParam = 128        ! Number of field lines. 
-    if (varname .eq. 'n3'  ) defaultParam = 320        ! Number of grid points per field line. 
-    if (varname .eq. 'lmin') defaultParam = 1.5        ! L valud of innermost field line. 
-    if (varname .eq. 'lmax') defaultParam = 10         ! L value of outermost field line. 
-    if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height (in km). 
+    if (varname .eq. 'n1'  ) defaultParam = 128        ! Number of field lines.
+    if (varname .eq. 'n3'  ) defaultParam = 320        ! Grid points per line. 
+    if (varname .eq. 'lmin') defaultParam = 1.5        ! Innermost L value. 
+    if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
+    if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
     if (varname .eq. 'azm' ) defaultParam = 0          ! Azimuthal modenumber. 
+
+
+
+
+
+
+
+
     ! Time parameters.
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Total simulation time (in s). 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period (in s). 
@@ -1759,8 +1777,8 @@ module coefficients
     cosf = cos(  0.5 * sigh * dt / epsPerp )
     expe = exp(       -sigp * dt / epsPerp )
     expf = exp( -0.5 * sigp * dt / epsPerp )
-    gg12  = g22()*g33() / ( h3()*J() )
-    gg21  = ( g11()*g33() - g13()*g31() ) / ( h3()*J() )
+    gg12  = sqrt( gsup11() / gsup22() )
+    gg21  = sqrt( gsup22() / gsup11() )
     ! B1 coefficients.
     B1_JCsup1 = -g11()*dt/J()
     B1_JCsup3 = -g13()*dt/J()
@@ -1785,26 +1803,27 @@ module coefficients
       j3_E3 = 0
       ! E3 coefficients (solved with integrating factors like E1 and E2). 
       E3_E3 = exp(-sig0*dt/epsPara)
-      E3_JFsup1 = dt * exp(-sig0*dt/epsPara) * g31() / ( mu0*epsPara*J() )
-      E3_JFsup3 = dt * exp(-sig0*dt/epsPara) * g33() / ( mu0*epsPara*J() )
+      E3_JFsup1 = dt * exp( -sig0*dt/(2*epsPara) ) * g31() / ( mu0*epsPara*J() )
+      E3_JFsup3 = dt * exp( -sig0*dt/(2*epsPara) ) * g33() / ( mu0*epsPara*J() )
       E3_j3 = 0
     end if
     ! E1 coefficients. Note that some E1 coefficients are defined in terms of E3 coefficients. 
     ! This is because we have an equation for updating Esup1, and an equation for updating E3, and
     ! we have to match those together to get our expressions for updating E1. 
-    E1_E1 =                       cose * expe
-    E1_E2 = gsup22() *     gg12 * sine * expe / gsup11()
-    E1_E3 = gsup13()/gsup11()
-    E1_j2drive = dt * gg12 * sinf * expf * gsup22() / ( epsPerp*gsup11() )
-    E1_JFsup1 = vA()**2 * dt *        cosf * expf  / ( gsup11()*J() ) +       &
-                gsup13()*E3_JFsup1/gsup11()
-    E1_JFsup2 = vA()**2 * dt * gg12 * sinf * expf  / ( gsup11()*J() )
-    E1_JFsup3 = gsup13()*E3_JFsup3/gsup11()
+    E1_E1 =                        cose*expe
+    E1_E2 =                   gg21*sine*expe
+    E1_E3 =  ( gsup13()/gsup11() )*expe*cose - ( gsup13()/gsup11() )*E3_E3
+    E1_JFsup1 = ( dt*vA()**2 / J() )*( 1/gsup11() )   *cosf*expf - ( gsup13()/gsup11() )*E3_JFsup1
+    E1_JFsup2 = ( dt*vA()**2 / J() )*( gg12/gsup11() )*sinf*expf
+    E1_JFsup3 =                                                   -( gsup13()/gsup11() )*E3_JFsup1
+    E1_j2drive = (dt/epsPerp)*gg21*sinf*expf
+    E1_j3 =                                                       -( gsup13()/gsup11() )*E3_j3
     ! E2 coefficients. 
-    E2_E1 = -gg21 * gsup11() * g22() * sine * expe
-    E2_E2 =                          cose * expe
-    E2_JFsup1 = -gg21 * g22() * dt * sinf * expf * vA()**2 / J()
-    E2_JFsup2 =         g22() * dt * cosf * expf * vA()**2 / J()
+    E2_E1 = -( gsup11()/gsup22() )*gg21*sine*expe
+    E2_E2 =                             cose*expe
+    E2_E3 = -( gsup13()/gsup22() )*gg21*expe*sine
+    E2_JFsup1 = -( 1/gsup22() )*gg21*( dt*vA()**2 / J() )*sinf*expf
+    E2_JFsup2 =  ( 1/gsup22() )     *( dt*vA()**2 / J() )*cosf*expf
     E2_j2drive =         dt * cosf * expf / epsPerp
   end subroutine bulkCoefficientSetup
 
@@ -1876,10 +1895,10 @@ module coefficients
               B3_JCsup1(0:n1, 0:n3), B3_JCsup3(0:n1, 0:n3), E1_E1(0:n1, 0:n3),                   &
               E1_E2(0:n1, 0:n3), E1_E3(0:n1, 0:n3), E1_JFsup1(0:n1, 0:n3),                       &
               E1_JFsup2(0:n1, 0:n3), E1_JFsup3(0:n1, 0:n3), E1_j2drive(0:n1, 0:n3),              &
-              E2_E1(0:n1, 0:n3), E2_E2(0:n1, 0:n3), E2_JFsup1(0:n1, 0:n3),                       &
-              E2_JFsup2(0:n1, 0:n3), E2_j2drive(0:n1, 0:n3), E3_E3(0:n1, 0:n3),                  &
-              E3_j3(0:n1, 0:n3), E3_JFsup1(0:n1, 0:n3), E3_JFsup3(0:n1, 0:n3),                   &
-              j3_j3(0:n1, 0:n3), j3_E3(0:n1, 0:n3) )
+              E1_j3(0:n1, 0:n3), E2_E1(0:n1, 0:n3), E2_E2(0:n1, 0:n3), E2_E3(0:n1, 0:n3),        &
+              E2_JFsup1(0:n1, 0:n3), E2_JFsup2(0:n1, 0:n3), E2_j2drive(0:n1, 0:n3),              &
+              E3_E3(0:n1, 0:n3), E3_j3(0:n1, 0:n3), E3_JFsup1(0:n1, 0:n3),                       &
+              E3_JFsup3(0:n1, 0:n3), j3_j3(0:n1, 0:n3), j3_E3(0:n1, 0:n3) )
 
   allocate( E1_B1I(0:n1, 0:1), E1_B2I(0:n1, 0:1), E2_B1I(0:n1, 0:1), E2_B2I(0:n1, 0:1),          &
             PsiE_B1(0:n1, 0:n1, 0:1), PsiE_B3(0:n1, 0:n1, 0:1), PsiI_B1(0:n1, 0:n1, 0:1),        &
@@ -1973,6 +1992,13 @@ module fields
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
+    ! For driving, we use a truncated Gaussian. When using a real Gaussian, the slightly-nonzero
+    ! values can become numerically unstable in corners of the simulation where conductivity is
+    ! large, before the bulk of the driving reaches those corners. 
+!    B3drive = Bdrive*scratch(n1,:)*max(0., exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 ) - 0.1)*1.1
+!    j2drive = jdrive*max(0., exp( -0.5*( (q - qdrive)/dqdrive )**2 ) - 0.1)*1.1*                  &
+!              max(0., exp( -0.5*( (r - rdrive)/drdrive )**2 ) - 0.1)*1.1/( h2()*gsup22() )
+
     ! Compressional driving is delivered at the outer boundary. Map from Bz to B3. 
     scratch = h3()
     B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
@@ -2452,7 +2478,7 @@ module debug
   ! ==============================================================================================
 
   ! Print out what the fields look like at X, Z.  
-  subroutine peek(X, Z)
+  subroutine peekFields(X, Z)
     double precision, intent(in)          :: X, Z
     integer, dimension(0:1)               :: ik
     integer                               :: i, k
@@ -2487,7 +2513,63 @@ module debug
     arrf = Bf()
     arrq = Bq()
     write(*,'(a14, 3es9.1)') 'Br Bf Bq', abs( arrr(i, 0) ), abs( arrf(i, 0) ), abs( arrq(i, 0) )
-  end subroutine peek
+  end subroutine peekFields
+
+
+  ! ==============================================================================================
+  ! ===================================================================== Peek at the Coefficients
+  ! ==============================================================================================
+
+  ! Print out what the coefficients look like at X, Z.  
+  subroutine peekCoefficients(X, Z)
+    double precision, intent(in)          :: X, Z
+    integer, dimension(0:1)               :: ik
+    integer                               :: i, k
+    double complex, dimension(0:n1, 0:n3) :: arr1, arr2, arr3
+    ! Figure out the grid point closest to X, Z. 
+    ik = minloc( sqrt( (r*sin(q) - X)**2 + (r*cos(q) - Z)**2 ) )
+    i = ik(0)
+    k = ik(1)
+    ! Include the peek location in the printout. 
+    write(*,'(a, f5.2, a, f5.2, a)') 'Peeking at X, Z = ', X/RE, ', ', Z/RE, ' RE: '
+    write(*,'(a)') 'Directions are messy, but everything is scaled to a normal basis. '
+    arr1 = E1_E1*sqrt( g11()/g11() )
+    arr2 = E1_E2*sqrt( g22()/g11() )
+    arr3 = E1_E3*sqrt( g33()/g11() )
+    write(*,'(a10, 3es9.1)') 'E1_E*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = E1_JFsup1*sqrt( gsup11()/g11() )*J()
+    arr2 = E1_JFsup2*sqrt( gsup22()/g11() )*J()
+    arr3 = E1_JFsup3*sqrt( gsup33()/g11() )*J()
+    write(*,'(a10, 3es9.1)') 'E1_F*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = 0
+    arr2 = E1_j2drive*sqrt( g22()/g11() )
+    arr3 = E1_j3*sqrt( g33()/g11() )
+    write(*,'(a10, 3es9.1)') 'E1_j*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = E2_E1*sqrt( g11()/g22() )
+    arr2 = E2_E2*sqrt( g22()/g22() )
+    arr3 = E2_E3*sqrt( g33()/g22() )
+    write(*,'(a10, 3es9.1)') 'E2_E*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = E2_JFsup1*sqrt( gsup11()/g22() )*J()
+    arr2 = E2_JFsup2*sqrt( gsup22()/g22() )*J()
+    arr3 = 0
+    write(*,'(a10, 3es9.1)') 'E2_F*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = 0
+    arr2 = E2_j2drive*sqrt( g22()/g22() )
+    arr3 = 0
+    write(*,'(a10, 3es9.1)') 'E2_j*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = 0
+    arr2 = 0
+    arr3 = E3_E3*sqrt( g33()/g33() )
+    write(*,'(a10, 3es9.1)') 'E3_E*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = E3_JFsup1*sqrt( gsup11()/g33() )*J()
+    arr2 = 0
+    arr3 = E3_JFsup3*sqrt( gsup33()/g33() )*J()
+    write(*,'(a10, 3es9.1)') 'E3_F*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+    arr1 = 0
+    arr2 = 0
+    arr3 = E3_j3
+    write(*,'(a10, 3es9.1)') 'E3_j*', abs( arr1(i, k) ), abs( arr2(i, k) ), abs( arr3(i, k) )
+  end subroutine peekCoefficients
 
   ! ==============================================================================================
   ! ========================================================================== End of Debug Module
@@ -2533,36 +2615,41 @@ program tuna
   call coefficientSetup()
 
 
+  call peekCoefficients(0.75*RE, 0.75*RE)
+
+  stop
+
+
+
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
-  write(*,*) ''
-  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
-  write(*,*) 'Slowest perpendicular plasma timescale = ', 1e6/minval( sqrt( n()*qe**2 / (2*pi*me*epsPerp) ) ), 'us'
 
+!  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
 
-  write(*,*) ''
-  write(*,*) 'Minval m omega sig0 / n e e ', minval( me*(0.02)*sig0/(n()*qe*qe) ), ' (dimensionless)'
+!  write(*,*) ''
+!  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
+!  write(*,*) 'Slowest perpendicular plasma timescale = ', 1e6/minval( sqrt( n()*qe**2 / (2*pi*me*epsPerp) ) ), 'us'
 
-  write(*,*) ''
-  write(*,*) 'Minval sig0 / eps0 ', minval( sig0/eps0 ), ' Hz'
+!  write(*,*) ''
+!  write(*,*) 'Minval m omega sig0 / n e e ', minval( me*(0.02)*sig0/(n()*qe*qe) ), ' (dimensionless)'
 
-  write(*,*) ''
-  write(*,*) 'Maxval cc eps0^2 / sig0^2 ', maxval( cc*eps0**2/sig0**2 ), ' Mm^2'
+!  write(*,*) ''
+!  write(*,*) 'Minval sig0 / eps0 ', minval( sig0/eps0 ), ' Hz'
 
+!  write(*,*) ''
+!  write(*,*) 'Maxval cc eps0^2 / sig0^2 ', maxval( cc*eps0**2/sig0**2 ), ' Mm^2'
 
-  write(*,*) ''
-  write(*,*) 'Minval m omega sigH / n e e ', minval( me*(0.02)*sigH/(n()*qe*qe) ), ' (dimensionless)'
-  write(*,*) 'Maxval m omega sigH / n e e ', maxval( me*(0.02)*sigH/(n()*qe*qe) ), ' (dimensionless)'
+!  write(*,*) ''
+!  write(*,*) 'Minval m omega sigH / n e e ', minval( me*(0.02)*sigH/(n()*qe*qe) ), ' (dimensionless)'
+!  write(*,*) 'Maxval m omega sigH / n e e ', maxval( me*(0.02)*sigH/(n()*qe*qe) ), ' (dimensionless)'
 
-  write(*,*) ''
-  write(*,*) 'Minval m omega sigP / n e e ', minval( me*(0.02)*sigP/(n()*qe*qe) ), ' (dimensionless)'
-  write(*,*) 'Maxval m omega sigP / n e e ', maxval( me*(0.02)*sigP/(n()*qe*qe) ), ' (dimensionless)'
+!  write(*,*) ''
+!  write(*,*) 'Minval m omega sigP / n e e ', minval( me*(0.02)*sigP/(n()*qe*qe) ), ' (dimensionless)'
+!  write(*,*) 'Maxval m omega sigP / n e e ', maxval( me*(0.02)*sigP/(n()*qe*qe) ), ' (dimensionless)'
 
-  write(*,*) ''
-  write(*,*) 'Minval epsPerp / eps0 ', minval( epsPerp / eps0 ), ' (dimensionless)'
-  write(*,*) 'Maxval epsPerp / eps0 ', maxval( epsPerp / eps0 ), ' (dimensionless)'
-
-
+!  write(*,*) ''
+!  write(*,*) 'Minval epsPerp / eps0 ', minval( epsPerp / eps0 ), ' (dimensionless)'
+!  write(*,*) 'Maxval epsPerp / eps0 ', maxval( epsPerp / eps0 ), ' (dimensionless)'
 
 !  write(*,*) 'Or... 1/', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*eps0) ) ), 'us'
 !  write(*,'(a, es10.2, a)') 'n e e / m sig0 ... maxval ', maxval( n()*qe**2 / (me*sig0) ), 'Hz'
@@ -2595,7 +2682,7 @@ program tuna
     write(*,'(a6, f6.2, a2)') 't = ', t, 's'
 
 
-!    call peek(0.75*RE, 0.75*RE)
+!    call peekFields(0.75*RE, 0.75*RE)
 
 
     ! Write field values to file. 

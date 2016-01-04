@@ -80,6 +80,9 @@ def main():
   if 'p' in names:
     TP.plotPolarizations(20)
 
+  if 'q' in names:
+    TP.plotQuick()
+
   if 's' in names:
     for fdrive in (12, 14, 17, 20, 25):
       TP.plotS(fdrive)
@@ -238,15 +241,19 @@ class tunaPlotter:
   # ----------------------------------------------------------------- Lazy Plot
   # ---------------------------------------------------------------------------
 
-  def plotLazy(self, step=-1):
+  def plotLazy(self, step=1):
     # Fields to plot, and which of them will be real vs imaginary. 
     fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
+
     reals = ('Bx', 'Ey', 'Bz')
+
+    reals = ('Ex', 'By', 'Ez')
+
     # Each run gets a row. We'll do all six field components. 
     nRows = len(self.runs)
     PW = plotWindow(len(fields), nRows, colorbar='sym', xPad=1, yPad = 1)
     # Each run gets a row. 
-    for row, path in enumerate(self.runs):
+    for row, path in enumerate( sorted( p for p in self.runs ) ):
       # Label the row. 
       PW.setRowLabel(path.split('/')[-2].split('_')[0], row)
       # Grab the coordinates and label the axes. 
@@ -364,6 +371,20 @@ class tunaPlotter:
       return
     else:
       return PW.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1397,9 +1418,9 @@ class plotCell:
 class plotColors(dict):
 
   # Number of color levels for contour plots. Should be even. 
-  nColors = 8
+  nColors = 10
   # Number of color bar ticks. Zero is shown if it's odd.  
-  nTicks = 7
+  nTicks = 11
 
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------- Initialize Colors
@@ -1787,15 +1808,17 @@ def readArray(filename):
   # have crashed or run out of time. Return as many time steps as possible. 
   if i==nVals:
     # Dump a pickle so we can read it fast next time. 
-    picklename = filename[:filename.rfind('.')] + '.pkl'
-    with open(picklename, 'wb') as handle:
+    with open(pklname, 'wb') as handle:
         pickle.dump(arr, handle, protocol=-1)
-    print '\tCreated ' + '/'.join(picklename.split('/')[-2:])
+    print '\tCreated ' + '/'.join(pklname.split('/')[-2:])
     # Then return the array. 
     return arr
   else:
     actualDims = dims[:-1] + [ np.int( i/np.prod(dims[:-1]) ) ]
     print '\tWARNING: Expected ' + by(dims) + ' but found ' + by(actualDims)
+    with open(pklname, 'wb') as handle:
+        pickle.dump(arr[..., :actualDims[-1] ], handle, protocol=-1)
+    print '\tCreated ' + '/'.join(pklname.split('/')[-2:])
     return arr[..., :actualDims[-1] ]
 
 # #############################################################################
