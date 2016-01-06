@@ -22,13 +22,15 @@ from time import localtime as lt, time
 # ############################################################# Parameter Entry
 # #############################################################################
 
+# If we want to give this run a custom directory name, put that here. 
+runDirName = 'tuna'
+
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[0.1], 
-           'dtout':[0.001],
+           'tmax':[1], 
+           'dtout':[0.01],
            'azm':[4],
-           'boris':[1],
            'inertia':[-1, 1],
            'model':[1],
 #           'azm':[1, 4, 16, 64, 256],
@@ -47,10 +49,11 @@ def main():
   # cleans up any temporary files. 
   print refresh() + '\n'
   # Prepare run directory. 
-  runDir = setRunDir()
-  print runDir + '\n'
+  global runDirName
+  rd = setRunDir(runDirName)
+  print rd + '\n'
   # Permute the parameters to get a list of runs to conduct. 
-  runs = getRuns(runDir)
+  runs = getRuns(rd)
   # Prepare programming environment. 
   print setEnvironment()
   # Compile binary executable. If the compilation fails, bail. 
@@ -112,8 +115,8 @@ def refresh():
 # ======================================================== Create Run Directory
 # =============================================================================
 
-def setRunDir():
-  sd, rd = srcDir(), runDir()
+def setRunDir(rdn='runs'):
+  sd, rd = srcDir(), runDir(rdn)
   # Create a timestamped run directory. 
   os.mkdir(rd)
   # Copy the source files and ionospheric models to the run directory. 
@@ -129,7 +132,7 @@ def setRunDir():
 
 # We scramble the given parameters into all possible permutations. Each 
 # permutation corresponds to a run. 
-def getRuns(runDir):
+def getRuns(rd):
   global parameters
   # For nonzero field driving we need 0 current driving and vice versa. 
   if 'bdrive' in parameters and 'jdrive' in parameters:
@@ -146,7 +149,7 @@ def getRuns(runDir):
   # Name each run based on its position in the list. 
   for i, r in enumerate(runs):
     r['name'] = 'T' + znt(i, 3)
-    r['dir'] = runDir + r['name']
+    r['dir'] = rd + r['name']
   # Return the list of run dictionaries. 
   return runs
 
@@ -408,11 +411,11 @@ def nproc():
   return 2 if local() else 16
 
 # Where should the run be carried out? 
-def runDir():
+def runDir(runDirName):
   if local():
-    return '/export/scratch/users/mceachern/runs_' + now() + '/'
+    return '/export/scratch/users/mceachern/' + runDirName + '_' + now() + '/'
   else:
-    return '/scratch.global/mceache1/runs_' + now() + '/'
+    return '/scratch.global/mceache1/' + runDirName + '_' + now() + '/'
 
 # Where is the source code stored? 
 def srcDir():

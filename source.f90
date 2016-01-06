@@ -772,22 +772,17 @@ module io
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
     if (varname .eq. 'azm' ) defaultParam = 0          ! Azimuthal modenumber. 
-
-
-
-
-
-
-
-
     ! Time parameters.
-    if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Total simulation time (in s). 
-    if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period (in s). 
+    if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
+    if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
-    if (varname .eq. 'boris'  ) defaultParam = 1.     ! Scale factor for epsPara. 
+    if (varname .eq. 'boris'  ) defaultParam = -1.     ! Boris factor for eps0. 
     ! Physical parameter profiles.
-    if (varname .eq. 'model') defaultParam = 1         ! Ionospheric model to use (1-6)
-    if (varname .eq. 'naz'  ) defaultParam = 10        ! Number density at auroral zone base. 
+
+
+
+    if (varname .eq. 'model') defaultParam = 1         ! Ionospheric profile. 
+    if (varname .eq. 'naz'  ) defaultParam = 10        ! Density at auroral base, 1/cm^3. 
     if (varname .eq. 'haz'  ) defaultParam = 1         ! Scale height (in RE) of auroral density. 
     if (varname .eq. 'nps'  ) defaultParam = 1e4       ! Number density at plasmasphere base. 
     if (varname .eq. 'lps'  ) defaultParam = 1.0857    ! Scale L of plasmasphere.  
@@ -1558,7 +1553,10 @@ module ionos
     allocate( epsPerp(0:n1, 0:n3), sig0(0:n1, 0:n3), sigH(0:n1, 0:n3), sigP(0:n1, 0:n3) )
     ! We can change the parallel dielectric constant to affect the speed of light, allowing us to
     ! investigate electron inertial effects (which would ordinarily be much too fast). 
-    epsPara = eps0*readParam('boris')
+    ! If given a nonpositive Boris factor, we wait to set epsPara until computing the time step,
+    ! then set it so that the plasma time step and the geometric time step match. Essentially, we
+    ! take the smallest Boris factor that will not shrink the time step. 
+    epsPara = eps0*max( 1., readParam('boris') )
     ! The perpendicular electric constant comes from (isotropic) tabulated values, then we add a
     ! term for the plasmaspheric density contribution. 
     epsPerp = mapIonos('epsp', power=5) + mp*mmm()*n()/BB()
@@ -1579,6 +1577,7 @@ module ionos
     double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz, oodt
     ! Parallel plasma frequency. 
     double precision, dimension(0:n1,0:n3) :: wpe
+    double precision                       :: boris
     oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
     oodty = azm*vA()/h2()
     oodtz = abs( 2*vA()/( h3()*( eoshift(usup3(), 1, dim=2) - eoshift(usup3(), -1, dim=2) ) ) )
@@ -1593,22 +1592,29 @@ module ionos
     else
       oodt = sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 )
     end if
-
-    write(*,'(a, f, a)') 'Grid dt = ', 1e6*readParam('cour')/maxval(oodt), 'us'
-
+    write(*,'(a, es9.1, a)') 'Grid dt = ', 1e6*readParam('cour')/maxval(oodt), 'us'
     wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
-
-    write(*,'(a, f, a)') 'Plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
-
-    ! If we're looking at electron inertial effects, time step size is also constrained by the
-    ! frequency of plasma oscillations. 
+    write(*,'(a, es9.1, a)') 'Plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
+    ! A nonpositive Boris factor means we use epsPara as small as possible without decreasing the
+    ! time step. That is, we match the plasma time step with the geometric time step. (Note that
+    ! if the boris factor is negative, epsPara is still eps0.)
+    if (readParam('boris') .le. 0) then
+      boris = ( maxval(wpe) / maxval(oodt) )**2
+      write(*,'(a, es9.1)') 'Automatic Boris factor: ', boris
+      epsPara = epsPara * boris
+      wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
+      write(*,'(a, es9.1, a)') 'New plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
+    end if
+    ! Time step depends on the plasma frequency only if we're including electron inertial effects. 
     if ( readParam('inertia') .gt. 0 ) then
       dt = readParam('cour')/max( maxval(oodt), maxval(wpe) )
     else
       dt = readParam('cour')/maxval(oodt)
     end if
 
-    write(*,'(a, f, a)') 'dt = ', 1e6*dt, 'us'
+    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
+
+    stop
 
   end subroutine dtSetup
 
@@ -1995,17 +2001,20 @@ module fields
     ! For driving, we use a truncated Gaussian. When using a real Gaussian, the slightly-nonzero
     ! values can become numerically unstable in corners of the simulation where conductivity is
     ! large, before the bulk of the driving reaches those corners. 
-!    B3drive = Bdrive*scratch(n1,:)*max(0., exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 ) - 0.1)*1.1
-!    j2drive = jdrive*max(0., exp( -0.5*( (q - qdrive)/dqdrive )**2 ) - 0.1)*1.1*                  &
-!              max(0., exp( -0.5*( (r - rdrive)/drdrive )**2 ) - 0.1)*1.1/( h2()*gsup22() )
+
+    scratch = h3()
+    B3drive = Bdrive*scratch(n1,:)*max(0., exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 ) - 0.1)*1.1
+
+    j2drive = jdrive*max(0., exp( -0.5*( (q - qdrive)/dqdrive )**2 ) - 0.1)*1.1*                  &
+              max(0., exp( -0.5*( (r - rdrive)/drdrive )**2 ) - 0.1)*1.1/( h2()*gsup22() )
 
     ! Compressional driving is delivered at the outer boundary. Map from Bz to B3. 
-    scratch = h3()
-    B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
+!    scratch = h3()
+!    B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
-    j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
+!    j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
+!              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
@@ -2614,11 +2623,8 @@ program tuna
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
 
-
-  call peekCoefficients(0.75*RE, 0.75*RE)
-
-  stop
-
+!  call peekCoefficients(0.75*RE, 0.75*RE)
+!  stop
 
 
   ! Report the time step, in microseconds. 

@@ -241,21 +241,13 @@ class tunaPlotter:
   # ----------------------------------------------------------------- Lazy Plot
   # ---------------------------------------------------------------------------
 
-  def plotLazy(self, step=1):
-    # Fields to plot, and which of them will be real vs imaginary. 
+  def plotLazy(self, step=4):
+    # We will plot the real and imaginary components for each field. 
     fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
-
-    reals = ('Bx', 'Ey', 'Bz')
-
-    reals = ('Ex', 'By', 'Ez')
-
-    # Each run gets a row. We'll do all six field components. 
-    nRows = len(self.runs)
-    PW = plotWindow(len(fields), nRows, colorbar='sym', xPad=1, yPad = 1)
-    # Each run gets a row. 
-    for row, path in enumerate( sorted( p for p in self.runs ) ):
-      # Label the row. 
-      PW.setRowLabel(path.split('/')[-2].split('_')[0], row)
+    # Each run gets two rows: one real and one imaginary. 
+    PW = plotWindow(len(fields), 2*len(self.runs), colorbar='sym', yPad=1, nColors=12, nTicks=11)
+    # Scroll through the runs. 
+    for rowPair, path in enumerate( sorted( p for p in self.runs ) ):
       # Grab the coordinates and label the axes. 
       x, y = self.getCoords(path)
       xLabel, yLabel = self.getCoordNames()
@@ -263,17 +255,28 @@ class tunaPlotter:
       PW.setYlabel(yLabel)
       # Each field gets a column. 
       for col, name in enumerate(fields):
-        # Label column. 
-        ReIm = '\mathbb{' + ( 'R' if name in reals else 'I' ) + '}'
-        PW.setTitle( ReIm + ' \quad ' + name, pos=(col, 0) )
+        # Label the column. 
+        PW.setTitle( name[0] + '_' + name[1], pos=(col, 0) )
         # Grab the data. 
-        comp = np.real if name in reals else np.imag
-        z = comp( self.getArray(path + name + '.out')[:, :, step] )
-        # Put it on the plot. 
-        PW.setContour( x, y, z, (col, row) )
-        # Draw the dipole outline. 
-        [ PW.setLine( x[i, :], y[i, :], (col, row) ) for i in (0, -1) ]
-        [ PW.setLine( x[:, k], y[:, k], (col, row) ) for k in (0, -1) ]
+        zComp = self.getArray(path + name + '.out')[:, :, step]
+
+        # Do both real and imaginary components. 
+        for ReIm in ('R', 'I'):
+          # Figure out which row this plot actually belongs on. 
+          row = 2*rowPair if ReIm=='R' else 2*rowPair + 1
+          # Label the row. 
+          rowLabel = '\mathbb{' + ReIm + '} \;\; ' + path.split('/')[-2]
+          PW.setRowLabel(rowLabel, row)
+          # Grab the appropriate data component. 
+          z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
+
+          print 'Max for ' + ReIm + ' ' + name + ' = ', np.max(np.abs(z))
+
+          # Plot the contour. 
+          PW.setContour( x, y, z, (col, row) )
+          # Draw the dipole outline. 
+          [ PW.setLine( x[i, :], y[i, :], (col, row) ) for i in (0, -1) ]
+          [ PW.setLine( x[:, k], y[:, k], (col, row) ) for k in (0, -1) ]
     # All of the data that the plot needs has been deposited in the plot window
     # object. This object no longer needs to keep track of anything. 
     self.refresh()
@@ -1083,7 +1086,11 @@ class plotWindow:
   # ----------------------------- Initialize Plot Window and Space Out Subplots
   # ---------------------------------------------------------------------------
 
-  def __init__(self, nCols=1, nRows=1, colorbar=None, xPad=1, yPad=5):
+  def __init__(self, nCols=1, nRows=1, colorbar=None, xPad=1, yPad=5, 
+               nColors=8, nTicks=7):
+    # Store the color keywords for later. 
+    self.nColors = nColors
+    self.nTicks = nTicks
     # Make sure there isn't anything lingering from a previous plot. 
     plt.close('all')
     # Set fonts for math formatting. Let's also bump up the font size. 
@@ -1246,7 +1253,8 @@ class plotWindow:
     vmax = nax( cell.getMax() for column in self.cells for cell in column )
     # The plot colors object constructor creates the color bar, then returns
     # a dictionary of keyword parameters. 
-    PC = plotColors(vmax, self.colorAxis, self.colorbar)
+    PC = plotColors(vmax, self.colorAxis, self.colorbar, nColors=self.nColors, 
+                    nTicks=self.nTicks)
     # We send those parameters to each cell for use in their contourf calls. 
     return [ cell.render(**PC) for column in self.cells for cell in column ]
 
@@ -1417,16 +1425,11 @@ class plotCell:
 
 class plotColors(dict):
 
-  # Number of color levels for contour plots. Should be even. 
-  nColors = 10
-  # Number of color bar ticks. Zero is shown if it's odd.  
-  nTicks = 11
-
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------- Initialize Colors
   # ---------------------------------------------------------------------------
 
-  def __init__(self, vmax=None, ax=None, colorbar=None):
+  def __init__(self, vmax, ax, colorbar, nColors, nTicks):
     # Some plots don't have contours. 
     if not vmax or not ax or not colorbar:
       return dict.__init__(self, {})
@@ -1434,6 +1437,8 @@ class plotColors(dict):
     # functions. We don't want to pass vmax all over the place. 
     self.vmax = vmax
     self.colorbar = colorbar
+    self.nColors = nColors
+    self.nTicks = nTicks
     # Assemble the keyword parameters in a temporary dictionary. We'll then use
     # the dictionary constructor to build this object based on it. 
     temp = {}
