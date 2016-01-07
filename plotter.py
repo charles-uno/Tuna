@@ -66,7 +66,7 @@ def main():
       TP.plotE(fdrive)
 
   if 'f' in names:
-    TP.plotFactor()
+    TP.plotFrequencies()
 
   if 'g' in names:
     TP.plotGrid()
@@ -76,6 +76,9 @@ def main():
 
   if 'm' in names:
     TP.plotM(4)
+
+  if 'o' in names:
+    TP.plotOne()
 
   if 'p' in names:
     TP.plotPolarizations(20)
@@ -241,42 +244,58 @@ class tunaPlotter:
   # ----------------------------------------------------------------- Lazy Plot
   # ---------------------------------------------------------------------------
 
-  def plotLazy(self, step=4):
+  def plotLazy(self, step=-1):
     # We will plot the real and imaginary components for each field. 
     fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
     # Each run gets two rows: one real and one imaginary. 
     PW = plotWindow(len(fields), 2*len(self.runs), colorbar='sym', yPad=1, nColors=12, nTicks=11)
+    # Keep track of the runs we're comparing -- particularly their time stamps. 
+    titles = []
     # Scroll through the runs. 
-    for rowPair, path in enumerate( sorted( p for p in self.runs ) ):
+    for runNum, path in enumerate( sorted( p for p in self.runs ) ):
       # Grab the coordinates and label the axes. 
-      x, y = self.getCoords(path)
+      X, Y = self.getCoords(path)
       xLabel, yLabel = self.getCoordNames()
       PW.setXlabel(xLabel)
       PW.setYlabel(yLabel)
+      # Match each run's name up with its time stamp. 
+      timeStamp = format(self.getArray(path + 't.out')[step], '.2f') + 's'
+      shortPath = path.split('/')[-2].split('_')[0]
+      titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
       # Each field gets a column. 
       for col, name in enumerate(fields):
         # Label the column. 
-        PW.setTitle( name[0] + '_' + name[1], pos=(col, 0) )
+        if name.startswith('B'):
+          units = ' \\quad \mathrm{(nT)}' 
+        else:
+          units = ' \\quad \mathrm{(\\frac{mV}{m})}' 
+        PW.setTitle( name[0] + '_' + name[1] + units, pos=(col, 0) )
         # Grab the data. 
         zComp = self.getArray(path + name + '.out')[:, :, step]
-
         # Do both real and imaginary components. 
         for ReIm in ('R', 'I'):
+
           # Figure out which row this plot actually belongs on. 
-          row = 2*rowPair if ReIm=='R' else 2*rowPair + 1
+          row = runNum if ReIm=='R' else len(self.runs) + runNum
+
           # Label the row. 
-          rowLabel = '\mathbb{' + ReIm + '} \;\; ' + path.split('/')[-2]
+          rowLabel = '\\mathbb{' + ReIm + '} \;\; \\mathrm{' + shortPath + '}'
           PW.setRowLabel(rowLabel, row)
           # Grab the appropriate data component. 
-          z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
+          Z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
 
-          print 'Max for ' + ReIm + ' ' + name + ' = ', np.max(np.abs(z))
+          print 'Max for ' + ReIm + ' ' + name + ' = ', np.max(np.abs(Z))
 
           # Plot the contour. 
-          PW.setContour( x, y, z, (col, row) )
+          PW.setContour( X, Y, Z, (col, row) )
           # Draw the dipole outline. 
-          [ PW.setLine( x[i, :], y[i, :], (col, row) ) for i in (0, -1) ]
-          [ PW.setLine( x[:, k], y[:, k], (col, row) ) for k in (0, -1) ]
+          [ PW.setLine( X[i, :], Y[i, :], (col, row) ) for i in (0, -1) ]
+          [ PW.setLine( X[:, k], Y[:, k], (col, row) ) for k in (0, -1) ]
+    # Matplotlib wants to cut the unwrapped x axis a little short. 
+    if '-u' in self.flags:
+      PW.setXlimits( (-1, 1) )
+    # Add a title to the top so we know the time stamp(s). 
+    PW.setTitle( ' \\quad '.join(titles) )
     # All of the data that the plot needs has been deposited in the plot window
     # object. This object no longer needs to keep track of anything. 
     self.refresh()
@@ -375,11 +394,107 @@ class tunaPlotter:
     else:
       return PW.show()
 
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------------ One Plot
+  # ---------------------------------------------------------------------------
+
+  # This lets us zoom in on a single contour plot. 
+  def plotOne(self, step=12, ReIm='R', name='Ex'):
+    # Create the window. 
+    PW = plotWindow(colorbar='sym', nColors=12, nTicks=11)
+    # We only expect to get one path. If more are given, we take whichever one
+    # is listed last, I guess. 
+    for p in self.runs:
+      path = p
+    # Grab the coordinates and label the axes. 
+    X, Y = self.getCoords(path)
+    xLabel, yLabel = self.getCoordNames()
+    PW.setXlabel(xLabel)
+    PW.setYlabel(yLabel)
+    PW.setTitle( name[0] + '_' + name[1] )
+    # Grab the real or imaginary component of a slice of the data. 
+    comp = np.real if ReIm=='R' else np.imag
+    Z = comp( self.getArray(path + name + '.out')[:, :, step] )
+    # Plot the contour. 
+    PW.setContour(X, Y, Z)
+    # Draw the dipole outline. 
+    [ PW.setLine( X[i, :], Y[i, :] ) for i in (0, -1) ]
+    [ PW.setLine( X[:, k], Y[:, k] ) for k in (0, -1) ]
+    # Matplotlib wants to cut the unwrapped x axis a little short. 
+    if '-u' in self.flags:
+      PW.setXlimits( (-1, 1) )
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # Either save the plot or show the plot. 
+    if '-i' in self.flags:
+      # Come up with a filename for the output. 
+      filename = self.outDir + 'lazy.png'
+      return PW.save(filename)
+    else:
+      return PW.show()
 
 
 
 
 
+
+
+
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------ Frequency Plot
+  # ---------------------------------------------------------------------------
+
+  def plotFrequencies(self):
+    PW = plotWindow(3, 4, colorbar='log')
+    # We only expect to get one path. If more are given, we take whichever one
+    # is listed last, I guess. 
+    for p in self.runs:
+      path = p
+    # Grab the coordinates and label the axes. 
+    X, Y = self.getCoords(path)
+    xLabel, yLabel = self.getCoordNames()
+    PW.setXlabel(xLabel)
+    PW.setYlabel(yLabel)
+
+    # Electric constant, in mF/m. 
+    eps0 = 8.854e-9
+    # Electron charge in MC. 
+    qe = 1.60218e-25
+    # Electron mass in g. 
+    me = 9.10938e-28
+
+    PW.setTitle('\\mathrm{Everything \; scaled \; to \; Hz}')
+    PW.setTitle( '\\omega / \\omega_p', pos=(0, 0) )
+    PW.setTitle( '\\omega / \\nu_{\\parallel}', pos=(1, 0) )
+    PW.setTitle( '\\omega \\nu_{\\parallel} / \\omega_p^2', pos=(2, 0) )
+
+    # Number density is printed in cm^-3 but we want it in Mm^-3. 
+    n = self.getArray(path + 'n.out')*1e24
+    # Condictivity was printed in S/m and we want it in mS/m. 
+    sig0 = self.getArray(path + 'sig0.out')/1e3
+
+    w = 1./40 * 1./(2*np.pi)
+    wp = np.sqrt( n*qe**2 / (me*eps0) ) / (2*np.pi)
+    nu = n*qe**2 / (me*sig0)
+
+#    PW.setTitle( name[0] + '_' + name[1], pos=(col, row) )
+
+
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # Either save the plot or show the plot. 
+    if '-i' in self.flags:
+      filename = self.outDir + 'cutoff.png'
+      PW.save(filename)
+      return
+    else:
+      return PW.show()
 
 
 
@@ -945,53 +1060,6 @@ class tunaPlotter:
 
 
 
-  # ---------------------------------------------------------------------------
-  # -------------------------------------------------
-  # ---------------------------------------------------------------------------
-
-  def plotFactor(self):
-    PW = plotWindow(2, 1, colorbar='log')
-
-    PW.setTitle( '\mathrm{Minimum \;\; Alfv\\\'en \;\; Frequency \;\; (mHz) }')
-
-    # Cutoff when m=1, 16
-
-    # Dayside and nightside look pretty similar. 
-
-    path = self.getRunPath(azm='1', side='Night', fdrive='25')
-    r, q = self.getArray(path + 'r.out'), self.getArray(path + 'q.out')
-    X, Z = r*np.sin(q), r*np.cos(q)
-
-    vA = self.getArray(path + 'vA.out') # km/s
-    # Earth radius in km. 
-    RE = 6378.388
-
-    PW.setTitle( 'm = 1', pos=(0, 0) )
-    PW.setContour( X, Z, 1000*vA/(RE*r), pos=(0, 0) )
-
-    PW.setTitle( 'm = 16', pos=(1, 0) )
-    PW.setContour( X, Z, 16*1000*vA/(RE*r), pos=(1, 0) )
-
-    [ PW.setLine( X[i, :], Z[i, :] ) for i in (0, -1) ]
-    [ PW.setLine( X[:, k], Z[:, k] ) for k in (0, -1) ]
-
-    PW.setXlabel( 'X_{GSE} \;\; (R_E)')
-    PW.setYlabel( 'Z_{GSE} \;\; (R_E)')
-
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # Either save the plot or show the plot. 
-    if '-i' in self.flags:
-      filename = self.outDir + 'cutoff.png'
-      PW.save(filename)
-      return
-    else:
-      return PW.show()
-
-
-
-
 
 
 
@@ -1395,7 +1463,19 @@ class plotCell:
     # Draw the legend. 
     if self.legend:
       self.ax.legend(loc='best')
+
     # Stylistic stuff... none of this is actually important. 
+
+    # Python isn't great at deciding where to put ticks for unwrapped plots. We
+    # handle that manually. 
+    if ( np.all( self.ax.get_xticks() == np.linspace(-1, 1, 5) ) and 
+         np.all( self.ax.get_yticks() == np.linspace(1, 11, 11) ) ) :
+      # Handle x ticks and tick labels. 
+      self.ax.set_xticks( (-1, 0, 1) )
+      self.ax.set_xticklabels( ('$\\mathrm{S}$', '', '$\\mathrm{N}$') )
+      # Handle y ticks and tick labels. 
+      self.ax.set_yticks( (2, 4, 6, 8, 10) )
+      self.ax.set_yticklabels( ('$2$', '$4$', '$6$', '$8$', '$10$') )
     # Remove ticks without removing tick labels. 
 #    self.ax.tick_params( width=0 )
     # Remove plot frames. 
@@ -1444,10 +1524,6 @@ class plotColors(dict):
     temp = {}
     # Determine location of contour color levels and color bar ticks. 
     if self.colorbar=='log':
-
-      self.nColors = 12
-      self.nTicks = 5
-
       temp['ticks'], temp['levels'] = self.logTicksLevels()
       temp['norm'] = LogNorm()
     elif self.colorbar=='sym':

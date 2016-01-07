@@ -1637,10 +1637,10 @@ module ionos
     ! Alfven speed in km/s. 
     call writeRealArray('vA.out', 1000*vA())
     ! Number density in cm^-3. 
-    call writeRealArray( 'n.out', 1e24*n() )
+    call writeRealArray( 'n.out', 1e-24*n() )
     ! Plasma frequencies for electrons and protons in radians/s. 
-    call writeRealArray( 'wpe.out', sqrt( n()*qe**2 / (2*pi*me*epsPara) ) )
-    call writeRealArray( 'wpp.out', sqrt( n()*qe**2 / (2*pi*mp*epsPara) ) )
+    call writeRealArray( 'wpe.out', sqrt( n()*qe**2 / (me*epsPara) ) )
+    call writeRealArray( 'wpp.out', sqrt( n()*qe**2 / (mp*epsPara) ) )
     ! Gyrofrequencies for electrons and protons in radians/s. 
     call writeRealArray('wce.out', qe*sqrt( BB() )/me)
     call writeRealArray('wcp.out', qe*sqrt( BB() )/mp)
@@ -2630,10 +2630,35 @@ program tuna
   ! coefficients. Geometric scale factors and ionospheric parameter values are combined here, so
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
-!  call peekCoefficients(0.75*RE, 0.75*RE)
+
+
+!  call peekCoefficients(0.83*RE, 0.58*RE)
+
+  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi
+
+  write(*,'(a20, es9.1)') 'min w / wp = ', readParam('fdrive') / maxval( E1_E1 )
+  write(*,'(a20, es9.1)') 'max w / wp = ', readParam('fdrive') / minval( E1_E1 )
+
+  E2_E2 = n()*qe**2 / (me*sig0)
+
+  write(*,'(a20, es9.1)') 'min w / nu = ', readParam('fdrive') / maxval( E2_E2 )
+  write(*,'(a20, es9.1)') 'max w / nu = ', readParam('fdrive') / minval( E2_E2 )
+
+  write(*,'(a20, es9.1)') 'min w nu / wp wp = ', readParam('fdrive') / maxval( E1_E1**2 / E2_E2 )
+  write(*,'(a20, es9.1)') 'max w nu / wp wp = ', readParam('fdrive') / minval( E1_E1**2 / E2_E2 )
+
+
+
+
+
+  stop
+
 
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
+
+
+
 
 !  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
 

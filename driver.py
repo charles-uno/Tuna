@@ -28,13 +28,14 @@ runDirName = 'tuna'
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[1], 
-           'dtout':[0.01],
+           'tmax':[20], 
+           'dtout':[0.1],
            'azm':[4],
-           'inertia':[-1, 1],
-           'model':[1],
+           'inertia':[1],
+           'boris':[1],
+           'model':[1, 2, 3, 4],
 #           'azm':[1, 4, 16, 64, 256],
-#           'fdrive':[1./40, 1./50, 1./60, 1./70, 1./80],
+           'fdrive':[1./40],
            'latdrive':[5],
 #           'dlatdrive':[5]
 #	   'drdrive':[0.5]
@@ -174,9 +175,11 @@ def setEnvironment():
 # =============================================================================
 
 def setMakefile():
-  # Compilation flags. 
+  # Compilation flags. Mostly OpenMP stuff. The -heap-arrays flags tells Intel
+  # to put arrays on the heap, instead of the stack. The stack may be
+  # marginally faster, but it can also cause crashes when arrays get too large. 
   flags = ('-132 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_sequential ' + 
-           '-lmkl_core -openmp')
+           '-lmkl_core -openmp -heap-arrays 1600')
   append('tuna.bin: source.f90', 'Makefile')
   # The library and include paths are different between Itasca and Eelpout. 
   append('\tifort -o tuna.bin source.f90 ' + incl() + libs() + flags, 
