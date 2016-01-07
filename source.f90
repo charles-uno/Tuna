@@ -1592,18 +1592,26 @@ module ionos
     else
       oodt = sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 )
     end if
+
     write(*,'(a, es9.1, a)') 'Grid dt = ', 1e6*readParam('cour')/maxval(oodt), 'us'
+
     wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
+
     write(*,'(a, es9.1, a)') 'Plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
+
     ! A nonpositive Boris factor means we use epsPara as small as possible without decreasing the
     ! time step. That is, we match the plasma time step with the geometric time step. (Note that
     ! if the boris factor is negative, epsPara is still eps0.)
     if (readParam('boris') .le. 0) then
       boris = ( maxval(wpe) / maxval(oodt) )**2
+
       write(*,'(a, es9.1)') 'Automatic Boris factor: ', boris
+
       epsPara = epsPara * boris
       wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
+
       write(*,'(a, es9.1, a)') 'New plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
+
     end if
     ! Time step depends on the plasma frequency only if we're including electron inertial effects. 
     if ( readParam('inertia') .gt. 0 ) then
@@ -1954,9 +1962,9 @@ module fields
     call writeComplexArray('Ez.out', Ez(), onlyheader=.true., nt=nt)
     ! Parallel current mapped to physical coordinates in uA/m^2. 
     call writeComplexArray('jz.out', jz(), onlyheader=.true., nt=nt)
-    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
-    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlyheader=.true., nt=nt)
-    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlyheader=.true., nt=nt)
+!    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
+!    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlyheader=.true., nt=nt)
+!    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlyheader=.true., nt=nt)
     ! Scalar magnetic potential in... nT*Mm? This may not be a physically meaningful quantity. 
     call writeComplexArray('PsiE.out', PsiE, onlyheader=.true., nt=nt)
     call writeComplexArray('PsiI.out', PsiI, onlyheader=.true., nt=nt)
@@ -1996,23 +2004,23 @@ module fields
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
-    ! For driving, we use a truncated Gaussian. When using a real Gaussian, the slightly-nonzero
-    ! values can become numerically unstable in corners of the simulation where conductivity is
-    ! large, before the bulk of the driving reaches those corners. 
 
-    scratch = h3()
-    B3drive = Bdrive*scratch(n1,:)*max(0., exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 ) - 0.1)*1.1
-
-    j2drive = jdrive*max(0., exp( -0.5*( (q - qdrive)/dqdrive )**2 ) - 0.1)*1.1*                  &
-              max(0., exp( -0.5*( (r - rdrive)/drdrive )**2 ) - 0.1)*1.1/( h2()*gsup22() )
+!    ! For driving, we use a truncated Gaussian. When using a real Gaussian, the slightly-nonzero
+!    ! values can become numerically unstable in corners of the simulation where conductivity is
+!    ! large, before the bulk of the driving reaches those corners. 
+!    scratch = h3()
+!    B3drive = Bdrive*scratch(n1,:)*max(0., exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 ) - 0.1)*1.1
+!    j2drive = jdrive*max(0., exp( -0.5*( (q - qdrive)/dqdrive )**2 ) - 0.1)*1.1*                  &
+!              max(0., exp( -0.5*( (r - rdrive)/drdrive )**2 ) - 0.1)*1.1/( h2()*gsup22() )
 
     ! Compressional driving is delivered at the outer boundary. Map from Bz to B3. 
-!    scratch = h3()
-!    B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
+    scratch = h3()
+    B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
-!    j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-!              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
+    j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
+              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
+
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
@@ -2191,9 +2199,11 @@ module fields
     call writeComplexArray('Ex.out', Ex(), onlydata=.true.)
     call writeComplexArray('Ey.out', Ey(), onlydata=.true.)
     call writeComplexArray('Ez.out', Ez(), onlydata=.true.)
-    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
-    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlydata=.true.)
-    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlydata=.true.)
+    ! Parallel current mapped to physical coordinates in uA/m^2. 
+    call writeComplexArray('jz.out', jz(), onlydata=.true.)
+!    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
+!    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlydata=.true.)
+!    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlydata=.true.)
     ! Scalar magnetic potential in... nT*Mm? This may not be a physically meaningful quantity. 
     call writeComplexArray('PsiE.out', PsiE, onlydata=.true.)
     call writeComplexArray('PsiI.out', PsiI, onlydata=.true.)
@@ -2620,10 +2630,7 @@ program tuna
   ! coefficients. Geometric scale factors and ionospheric parameter values are combined here, so
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
-
 !  call peekCoefficients(0.75*RE, 0.75*RE)
-!  stop
-
 
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
