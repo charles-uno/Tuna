@@ -28,14 +28,14 @@ runDirName = 'tuna'
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[20], 
+           'tmax':[10], 
            'dtout':[0.1],
            'azm':[4],
-           'inertia':[1],
-           'boris':[1],
-           'model':[1, 2, 3, 4],
+           'inertia':[-1, 1],
+           'model':[1],
+           'modes':[1],
 #           'azm':[1, 4, 16, 64, 256],
-           'fdrive':[1./40],
+#           'fdrive':[1./40],
            'latdrive':[5],
 #           'dlatdrive':[5]
 #	   'drdrive':[0.5]

@@ -772,12 +772,16 @@ module io
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
     if (varname .eq. 'azm' ) defaultParam = 0          ! Azimuthal modenumber. 
+    if (varname .eq. 'modes'  ) defaultParam = 0.25    ! Harmonics to keep. 
     ! Time parameters.
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
     if (varname .eq. 'boris'  ) defaultParam = -1.     ! Boris factor for eps0. 
     ! Physical parameter profiles.
+
+
+
 
 
 
@@ -894,6 +898,30 @@ module io
   end subroutine writeRealColumns
 
   ! ==============================================================================================
+  ! ============================================================================= Write an Integer
+  ! ==============================================================================================
+
+  subroutine writeInteger(filename, val)
+    character(len=*), intent(in) :: filename
+    integer                      :: val
+    open(unit=99, file=filename, action='write', access='append')
+    write(99, *) val
+    close(99)
+  end subroutine writeInteger
+
+  ! ==============================================================================================
+  ! ================================================================================= Write a Real
+  ! ==============================================================================================
+
+  subroutine writeReal(filename, val)
+    character(len=*), intent(in) :: filename
+    double precision             :: val
+    open(unit=99, file=filename, action='write', access='append')
+    write(99, *) val
+    close(99)
+  end subroutine writeReal
+
+  ! ==============================================================================================
   ! ============================================================================= End of IO Module
   ! ==============================================================================================
 
@@ -932,6 +960,8 @@ module geometry
   double precision, allocatable, dimension(:,:) :: Y, Yinv
   ! Each Y has a corresponding eigenvalue, nu. 
   double precision, allocatable, dimension(:)   :: nu
+  ! We can choose to get rid of high-order harmonics, which may exhibit unstably-large gradients. 
+  integer                                       :: nModes
 
   contains
 
@@ -1197,9 +1227,16 @@ module geometry
     Yinv = Y
     call getrf(Yinv, ipiv, info)
     call getri(Yinv, ipiv, info)
-    ! High order harmonics exhibit very large gradients. We don't use them. 
-    Y(:, n1/4:n1) = 0
-    Yinv(n1/4:n1, :) = 0
+    ! High order harmonics exhibit very large gradients. We can leave them out if we're worried
+    ! about stability. The modes parameter can specify the number of modes to use (if greater than
+    ! 1) or the fraction of modes to use (if less than or equal to 1). 
+    if (readParam('modes') .gt. 1) then
+      nModes = int( readParam('modes') )
+    else
+      nModes = int( readParam('modes')*n1 )
+    end if
+    Y(:, nModes:n1) = 0
+    Yinv(nModes:n1, :) = 0
   end subroutine harmonicSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -1215,7 +1252,7 @@ module geometry
     call writeRealArray('Z.out', r*cos(q)/RE)
     ! Write out the eigenvalues and eigenvectors at the ionosphere. 
     call writeRealColumns('nu.out', nu)
-    do inu=0,n1/4-1
+    do inu=0,nModes-1
       write(evecfile(5:7),'(i3.3)') inu
       call writeRealColumns( evecfile, usup1_(), Yinv(inu, :) )
     end do
@@ -1952,6 +1989,8 @@ module fields
   subroutine writeFieldHeaders()
     integer :: nt
     nt = int(tmax/dtout)
+    ! Time stamps. 
+    call writeInteger('t.out', nt)
     ! Bulk magnetic fields mapped to physical coordinates in nT. 
     call writeComplexArray('Bx.out', Bx(), onlyheader=.true., nt=nt)
     call writeComplexArray('By.out', By(), onlyheader=.true., nt=nt)
@@ -2185,6 +2224,8 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine writeFields()
+    ! Time stamp. 
+    call writeReal('t.out', t)
     ! Each field is defined on its own parity in i and k, but all fields are printed out at even i
     ! and even k. That means some interpolation is necessary before output. 
     call interpolateEvenFields()
@@ -2631,34 +2672,23 @@ program tuna
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
 
-
 !  call peekCoefficients(0.83*RE, 0.58*RE)
 
-  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi
+!  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi
 
-  write(*,'(a20, es9.1)') 'min w / wp = ', readParam('fdrive') / maxval( E1_E1 )
-  write(*,'(a20, es9.1)') 'max w / wp = ', readParam('fdrive') / minval( E1_E1 )
+!  write(*,'(a20, es9.1)') 'min w / wp = ', readParam('fdrive') / maxval( E1_E1 )
+!  write(*,'(a20, es9.1)') 'max w / wp = ', readParam('fdrive') / minval( E1_E1 )
 
-  E2_E2 = n()*qe**2 / (me*sig0)
+!  E2_E2 = n()*qe**2 / (me*sig0)
 
-  write(*,'(a20, es9.1)') 'min w / nu = ', readParam('fdrive') / maxval( E2_E2 )
-  write(*,'(a20, es9.1)') 'max w / nu = ', readParam('fdrive') / minval( E2_E2 )
+!  write(*,'(a20, es9.1)') 'min w / nu = ', readParam('fdrive') / maxval( E2_E2 )
+!  write(*,'(a20, es9.1)') 'max w / nu = ', readParam('fdrive') / minval( E2_E2 )
 
-  write(*,'(a20, es9.1)') 'min w nu / wp wp = ', readParam('fdrive') / maxval( E1_E1**2 / E2_E2 )
-  write(*,'(a20, es9.1)') 'max w nu / wp wp = ', readParam('fdrive') / minval( E1_E1**2 / E2_E2 )
-
-
-
-
-
-  stop
-
+!  write(*,'(a20, es9.1)') 'min w nu / wp wp = ', readParam('fdrive') / maxval( E1_E1**2 / E2_E2 )
+!  write(*,'(a20, es9.1)') 'max w nu / wp wp = ', readParam('fdrive') / minval( E1_E1**2 / E2_E2 )
 
   ! Report the time step, in microseconds. 
 !  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
-
-
-
 
 !  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
 
@@ -2695,18 +2725,6 @@ program tuna
 !  write(*,'(a, es10.2, a)') 'n e e dt / m ... maxval ', dt*maxval( n()*qe**2 / me ), 'uA/m^2 per mV/m'
 !  stop
 
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% This just feels sloppy. Clean this up. 
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  open(unit=99, file='t.out', action='write')
-  write(99,*) int(tMax/dtOut)
-  do step=1,int(tMax/dtOut)
-    write(99,*) step*dtOut
-  end do
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
   ! The subroutine advanceFields() moves each field forward in time by dtOut seconds. This usually
   ! means iterating through several thousand time steps. Then it returns to here, so that we can
   ! print out the field values and check them for errors. 
@@ -2721,7 +2739,7 @@ program tuna
 !    call peekFields(0.75*RE, 0.75*RE)
 
 
-    ! Write field values to file. 
+    ! Write field values (and the time stamp) to file. 
     call writeFields()
     ! Check fields for NaNs or conspicuously large values. If it seems that the run has become
     ! unstable, stop execution. 
@@ -2729,6 +2747,8 @@ program tuna
     if ( nanFields(silent=.true.) ) stop 'NaN in field! '
   end do
   write(*,'(a)') 'Finished loop. '
+
+
 end program tuna
 
 

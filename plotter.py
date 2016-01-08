@@ -41,15 +41,20 @@ def main():
   # Parse input from the terminal. 
   flags, paths, names = getArgs()
 
-  print 'got flags: ', flags
-
-  print 'got names: ', names
-
+  # Initialize the Tuna Plotter. 
   TP = tunaPlotter(flags, paths)
 
-#  TP.plotDebug()
+  # Use the Tuna Plotter to create plots per the names and corresponding 
+  # arguments from the terminal. 
 
-#  TP.plotGrid()
+
+  if 'f' in names:
+    TP.plotFrequencies( *names['f'] )
+
+  if 'l' in names:
+    TP.plotLazy( *names['l'] )
+
+  '''
 
   if 'b' in names:
     for fdrive in (12, 14, 17, 20, 25):
@@ -65,14 +70,9 @@ def main():
     for fdrive in (12, 14, 17, 20, 25):
       TP.plotE(fdrive)
 
-  if 'f' in names:
-    TP.plotFrequencies()
-
   if 'g' in names:
     TP.plotGrid()
 
-  if 'l' in names:
-    TP.plotLazy()
 
   if 'm' in names:
     TP.plotM(4)
@@ -91,8 +91,8 @@ def main():
       TP.plotS(fdrive)
 
 #  for path in paths:
-
 #    TP.plotV(path)
+  '''
 
   return
 
@@ -104,10 +104,13 @@ def main():
 # plotter, such as interfacing with the output data. 
 class tunaPlotter:
 
+  # ===========================================================================
+  # ==================================================== Tuna Plotter Utilities
+  # ===========================================================================
+
   # To avoid spending time reading in the same file more than once, data input
-  # and access is centralized. Data is deleted when we change directories. 
+  # and access is centralized. 
   data = {}
-  path = None
 
   # ---------------------------------------------------------------------------
   # --------------------------------------------------- Initialize Tuna Plotter
@@ -118,62 +121,45 @@ class tunaPlotter:
     self.flags = flags
     # If we'll be saving output, figure out where to put it. 
     self.outDir = '/home/user1/mceachern/Desktop/plots/plots_' + now() + '/'
-    # Let's also match up those paths with run parameters. We do this by
-    # opening up the params file for each path and taking a peek inside. 
-    self.runs = dict( (p, {'azm':'?', 'tau':'?', 'side':'?'} ) for p in paths )
-    for p in paths:
-      # Grab the entire contents of the parameters input file. 
-      params = '\n'.join( open(p + 'params.in', 'r').readlines() )
-      # Split out the azimuthal modenumber. 
-      if 'azm' in params:
-        self.runs[p]['azm'] = params.split('azm')[1].split('\n')[0].strip(' =')
-      else:
-        self.runs[p]['azm'] = None
-      # Get the drive frequency. 
-      if 'fdrive' in params:
-        fdrive = float( params.split('fdrive')[1].split('\n')[0].strip(' =') )
-        self.runs[p]['fdrive'] = format(1000*fdrive, '.0f')
-      else:
-        self.runs[p]['fdrive'] = None
-      # Get the model number and spell out what it means. 
-      if 'model' in params:
-        model = params.split('model')[1].split('\n')[0].strip(' =')
-        self.runs[p]['model'] = model
-
-
-        self.runs[p]['side'] = 'Day' if model=='1' else 'Night'
-
-
-      else:
-
-
-        self.runs[p]['side'] = None
-
-
-        self.runs[p]['model'] = None
+    # Sort the paths before storing them. 
+    self.paths = sorted(paths)
     return
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------ Data Selection
+  # ---------------------------------------------------------------------------
+
+  # Look at the parameter input file for a given path and find a value. 
+  def getParam(self, path, key):
+    # Grab the input parameters. 
+    params = '\n'.join( open(path + 'params.in', 'r').readlines() )
+    # Make sure the parameter was actually provided in this run. 
+    if key not in params:
+      return None
+    # Split out the line with the key we want. 
+    line = params.split(key)[1].split('\n')[0]
+    return num( line.strip(' =') )
+
+  # Given a set of run parameters, find the desired run path. 
+  def getPath(self, **kargs):
+    # Check all the paths we have. 
+    paths = self.paths
+    # Weed out any that don't match. 
+    for key in kargs:
+      paths = [ p for p in paths if self.getParam(p, key)==kargs[key] ]
+    # If there's anything other than exactly one match, something is wrong. 
+    if len(paths)<1:
+      print 'ERROR: No matching path found for ', kargs
+      exit()
+    elif len(paths)>1:
+      print 'ERROR: Multiple matching paths found for ', kargs
+      exit()
+    else:
+      return paths[0]
 
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------------- Data Access
   # ---------------------------------------------------------------------------
-
-  # Given a set of run parameters, find the desired run path. Note that all run
-  # parameters are stored as strings! 
-  def getRunPath(self, **kargs):
-    # Start out with a list of all paths. 
-    candidates = [ p for p in self.runs ]
-    # For each keyword parameter, remove candidates that don't match. 
-    for key in kargs:
-      candidates = [ p for p in candidates if self.runs[p][key]==kargs[key] ]
-    # If there's anything other than exactly one match, something is wrong. 
-    if len(candidates)<1:
-      print 'ERROR: No matching path found for ', kargs
-      exit()
-    elif len(candidates)>1:
-      print 'ERROR: Multiple matching paths found for ', kargs
-      exit()
-    else:
-      return candidates[0]
 
   # If we're only plotting one time slice for each field, we had better make
   # sure it's a good one. 
@@ -217,28 +203,48 @@ class tunaPlotter:
   # ------------------------------------------------------- Coordinate Handling
   # ---------------------------------------------------------------------------
 
-  # Coordinate arrays for dipole or unwrapped plots. 
+  # For setting up the axes on a dipole or unwrapped plot. 
   def getCoords(self, path):
+    # We'll be returning a coordinate dictionary to be passed as a list of
+    # keyword arguments to the plot window's setParam method. 
+    params = {}
     # Grab the coordinates. 
     r, q = self.getArray(path + 'r.out'), self.getArray(path + 'q.out')
     # If this run is on the dayside, flip theta (which in effect flips X). 
-    if path in self.runs and self.runs[path]['model']<3:
+    if path in self.paths and self.getParam(path, 'model')<3:
       q = -q
     # Dipole plots want GSE X and Z. 
     if '-u' not in self.flags:
-      return r*np.sin(q), r*np.cos(q)
-    # Unwrapped plots use McIlwain parameter and normalized cos theta. 
+      params['X'] = r*np.sin(q)
+      params['Y'] = r*np.cos(q)
+      params['xLabel'] = 'X_{GSE} \;\; (R_E)'
+      params['yLabel'] = 'Z_{GSE} \;\; (R_E)'
+    # Unwrapped plots use normalized cos theta and the McIlwain parameter. 
     else:
-      L = r/np.sin(q)**2
-      return np.cos(q)/np.sqrt(1 - np.min(r)/L), L
+      params['Y'] = r/np.sin(q)**2
+      params['X'] = np.cos(q)/np.sqrt(1 - np.min(r)/params['Y'])
+      params['xLabel'] = '\\cos \\theta / \\cos \\theta_0'
+      params['yLabel'] = 'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)'
+      # The x axis needs to go from -1 to 1, and just needs to be labeled N/S. 
+      params['xTicks'] = (-1, 0, 1)
+      params['xTickLabels'] = ('$\\mathrm{S}$', '', '$\\mathrm{N}$')
+      # In principle Lmin and Lmax could change, so let's only overwrite the
+      # ticks and tick labels for the usual values, 1.5 and 10 (respectively). 
+      if 1 < np.min( params['Y'] ) <= 2 and 10 <= np.max( params['Y'] ) < 12:
+        params['yTicks'] = (2, 4, 6, 8, 10)
+        params['yTickLabels'] = ('$2$', '$4$', '$6$', '$8$', '$10$')
+    # Sometimes Python gets a little overenthusiastic about significant digits.
+    # Round the domain boundaries to round numbers.  
+    params['xLimits'] = ( float( format(np.min(params['X']), '.2e') ), 
+                          float( format(np.max(params['X']), '.2e') ) )
+    params['yLimits'] = ( float( format(np.min(params['Y']), '.2e') ), 
+                          float( format(np.max(params['Y']), '.2e') ) )
+    # Return these as a dictionary to be unpacked. 
+    return params
 
-  # Axis labels for dipole or unwrapped plots. 
-  def getCoordNames(self):
-    if '-u' not in self.flags:
-      return 'X_{GSE} \;\; (R_E)', 'Z_{GSE} \;\; (R_E)'
-    else:
-      return ('\\cos \\theta / \\cos \\theta_0', 
-              'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)')
+  # ===========================================================================
+  # ======================================================== Tuna Plotter Plots
+  # ===========================================================================
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------------- Lazy Plot
@@ -246,56 +252,43 @@ class tunaPlotter:
 
   def plotLazy(self, step=-1):
     # We will plot the real and imaginary components for each field. 
-    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
+    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'jz')
     # Each run gets two rows: one real and one imaginary. 
-    PW = plotWindow(len(fields), 2*len(self.runs), colorbar='sym', yPad=1, nColors=12, nTicks=11)
+    PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
     # Keep track of the runs we're comparing -- particularly their time stamps. 
     titles = []
     # Scroll through the runs. 
-    for runNum, path in enumerate( sorted( p for p in self.runs ) ):
-      # Grab the coordinates and label the axes. 
-      X, Y = self.getCoords(path)
-      xLabel, yLabel = self.getCoordNames()
-      PW.setXlabel(xLabel)
-      PW.setYlabel(yLabel)
+    for runNum, path in enumerate(self.paths):
       # Match each run's name up with its time stamp. 
       timeStamp = format(self.getArray(path + 't.out')[step], '.2f') + 's'
       shortPath = path.split('/')[-2].split('_')[0]
       titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
+      # Handle the coordinate grid and axis labels. 
+      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
       # Each field gets a column. 
       for col, name in enumerate(fields):
         # Label the column. 
-        if name.startswith('B'):
-          units = ' \\quad \mathrm{(nT)}' 
-        else:
-          units = ' \\quad \mathrm{(\\frac{mV}{m})}' 
-        PW.setTitle( name[0] + '_' + name[1] + units, pos=(col, 0) )
+        units = ( ' \\quad \mathrm{(' + 
+                  {'B':'nT', 
+                   'E':'\\frac{mV}{m}', 
+                   'j':'\\frac{\\mu A}{m^2}'}[ name[0] ] +
+                  ')}' )
+        PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
         # Grab the data. 
         zComp = self.getArray(path + name + '.out')[:, :, step]
-        # Do both real and imaginary components. 
+        # Plot real and imaginary components. 
         for ReIm in ('R', 'I'):
-
           # Figure out which row this plot actually belongs on. 
-          row = runNum if ReIm=='R' else len(self.runs) + runNum
-
+          row = runNum if ReIm=='R' else len(self.paths) + runNum
           # Label the row. 
           rowLabel = '\\mathbb{' + ReIm + '} \;\; \\mathrm{' + shortPath + '}'
-          PW.setRowLabel(rowLabel, row)
+          PW[row].setParam(rowLabel=rowLabel)
           # Grab the appropriate data component. 
           Z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
-
-          print 'Max for ' + ReIm + ' ' + name + ' = ', np.max(np.abs(Z))
-
           # Plot the contour. 
-          PW.setContour( X, Y, Z, (col, row) )
-          # Draw the dipole outline. 
-          [ PW.setLine( X[i, :], Y[i, :], (col, row) ) for i in (0, -1) ]
-          [ PW.setLine( X[:, k], Y[:, k], (col, row) ) for k in (0, -1) ]
-    # Matplotlib wants to cut the unwrapped x axis a little short. 
-    if '-u' in self.flags:
-      PW.setXlimits( (-1, 1) )
+          PW[col, row].setContour(Z)
     # Add a title to the top so we know the time stamp(s). 
-    PW.setTitle( ' \\quad '.join(titles) )
+    PW.setParam( title= ' \\quad '.join(titles) )
     # All of the data that the plot needs has been deposited in the plot window
     # object. This object no longer needs to keep track of anything. 
     self.refresh()
@@ -306,6 +299,73 @@ class tunaPlotter:
       return PW.save(filename)
     else:
       return PW.show()
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------ Frequency Plot
+  # ---------------------------------------------------------------------------
+
+  def plotFrequencies(self, boris=1):
+    # Four models, three frequency ratios. 
+    PW = plotWindow(3, 4, colorbar='log')
+    # Electric constant, in mF/m. 
+    eps0 = 8.854e-9*boris
+    # Electron charge in MC. 
+    qe = 1.60218e-25
+    # Electron mass in g. 
+    me = 9.10938e-28
+
+    # Label the plot and its columns. 
+    PW.setParam(title='\\mathrm{Everything \; in \; Hz \; not \; \\frac{rad}{s} }')
+    PW[0].setParam(colLabel='\\omega^2 / \\omega_p^2')
+    PW[1].setParam(colLabel='\\omega / \\nu_{\\parallel}')
+    PW[2].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
+
+    # Each row is from a different model. 
+    for row, model in enumerate( (1, 2, 3, 4) ):
+      # Find the path that goes with this model. 
+      path = self.getPath(model=model)
+      # Label the row. 
+      PW[row].setParam( rowLabel=str(model) )
+      # Handle the coordinates and axes. 
+      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
+
+      # Number density is printed in cm^-3 but we want it in Mm^-3. 
+      n = self.getArray(path + 'n.out')*1e24
+
+      # Condictivity was printed in S/m and we want it in mS/m. 
+      sig0 = self.getArray(path + 'sig0.out')/1e3
+
+      # The fastest driving we have to worry about is a 40s period.  
+      w = 1./40
+
+      # Compute the plasma frequency. 
+      wp = np.sqrt( n*qe**2 / (me*eps0) ) / (2*np.pi)
+
+      # Compute the collision frequency. 
+      nu = n*qe**2 / (me*sig0)
+
+      # Throw these things on the plot. Let's clip the values that are
+      # basically infinity. 
+      clip = 1e2
+      PW[0, row].setContour( np.minimum( clip, (w/wp)**2 ) )
+      PW[1, row].setContour( np.minimum(clip, w/nu) )
+      PW[2, row].setContour( np.minimum(clip, w*nu/wp**2) )
+
+
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # Either save the plot or show the plot. 
+    if '-i' in self.flags:
+      filename = self.outDir + 'cutoff.png'
+      PW.save(filename)
+      return
+    else:
+      return PW.show()
+
+
+
+  '''
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------------ Dst Plot
@@ -433,84 +493,6 @@ class tunaPlotter:
       return PW.save(filename)
     else:
       return PW.show()
-
-
-
-
-
-
-
-
-
-
-
-
-  # ---------------------------------------------------------------------------
-  # ------------------------------------------------------------ Frequency Plot
-  # ---------------------------------------------------------------------------
-
-  def plotFrequencies(self):
-    PW = plotWindow(3, 4, colorbar='log')
-    # We only expect to get one path. If more are given, we take whichever one
-    # is listed last, I guess. 
-    for p in self.runs:
-      path = p
-    # Grab the coordinates and label the axes. 
-    X, Y = self.getCoords(path)
-    xLabel, yLabel = self.getCoordNames()
-    PW.setXlabel(xLabel)
-    PW.setYlabel(yLabel)
-
-    # Electric constant, in mF/m. 
-    eps0 = 8.854e-9
-    # Electron charge in MC. 
-    qe = 1.60218e-25
-    # Electron mass in g. 
-    me = 9.10938e-28
-
-    PW.setTitle('\\mathrm{Everything \; scaled \; to \; Hz}')
-    PW.setTitle( '\\omega / \\omega_p', pos=(0, 0) )
-    PW.setTitle( '\\omega / \\nu_{\\parallel}', pos=(1, 0) )
-    PW.setTitle( '\\omega \\nu_{\\parallel} / \\omega_p^2', pos=(2, 0) )
-
-    # Number density is printed in cm^-3 but we want it in Mm^-3. 
-    n = self.getArray(path + 'n.out')*1e24
-    # Condictivity was printed in S/m and we want it in mS/m. 
-    sig0 = self.getArray(path + 'sig0.out')/1e3
-
-    w = 1./40 * 1./(2*np.pi)
-    wp = np.sqrt( n*qe**2 / (me*eps0) ) / (2*np.pi)
-    nu = n*qe**2 / (me*sig0)
-
-#    PW.setTitle( name[0] + '_' + name[1], pos=(col, row) )
-
-
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # Either save the plot or show the plot. 
-    if '-i' in self.flags:
-      filename = self.outDir + 'cutoff.png'
-      PW.save(filename)
-      return
-    else:
-      return PW.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1130,7 +1112,7 @@ class tunaPlotter:
 
     # Show the plot. 
     PW.show()
-    return
+    return'''
 
 
 
@@ -1149,16 +1131,21 @@ class plotWindow:
   axes = None
   colorAxis = None
   cells = None
+  nColors = 8
+  pos = None
 
   # ---------------------------------------------------------------------------
   # ----------------------------- Initialize Plot Window and Space Out Subplots
   # ---------------------------------------------------------------------------
 
-  def __init__(self, nCols=1, nRows=1, colorbar=None, xPad=1, yPad=5, 
-               nColors=8, nTicks=7):
-    # Store the color keywords for later. 
-    self.nColors = nColors
-    self.nTicks = nTicks
+  # At this point we need to know the number of rows, the number of columns, 
+  # how they should be spaced, and if there will be a color bar. 
+  def __init__(self, nCols=1, nRows=1, colorbar=None, xSize=10, xPad=1, 
+               ySize=10, yPad=5, cSize=2, cPad=1, **kargs):
+    # Options are 'linear', 'log', and 'loglog'. Boolean True gives a linear
+    # scale, while False and None give no color bar. For now, we just care if
+    # there will be a color bar at all, so we can make room for it. 
+    self.colorbar = colorbar
     # Make sure there isn't anything lingering from a previous plot. 
     plt.close('all')
     # Set fonts for math formatting. Let's also bump up the font size. 
@@ -1172,14 +1159,8 @@ class plotWindow:
     self.fig.canvas.set_window_title('Tuna Plotter')
     # The default subplot spacing sometimes overlaps labels, etc. We instead
     # use GridSpec. The subplots (and color bar, if any) are spaced out in
-    # terms of a grid of equally-sized tiles. 
-    xSize = 10
-    ySize = 10
-    # Options are 'linear', 'log', and 'loglog'. Boolean True gives a linear
-    # scale, while False and None give no color bar. For now, we just care if
-    # there will be a color bar at all, so we can make room for it. 
-    self.colorbar = colorbar
-    # Set up the tiles. If we want a color bar, we need more columns. 
+    # terms of a grid of equally-sized tiles. If we want a color bar, we need
+    # extra columns to hold it. 
     if self.colorbar:
       cSize, cPad = 2, 1
       tiles = gridspec.GridSpec( (ySize + yPad)*nRows - yPad, 
@@ -1203,8 +1184,111 @@ class plotWindow:
     for c in range(nCols):
       for r in range(nRows):
         self.cells[c, r] = plotCell( self.axes[c, r] )
+    # If there were any other keyword args in the initialization call, they're
+    # presumably parameters to be set for the whole window. 
+    for key, val in kargs.items():
+      self.setParam( **{key:val} )
     # The plot window is now ready for us to add some data to it! 
     return
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------- Set Plot Parameters
+  # ---------------------------------------------------------------------------
+
+  # Both the plot window and the plot cell objects have setParam methods. The
+  # plot window method is used to set whole-window parameters, while the cell
+  # method is for affecting a single cell. The __getitem__ method allows users
+  # to easily specify which they want. 
+  def __getitem__(self, index):
+    # To access a row or column of cells, we still want to talk to the window. 
+    if isinstance(index, int):
+      self.pos = index
+      return self
+    # We can also access a single cell. 
+    return self.cells[index]
+
+  # Plot labels, coordinates, and other parameters are all handled through this
+  # function using keyword arguments. Parameters can be applied to the whole
+  # window or to just a single cell. 
+  def setParam(self, pos=None, **kargs):
+    # Use caps-insensitive keys. 
+    params = dict( (key.lower(), kargs[key]) for key in kargs )
+    # Check if we're using plotWindow[pos].setParam for a row or column. 
+    if self.pos is not None:
+      # There shouldn't be many things to scroll through here...
+      for key, val in params.items():
+        # Row label, to the right of the row of subplots. 
+        if key=='rowlabel':
+          loc = self.axes[0, self.pos].get_position()
+          plt.figtext(0.3*loc.x0, loc.y0 + 0.5*loc.height, '$' + val + '$',
+                      horizontalalignment='center', 
+                      verticalalignment='center')
+        # A column label is just a title on the top row. This may seem like
+        # cheating, but why would we ever want both? 
+        elif key=='collabel':
+          self.cells[self.pos, 0].setParam(title=val)
+        # Notify for anything that needs updating. 
+        else:
+          print 'UNKNOWN KEY WITH INTEGER POS: ', key
+      # The effect only lasts for one call, obviously. 
+      self.pos = None
+    # If not calling through __getitem__, apply the parameters to the whole
+    # plot window. 
+    else:
+      # Usually, applying something to the whole plot means applying it to each
+      # subplot individually. Here, we check for special cases. 
+      for key, val in params.items():
+        # Number of colors. 
+        if key=='ncolors':
+          self.nColors = val
+        # A positionless title is the supertitle. 
+        elif key=='title':
+          plt.suptitle('$' + val + '$', fontsize=24)
+          # Squish the subplots a little bit to make the title stand out. 
+          plt.subplots_adjust(top=0.88)
+        # Only put shared x labels on the bottom edge. 
+        elif key=='xlabel':
+          for cell in self.cells[:, -1]:
+            cell.setParam( **{key:val} )
+        # Only put shared y labels on the left edge. 
+        elif key=='ylabel':
+          for cell in self.cells[0, :]:
+            cell.setParam( **{key:val} )
+        # Everything else just goes to each cell. 
+        else:
+          for column in self.cells:
+            for cell in column:
+              cell.setParam( **{key:val} )
+    return
+
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------- Add Data to Plot
+  # ---------------------------------------------------------------------------
+
+  # Add a line to the plot. This can't be (easily) handled with setParam
+  # because in addition to the line itself, the line has several other options. 
+  def setLine(self, X, Y, pos=None, color='k', label=None):
+    if pos is None:
+      for column in self.cells:
+        [ cell.setLine(X, Y, color=color, label=label) for cell in column ]
+    else:
+      self.cells[pos].setLine(X, Y, color=color, label=label)
+    return
+
+  # If no position is given, all plots will draw the contour. This could be set
+  # with the other parameters above, but it's possible that we'll want to add
+  # other options to the contour call. 
+  def setContour(self, Z, pos=None):
+    if pos is None:
+      [ cell.setContour(Z) for column in self.cells for cell in column ]
+    else:
+      self.cells[pos].setContour(Z)
+    return
+
+
+  '''
+
+
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------ Set Title and Labels
@@ -1241,11 +1325,48 @@ class plotWindow:
                        verticalalignment='center')
 
   # ---------------------------------------------------------------------------
+  # ----------------------------------------------------------- Set Coordinates
+  # ---------------------------------------------------------------------------
+
+  # If no position is given, these coordinates are used for all plots. 
+  def setCoords(self, X, Y, xLabel, yLabel, pos=None):
+    if pos is None:
+      [ cell.setX(X) for column in self.cells for cell in column ]
+      [ cell.setY(Y) for column in self.cells for cell in column ]
+      # Only plots on the edge get axis labels. 
+      [ cell.setXLabel(xLabel) for cell in self.cells[:, -1] ]
+      [ cell.setYlabel(yLabel) for cell in self.cells[0, :] ]
+    else:
+      self.cells[pos].setX(X)
+      self.cells[pos].setY(Y)
+      self.cells[pos].setXLabel(xLabel)
+      self.cells[pos].setYLabel(yLabel)
+    return
+
+
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------------ Set Data
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
   # ----------------------------------------------- Set Contour and Line Arrays
   # ---------------------------------------------------------------------------
 
   # If no position is given, all plots will draw the contour. 
-  def setContour(self, X, Y, Z, pos=None):
+  def setContour(self, X, Y, Z, pos=None, outline=False):
+    # Snap the axis limits to nice round numbers. 
+    xMin = float( format(np.min(X), '.2e') )
+    xMax = float( format(np.max(X), '.2e') )
+    yMin = float( format(np.min(Y), '.2e') )
+    yMax = float( format(np.max(Y), '.2e') )
+    # Pass the limits off to wherever the contour is going. 
+    self.setXlimits( (xMin, xMax), pos=pos )
+    self.setYlimits( (yMin, yMax), pos=pos )
+    # Optionally, draw an outline of the dipole (or whatever). 
+    [ self.setLine( X[i, :], Y[i, :], pos=pos ) for i in (0, -1) ]
+    [ self.setLine( X[:, k], Y[:, k], pos=pos ) for k in (0, -1) ]
+    # Pass the contour off. 
     if pos is None:
       for column in self.cells:
         [ cell.setContour(X, Y, Z) for cell in column ]
@@ -1284,6 +1405,15 @@ class plotWindow:
       self.cells[pos].setYlimits(limits)
     return
 
+  # If no position is given, add a legend to all plots. 
+  def setLegend(self, pos=None):
+    if pos is None:
+      for column in self.cells:
+        [ cell.setLegend() for cell in column ]
+    else:
+      self.cells[pos].setLegend()
+    return
+
   # If no position is given, use a log scale for all plots. 
   def setXlog(self, pos=None):
     if pos is None:
@@ -1301,19 +1431,11 @@ class plotWindow:
     else:
       self.cells[pos].setYlog()
     return
+  '''
 
   # ---------------------------------------------------------------------------
   # -------------------------------------------------------- Render Plot Window
   # ---------------------------------------------------------------------------
-
-  # If no position is given, add a legend to all plots. 
-  def setLegend(self, pos=None):
-    if pos is None:
-      for column in self.cells:
-        [ cell.setLegend() for cell in column ]
-    else:
-      self.cells[pos].setLegend()
-    return
 
   # Once all of the contours are loaded, we can figure out the color levels. 
   def render(self):
@@ -1321,8 +1443,7 @@ class plotWindow:
     vmax = nax( cell.getMax() for column in self.cells for cell in column )
     # The plot colors object constructor creates the color bar, then returns
     # a dictionary of keyword parameters. 
-    PC = plotColors(vmax, self.colorAxis, self.colorbar, nColors=self.nColors, 
-                    nTicks=self.nTicks)
+    PC = plotColors(vmax, self.colorAxis, self.colorbar, nColors=self.nColors)
     # We send those parameters to each cell for use in their contourf calls. 
     return [ cell.render(**PC) for column in self.cells for cell in column ]
 
@@ -1374,6 +1495,91 @@ class plotCell:
     return
 
   # ---------------------------------------------------------------------------
+  # ------------------------------------------------------- Set Plot Parameters
+  # ---------------------------------------------------------------------------
+
+  # All parameter handling -- coordinates, labels, etc -- is handled here using
+  # keyword arguments. 
+  def setParam(self, **kargs):
+    # At this point, the keys should all have been dropped to lower case. Now
+    # we just need to scroll through and apply them. 
+    for key, val in kargs.items():
+      # Outline of grid (in case of dipole geometry or whatever).  
+      if key=='outline':
+        self.outline = val
+      # Title. 
+      elif key=='title':
+        self.ax.set_title('$' + val + '$')
+      # Array of horizontal coordinate values. 
+      elif key=='x':
+        self.X = val
+      # Horizontal axis label. 
+      elif key=='xlabel':
+        self.ax.set_xlabel('$' + val + '$')
+      # Horizontal axis bounds. 
+      elif key.startswith('xlim'):
+        self.ax.set_xlim(val)
+      # Horizontal axis log scale. 
+      elif key=='xlog' and val==True:
+        self.ax.set_xscale('log')
+      # Horizontal axis tick locations. 
+      elif key=='xticks':
+        self.ax.set_xticks(val)
+      # Horizontal axis tick labels. 
+      elif key=='xticklabels':
+        self.ax.set_xticklabels(val)
+      # Array of vertical coordinate values. 
+      elif key=='y':
+        self.Y = val
+      # Vertical axis label. 
+      elif key=='ylabel':
+        self.ax.set_ylabel('$' + val + '$')
+      # Vertical axis bounds. 
+      elif key.startswith('ylim'):
+        self.ax.set_ylim(val)
+      # Vertical axis log scale. 
+      elif key=='ylog' and val==True:
+        self.ax.set_yscale('log')
+      # Vertical axis tick locations. 
+      elif key=='yticks':
+        self.ax.set_yticks(val)
+      # Vertical axis tick labels. 
+      elif key=='yticklabels':
+        self.ax.set_yticklabels(val)
+
+      else:
+        print 'UNKNOWN KEY: ', key
+
+    return
+
+
+
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------- Add Data to Plot
+  # ---------------------------------------------------------------------------
+
+  def setContour(self, Z):
+    self.Z = Z
+    return
+
+  def setLine(self, X, Y, color='k', label=None):
+    self.lines = self.lines + ( (X, Y, color, label), )
+    return
+
+
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------- Get Plot Parameters
+  # ---------------------------------------------------------------------------
+
+
+
+  '''
+
+
+
+
+  # ---------------------------------------------------------------------------
   # ------------------------------------------------------ Set Title and Labels
   # ---------------------------------------------------------------------------
 
@@ -1386,6 +1592,37 @@ class plotCell:
   def setYlabel(self, text):
     return self.ax.set_ylabel('$' + text + '$')
 
+
+
+
+
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # ----------------------------------------------------------- Set Coordinates
+  # ---------------------------------------------------------------------------
+
+  def setCoords(self, X, Y, xLabel, yLabel):
+    # Snap the axis limits to nice round numbers. 
+    xMin = float( format(np.min(X), '.2e') )
+    xMax = float( format(np.max(X), '.2e') )
+    yMin = float( format(np.min(Y), '.2e') )
+    yMax = float( format(np.max(Y), '.2e') )
+    # Pass the limits off. 
+    self.setXlimits( (xMin, xMax), pos=pos )
+    self.setYlimits( (yMin, yMax), pos=pos )
+    self.X, self.Y = X, Y
+    self.ax.set_xlabel('$' + xLabel + '$')
+    self.ax.set_ylabel('$' + yLabel + '$')
+    return
+
+
+  def setLegend(self):
+    self.legend = True
+    return
+
   # ---------------------------------------------------------------------------
   # ----------------------------------------------- Set Contour and Line Arrays
   # ---------------------------------------------------------------------------
@@ -1393,14 +1630,6 @@ class plotCell:
   # Field values are scaled to the unit interval. 
   def setContour(self, X, Y, Z):
     self.X, self.Y, self.Z = X, Y, Z
-    return
-
-  def setLine(self, X, Y, color='k', label=None):
-    self.lines = self.lines + ( (X, Y, color, label), )
-    return
-
-  def setLegend(self):
-    self.legend = True
     return
 
   # ---------------------------------------------------------------------------
@@ -1418,6 +1647,9 @@ class plotCell:
 
   def setYlog(self):
     return self.ax.set_yscale('log')
+
+  '''
+
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------ Normalize Data
@@ -1460,22 +1692,14 @@ class plotCell:
     for line in self.lines:
       label = None if line[3] is None else '$' + line[3] + '$'
       self.ax.plot( line[0], line[1], line[2], label=label )
+    # Draw the outline of the grid, usually for dipole plots. 
+    if self.outline:
+      [ self.ax.plot(self.X[i, :], self.Y[i, :], color='k')for i in (0, -1) ]
+      [ self.ax.plot(self.X[:, k], self.Y[:, k], color='k')for k in (0, -1) ]
     # Draw the legend. 
     if self.legend:
       self.ax.legend(loc='best')
 
-    # Stylistic stuff... none of this is actually important. 
-
-    # Python isn't great at deciding where to put ticks for unwrapped plots. We
-    # handle that manually. 
-    if ( np.all( self.ax.get_xticks() == np.linspace(-1, 1, 5) ) and 
-         np.all( self.ax.get_yticks() == np.linspace(1, 11, 11) ) ) :
-      # Handle x ticks and tick labels. 
-      self.ax.set_xticks( (-1, 0, 1) )
-      self.ax.set_xticklabels( ('$\\mathrm{S}$', '', '$\\mathrm{N}$') )
-      # Handle y ticks and tick labels. 
-      self.ax.set_yticks( (2, 4, 6, 8, 10) )
-      self.ax.set_yticklabels( ('$2$', '$4$', '$6$', '$8$', '$10$') )
     # Remove ticks without removing tick labels. 
 #    self.ax.tick_params( width=0 )
     # Remove plot frames. 
@@ -1509,7 +1733,7 @@ class plotColors(dict):
   # --------------------------------------------------------- Initialize Colors
   # ---------------------------------------------------------------------------
 
-  def __init__(self, vmax, ax, colorbar, nColors, nTicks):
+  def __init__(self, vmax, ax, colorbar, nColors):
     # Some plots don't have contours. 
     if not vmax or not ax or not colorbar:
       return dict.__init__(self, {})
@@ -1518,7 +1742,7 @@ class plotColors(dict):
     self.vmax = vmax
     self.colorbar = colorbar
     self.nColors = nColors
-    self.nTicks = nTicks
+    self.nTicks = nColors - 1
     # Assemble the keyword parameters in a temporary dictionary. We'll then use
     # the dictionary constructor to build this object based on it. 
     temp = {}
@@ -1564,7 +1788,7 @@ class plotColors(dict):
     posTicks = [ 10**(power - i) for i in range(nOrders) ]
     # For uniform tick spacing, the log cutoff needs to be a factor of ten
     # smaller than the lowest positive tick. 
-    self.vmin = min(posTicks)/10
+    self.vmin = min(posTicks)/10.
     ticks = sorted( posTicks + [0] + [ -t for t in posTicks ] )
     # We figure out color levels by spacing them evenly on the unit interval,
     # then mapping the unit interval to the symlog scale. 
@@ -1624,27 +1848,6 @@ class plotColors(dict):
 #      norm = self.logNorm
       return plt.get_cmap('seismic')
 
-
-      N = 1000
-
-      # At first, we just grab from the top half. 
-      unitInterval = [ 0.5 + 0.5*i/(N - 1.) for i in range(N) ]
-      cmap = plt.get_cmap('seismic')
-      rgb = [ cmap( unitInterval[i] ) for i in range(N) ]
-
-      newInterval = [ i/(N - 1.) for i in range(N) ]
-      newInterval[0], newInterval[-1] = 0., 1.
-      red = [ (newInterval[i], rgb[i][0], rgb[i][0]) for i in range(N) ]
-      grn = [ (newInterval[i], rgb[i][1], rgb[i][1]) for i in range(N) ]
-      blu = [ (newInterval[i], rgb[i][2], rgb[i][2]) for i in range(N) ]
-      return LSC('myMap', {'red':red, 'green':grn, 'blue':blu}, 1000000)
-
-
-
-
-
-
-
     elif self.colorbar=='sym':
       norm = self.symNorm
     else:
@@ -1689,8 +1892,6 @@ class plotColors(dict):
     # them to the Y axis (which is on the unit interval). And the formatters,
     # to make our ticks look pretty in LaTeX. 
     if self.colorbar=='log':
-
-
       # This is kludgey right now. Sorry. We can't use a real color bar for the
       # symmetric norm plot, since since SymLogNorm isn't defined. But we can't
       # use a renormalized color map for the log plot due to sampling
@@ -1701,8 +1902,6 @@ class plotColors(dict):
                    cmap=colorParams['cmap'])
       ax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
       return
-
-
     elif self.colorbar=='sym':
       norm, mron, fmt = self.symNorm, self.symMron, self.symFormatter
     else:
@@ -1801,6 +2000,10 @@ def now():
            '_' + znt(lt().tm_hour, 2) + znt(lt().tm_min, 2) +
            znt(lt().tm_sec, 2) )
 
+# Turn a string into a float or integer. 
+def num(x):
+  return int( float(x) ) if float(x)==int( float(x) ) else float(x)
+
 # Turns the number 3 into '003'. If given a float, truncate it. 
 def znt(x, width=0):
   return str( int(x) ).zfill(width)
@@ -1809,38 +2012,36 @@ def znt(x, width=0):
 # ========================================================= Shell Input Parsing
 # =============================================================================
 
-# Check if the given path is a data directory. 
-def isDataPath(path):
-  return os.path.isdir(path) and 'params.in' in os.listdir(path)
-
-# Format a path nicely. Always use absolute paths, and always end directory
-# names with a slash. 
-def getPath(p):
-  if p.startswith('.'):
-    return (os.getcwd() + '/' + p[1:] + '/').replace('//', '/')
-  else:
-    return (p + '/').replace('//', '/')
-
 # Grab the arguments from the shell and partition them into the names of plots 
 # to make, the paths where those plots should be created, and the flags that
 # will affect how those plots are displayed. 
 def getArgs():
   flags, paths, names = [], [], []
-  # The first argument is the script call. 
+  # The first argument is the script call. Skip it. 
   for arg in argv[1:]:
-    # Grab flags. Anything that starts with a dash. 
+    # Anything that starts with a dash is a flag. Use lower case. 
     if arg.startswith('-'):
       flags.append( arg.lower() )
-    # Grab directories. Any directory names that contain data. 
-    elif isDataPath(arg):
-      paths.append( getPath(arg) )
-    elif len(arg)==1:
-      names.append( arg.lower() )
+    # Arguments that are directories probably hold data.  
+    elif os.path.isdir(arg):
+      # Look recursively through the contents of each directory. 
+      for root, dirs, files in os.walk(arg):
+        # Keep any directory containing a Tuna run. Always use absolute paths,
+        # and always end directory names with a slash. 
+        if 'params.in' in files:
+          paths.append( os.path.abspath(root) + '/' )
+    # Plot names are a single character long, and can accept a comma-separated
+    # list of arguments (no whitespace) after a colon. 
     else:
-      # Other arguments are probably paths that are not data directories. This
-      # happens a lot if called with a wildcard. 
-      pass
-  return flags, paths, names
+      # Plot name with no arguments. 
+      if len(arg)==1:
+        names.append( ( arg.lower(), () ) )
+      # Plot name with arguments. 
+      elif arg[1]==':':
+        name = arg[0].lower()
+        argList = [ num(x) for x in arg[2:].split(',') ]
+        names.append( (name, argList) )
+  return flags, paths, dict(names)
 
 # =============================================================================
 # ============================================================ Data File Access
