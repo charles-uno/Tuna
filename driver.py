@@ -23,17 +23,17 @@ from time import localtime as lt, time
 # #############################################################################
 
 # If we want to give this run a custom directory name, put that here. 
-runDirName = 'tuna'
+runDirName = 'stability_test'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[10], 
-           'dtout':[0.1],
-           'azm':[4],
+           'tmax':[50],
+           'dtout':[1],
+           'azm':[1, 10, 100],
            'inertia':[-1, 1],
-           'model':[1],
-           'modes':[1],
+           'model':[1, 2, 3, 4],
+#           'boris':[1e6],
 #           'azm':[1, 4, 16, 64, 256],
 #           'fdrive':[1./40],
            'latdrive':[5],

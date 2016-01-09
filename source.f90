@@ -1629,25 +1629,27 @@ module ionos
     else
       oodt = sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 )
     end if
+    ! Compute the plasma frequency, which gives the timescale for plasma oscialltion if we are
+    ! considering electron inertial effects. 
 
-    write(*,'(a, es9.1, a)') 'Grid dt = ', 1e6*readParam('cour')/maxval(oodt), 'us'
 
-    wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
+    wpe = sqrt( n()*qe**2 / (me*epsPara) )
 
-    write(*,'(a, es9.1, a)') 'Plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
 
+    ! The file dt.out contains dt computed from the Alfven speed, dt computed from the plasma
+    ! frequency (before applying the Boris factor), and the final dt used by the simulation. 
+    call writeReal( 'dt.out', readParam('cour')/maxval(oodt) )
+    call writeReal( 'dt.out', readParam('cour')/maxval(wpe) )
     ! A nonpositive Boris factor means we use epsPara as small as possible without decreasing the
     ! time step. That is, we match the plasma time step with the geometric time step. (Note that
     ! if the boris factor is negative, epsPara is still eps0.)
     if (readParam('boris') .le. 0) then
       boris = ( maxval(wpe) / maxval(oodt) )**2
-
-      write(*,'(a, es9.1)') 'Automatic Boris factor: ', boris
-
       epsPara = epsPara * boris
-      wpe = sqrt( n()*qe**2 / (2*pi*me*epsPara) )
 
-      write(*,'(a, es9.1, a)') 'New plasma dt = ', 1e6*readParam('cour')/maxval(wpe), 'us'
+
+      wpe = sqrt( n()*qe**2 / (me*epsPara) )
+
 
     end if
     ! Time step depends on the plasma frequency only if we're including electron inertial effects. 
@@ -1656,9 +1658,9 @@ module ionos
     else
       dt = readParam('cour')/maxval(oodt)
     end if
-
+    ! Write out the dt we actually use, both to file and to the terminal. 
+    call writeReal('dt.out', dt)
     write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
-
   end subroutine dtSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -2673,6 +2675,7 @@ program tuna
   call coefficientSetup()
 
 !  call peekCoefficients(0.83*RE, 0.58*RE)
+!  stop
 
 !  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi
 
@@ -2686,18 +2689,6 @@ program tuna
 
 !  write(*,'(a20, es9.1)') 'min w nu / wp wp = ', readParam('fdrive') / maxval( E1_E1**2 / E2_E2 )
 !  write(*,'(a20, es9.1)') 'max w nu / wp wp = ', readParam('fdrive') / minval( E1_E1**2 / E2_E2 )
-
-  ! Report the time step, in microseconds. 
-!  write(*,'(a6, f6.2, a3)') 'dt = ', 1e6*dt, 'us'
-
-!  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
-
-!  write(*,*) ''
-!  write(*,*) 'Fastest parallel plasma timescale = ', 1e6/maxval( sqrt( n()*qe**2 / (2*pi*me*epsPara) ) ), 'us'
-!  write(*,*) 'Slowest perpendicular plasma timescale = ', 1e6/minval( sqrt( n()*qe**2 / (2*pi*me*epsPerp) ) ), 'us'
-
-!  write(*,*) ''
-!  write(*,*) 'Minval m omega sig0 / n e e ', minval( me*(0.02)*sig0/(n()*qe*qe) ), ' (dimensionless)'
 
 !  write(*,*) ''
 !  write(*,*) 'Minval sig0 / eps0 ', minval( sig0/eps0 ), ' Hz'
@@ -2733,11 +2724,9 @@ program tuna
     ! this subroutine. The main loop is parallelized using OpenMP. 
     call advanceFields()
     ! Print out a notification each time we return to main. 
-    write(*,'(a6, f6.2, a2)') 't = ', t, 's'
-
+!    write(*,'(a6, f6.2, a2)') 't = ', t, 's'
 
 !    call peekFields(0.75*RE, 0.75*RE)
-
 
     ! Write field values (and the time stamp) to file. 
     call writeFields()

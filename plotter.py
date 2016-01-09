@@ -242,6 +242,24 @@ class tunaPlotter:
     # Return these as a dictionary to be unpacked. 
     return params
 
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------- Display Handling
+  # ---------------------------------------------------------------------------
+
+  # Either display the plot or save it as an image. 
+  def render(self, PW, name='plot.png'):
+    # All of the data that the plot needs has been deposited in the plot window
+    # object. This object no longer needs to keep track of anything. 
+    self.refresh()
+    # If we're supposed to save the plot as an image, do so. 
+    if '-i' in self.flags:
+      # Come up with a filename for the output. 
+      filename = self.outDir + name
+      return PW.render(filename)
+    # Otherwise, show the image window. 
+    else:
+      return PW.render()
+
   # ===========================================================================
   # ======================================================== Tuna Plotter Plots
   # ===========================================================================
@@ -289,26 +307,21 @@ class tunaPlotter:
           PW[col, row].setContour(Z)
     # Add a title to the top so we know the time stamp(s). 
     PW.setParam( title= ' \\quad '.join(titles) )
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # Either save the plot or show the plot. 
-    if '-i' in self.flags:
-      # Come up with a filename for the output. 
-      filename = self.outDir + 'lazy.png'
-      return PW.save(filename)
-    else:
-      return PW.show()
+    # Render the plot window, either as a window or as an image. 
+    return self.render(PW, 'lazy.png')
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------ Frequency Plot
   # ---------------------------------------------------------------------------
 
   def plotFrequencies(self, boris=1):
-    # Four models, three frequency ratios. 
-    PW = plotWindow(3, 4, colorbar='log')
+    # Plotting dimensionless ratios for each ionospheric profile. 
+    models = (1, 2, 3, 4)
+    PW = plotWindow(7, len(models), colorbar='log')
     # Electric constant, in mF/m. 
-    eps0 = 8.854e-9*boris
+    eps0 = 8.854e-9
+    # The Boris factor is applied to the parallel electric constant. 
+    epsPara = eps0*boris
     # Electron charge in MC. 
     qe = 1.60218e-25
     # Electron mass in g. 
@@ -319,9 +332,13 @@ class tunaPlotter:
     PW[0].setParam(colLabel='\\omega^2 / \\omega_p^2')
     PW[1].setParam(colLabel='\\omega / \\nu_{\\parallel}')
     PW[2].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
+    PW[3].setParam(colLabel='\\frac{\\sigma_0}{\\epsilon_\\parallel} \\delta \\! t')
+    PW[4].setParam(colLabel='\\frac{\\sigma_H}{\\epsilon_\\bot} \\delta \\! t')
+    PW[5].setParam(colLabel='\\frac{\\sigma_P}{\\epsilon_\\bot} \\delta \\! t')
+    PW[6].setParam(colLabel='\\nu \; \\delta \\! t')
 
     # Each row is from a different model. 
-    for row, model in enumerate( (1, 2, 3, 4) ):
+    for row, model in enumerate(models):
       # Find the path that goes with this model. 
       path = self.getPath(model=model)
       # Label the row. 
@@ -329,20 +346,36 @@ class tunaPlotter:
       # Handle the coordinates and axes. 
       PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
 
+      # Time step in seconds, based on the grid and on the plasma frequency,
+      # before applying the Boris factor. 
+      dtGrid = num( open(path + 'dt.out').readlines()[0] )
+      dtPlasma = num( open(path + 'dt.out').readlines()[1] )
+
       # Number density is printed in cm^-3 but we want it in Mm^-3. 
       n = self.getArray(path + 'n.out')*1e24
 
       # Condictivity was printed in S/m and we want it in mS/m. 
       sig0 = self.getArray(path + 'sig0.out')/1e3
 
+      # Condictivity was printed in S/m and we want it in mS/m. 
+      sig0 = self.getArray(path + 'sig0.out')/1e3
+
+      # Perpendicular dielectric constant in units of eps0, convert to mF/m. 
+      epsPerp = self.getArray(path + 'epsPerp.out')*eps0
+
       # The fastest driving we have to worry about is a 40s period.  
       w = 1./40
 
       # Compute the plasma frequency. 
-      wp = np.sqrt( n*qe**2 / (me*eps0) ) / (2*np.pi)
+      wp = np.sqrt( n*qe**2 / (me*epsPara) ) / (2*np.pi)
 
       # Compute the collision frequency. 
       nu = n*qe**2 / (me*sig0)
+
+      # Integrating factors... 
+      s0 = sig0*dt/epsPara
+      sH = sigH*dt/epsPerp
+      sP = sigP*dt/epsPerp
 
       # Throw these things on the plot. Let's clip the values that are
       # basically infinity. 
@@ -351,19 +384,8 @@ class tunaPlotter:
       PW[1, row].setContour( np.minimum(clip, w/nu) )
       PW[2, row].setContour( np.minimum(clip, w*nu/wp**2) )
 
-
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # Either save the plot or show the plot. 
-    if '-i' in self.flags:
-      filename = self.outDir + 'cutoff.png'
-      PW.save(filename)
-      return
-    else:
-      return PW.show()
-
-
+    # Render the plot window, either as a window or as an image. 
+    return self.render(PW, 'cutoff.png')
 
   '''
 
@@ -642,15 +664,6 @@ class tunaPlotter:
 
 
 
-
-
-
-
-
-
-
-
-
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------- Polarization Plot
   # ---------------------------------------------------------------------------
@@ -772,12 +785,6 @@ class tunaPlotter:
       return PW.save(filename)
     else:
       return PW.show()
-
-
-
-
-
-
 
 
 
@@ -1043,19 +1050,6 @@ class tunaPlotter:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------- Alfven Speed Plot
   # ---------------------------------------------------------------------------
@@ -1290,39 +1284,27 @@ class plotWindow:
   # ---------------------------------------------------------------------------
 
   # Once all of the contours are loaded, we can figure out the color levels. 
-  def render(self):
+  def render(self, filename=None):
     # Get the maximum of all contour maxima. 
     vmax = nax( cell.getMax() for column in self.cells for cell in column )
     # The plot colors object constructor creates the color bar, then returns
     # a dictionary of keyword parameters. 
     PC = plotColors(vmax, self.colorAxis, self.colorbar, nColors=self.nColors)
     # We send those parameters to each cell for use in their contourf calls. 
-    return [ cell.render(**PC) for column in self.cells for cell in column ]
-
-  # ---------------------------------------------------------------------------
-  # ------------------------------------------------ Show Plot Window on Screen
-  # ---------------------------------------------------------------------------
-
-  def show(self):
-    # Before showing the window, assemble the contour plots, color bar, etc. 
-    self.render()
-    return plt.show()
-
-  # ---------------------------------------------------------------------------
-  # --------------------------------------------------- Save Plot Window as PNG
-  # ---------------------------------------------------------------------------
-
-  def save(self, filename):
-    # Before saving the image, assemble the contour plots, color bar, etc. 
-    self.render()
-    # If the output directory doesn't exist, make it. This ensures that we
-    # don't create an output directory unless we're actually making output. 
-    savePath = os.path.dirname(filename)
-    if not os.path.exists(savePath):
-      os.makedirs(savePath)
-    # Create the image. 
-    plt.savefig(filename)
-    print 'Saved plot to ' + filename.replace(os.environ['HOME'], '~')
+    [ cell.render(**PC) for column in self.cells for cell in column ]
+    # If given a filename, save the plot window as an image. 
+    if filename is not None:
+      # If the output directory doesn't exist, make it. This ensures that we
+      # don't create an output directory unless we're actually making output. 
+      savePath = os.path.dirname(filename)
+      if not os.path.exists(savePath):
+        os.makedirs(savePath)
+      # Create the image. 
+      plt.savefig(filename)
+      print 'Saved plot to ' + filename.replace(os.environ['HOME'], '~')
+    # Otherwise, display it. 
+    else:
+      plt.show()
     return
 
 # #############################################################################
