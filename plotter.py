@@ -54,6 +54,14 @@ def main():
   if 'l' in names:
     TP.plotLazy( *names['l'] )
 
+  if 'p' in names:
+    TP.paramSummary()
+
+  if 'c' in names:
+    TP.runCheckup()
+
+
+
   '''
 
   if 'b' in names:
@@ -79,9 +87,6 @@ def main():
 
   if 'o' in names:
     TP.plotOne()
-
-  if 'p' in names:
-    TP.plotPolarizations(20)
 
   if 'q' in names:
     TP.plotQuick()
@@ -224,7 +229,8 @@ class tunaPlotter:
       params['Y'] = r/np.sin(q)**2
       params['X'] = np.cos(q)/np.sqrt(1 - np.min(r)/params['Y'])
       params['xLabel'] = '\\cos \\theta / \\cos \\theta_0'
-      params['yLabel'] = 'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)'
+#      params['yLabel'] = 'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)'
+      params['yLabel'] = 'L \;\; (R_E)'
       # The x axis needs to go from -1 to 1, and just needs to be labeled N/S. 
       params['xTicks'] = (-1, 0, 1)
       params['xTickLabels'] = ('$\\mathrm{S}$', '', '$\\mathrm{N}$')
@@ -263,6 +269,192 @@ class tunaPlotter:
   # ===========================================================================
   # ======================================================== Tuna Plotter Plots
   # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # --------------------------------------------------------- Parameter Summary
+  # ---------------------------------------------------------------------------
+
+  # This method doesn't actually make a plot. It just prints out the params
+  # used for each plot. 
+  def paramSummary(self):
+    # We'll keep a dictionary of dictionaries. 
+    paramDict = {}
+    # Scroll through the paths and grab the parameters used by each. 
+    for path in self.paths:
+      # Each path gets a dictionary of parameters. 
+      paramDict[path] = {}
+      # Grab the parameters input file. 
+      paramLines = open(path + 'params.in', 'r').readlines()
+      # Lines are always formatted as 'key = val'
+      for line in paramLines:
+        key, val = [ x.strip() for x in line.split('=') ]
+        # Store this in the dictionary. 
+        paramDict[path][key] = val
+    # Don't bother printing out a parameter shared by all runs. 
+    for key, val in paramDict[ self.paths[0] ].items():
+      # Check if any path has a different value for this key. 
+      for path in self.paths:
+        if key not in paramDict[path] or paramDict[path][key]!=val:
+          break
+      # If all paths have the same value for this key, cut it. 
+      else:
+        for path in self.paths:
+          if key in paramDict[path]:
+            del paramDict[path][key]
+    # Now print off the parameters used for each path. 
+    for path in self.paths:
+      # Just keep the immediate directory name as a label. 
+      shortPath = path.split('/')[-2].split('_')[0]
+      print col(shortPath + ': '),
+      # Print out the params as a comma-delimited set of columns. 
+      kparams = sorted( paramDict[path].items() )
+      print ', '.join( col(key) + col(val) for key, val in kparams )
+    return
+
+
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # --------------------------------------------------------- Last Run Checkup
+  # ---------------------------------------------------------------------------
+
+  # This should make it easy to SSH in and check on the status of the most
+  # recent (or ongoing) run.  
+  def runCheckup(self):
+    # Path to the directory that holds the output directories. 
+    root = '/export/scratch/users/mceachern/'
+    outDirs = dirs(root)
+    # Find the one that's been modified most recently. 
+    newDir = max( (os.path.getmtime(d), d) for d in outDirs )[1]
+
+#    # Sanity test. 
+#    newDir = '/export/scratch/users/mceachern/stability_test_autoboris/'
+
+
+    print ''
+    print 'Checking on: ', newDir.replace(root, '')
+    print ''
+    # Get the paths for each run within the most recent output directory. 
+    runDirs = [ d for d in dirs(newDir) if 'params.in' in os.listdir(d) ]
+
+
+    # Use a dictionary of dictionaries to keep track of parameters. 
+    paramDict = {}
+    for d in runDirs:
+      # Each path gets a dictionary of parameters. 
+      paramDict[d] = {}
+      # Grab the parameters input file. 
+      paramLines = read(d + 'params.in')
+      # Lines are always formatted as 'key = val'
+      for line in paramLines:
+        key, val = [ x.strip() for x in line.split('=') ]
+        # Store this in the dictionary. 
+        paramDict[d][key] = val
+    # Don't bother printing out a parameter shared by all runs. 
+    for key, val in paramDict[ runDirs[0] ].items():
+      # Check if any path has a different value for this key. 
+      for d in runDirs:
+        if key not in paramDict[d] or paramDict[d][key]!=val:
+          break
+      # If all paths have the same value for this key, cut it. 
+      else:
+        for d in runDirs:
+          if key in paramDict[d]:
+            del paramDict[d][key]
+
+    # Assume that all runs have the same parameters. 
+    header = col('name') + ''.join( col( x[0] ) for x in sorted( paramDict[ runDirs[0] ].items() ) ) + col('time')
+
+    print header
+
+#    kparams = sorted( paramDict[d].items() )
+#    print ''.join( col(key, 6) + col(val, 6) for key, val in kparams ),
+
+    # Scroll through each run and check on its progress. 
+    for d in runDirs:
+
+      name = d.replace(newDir, '').rstrip('/')
+      tMax = self.getParam(d, 'tmax')
+      tLast = num( read(d + 't.out')[-1] )
+
+      # Run name. 
+      print col(name),
+
+      # Run params. 
+      print ''.join( col( x[1] ) for x in sorted( paramDict[d].items() ) ),
+
+      # Status. 
+      print col(tLast, 4) + '/ ' + col(tMax, 4),
+
+      out, err = read(d + 'tuna.out'), read(d + 'stdoe.txt')
+
+      if len(err)>0:
+        print 'ERROR: ' + err[-1]
+      elif 'Finished' in ''.join(out):
+        print 'Done. '
+      else:
+        print 'Waiting...'
+
+
+
+#      print '\t' + ''.join(line.strip() for line in out)
+#      print '\t' + ''.join(line.strip() for line in err)
+
+
+
+
+
+    return
+
+
+
+    # We'll keep a dictionary of dictionaries. 
+    paramDict = {}
+    # Scroll through the paths and grab the parameters used by each. 
+    for path in self.paths:
+      # Each path gets a dictionary of parameters. 
+      paramDict[path] = {}
+      # Grab the parameters input file. 
+      paramLines = open(path + 'params.in').readlines()
+      # Lines are always formatted as 'key = val'
+      for line in paramLines:
+        key, val = [ x.strip() for x in line.split('=') ]
+        # Store this in the dictionary. 
+        paramDict[path][key] = val
+    # Don't bother printing out a parameter shared by all runs. 
+    for key, val in paramDict[ self.paths[0] ].items():
+      # Check if any path has a different value for this key. 
+      for path in self.paths:
+        if key not in paramDict[path] or paramDict[path][key]!=val:
+          break
+      # If all paths have the same value for this key, cut it. 
+      else:
+        for path in self.paths:
+          if key in paramDict[path]:
+            del paramDict[path][key]
+    # Now print off the parameters used for each path. 
+    for path in self.paths:
+      # Just keep the immediate directory name as a label. 
+      shortPath = path.split('/')[-2].split('_')[0]
+      print col(shortPath + ': '),
+      # Print out the params as a comma-delimited set of columns. 
+      kparams = sorted( paramDict[path].items() )
+      print ', '.join( col(key) + col(val) for key, val in kparams )
+    return
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------------- Lazy Plot
@@ -317,7 +509,10 @@ class tunaPlotter:
   def plotFrequencies(self, boris=1):
     # Plotting dimensionless ratios for each ionospheric profile. 
     models = (1, 2, 3, 4)
-    PW = plotWindow(7, len(models), colorbar='log')
+
+#    PW = plotWindow(7, len(models), colorbar='log')
+    PW = plotWindow(2, len(models), colorbar='log', yPad=1)
+
     # Electric constant, in mF/m. 
     eps0 = 8.854e-9
     # The Boris factor is applied to the parallel electric constant. 
@@ -327,29 +522,48 @@ class tunaPlotter:
     # Electron mass in g. 
     me = 9.10938e-28
 
+    # The fastest driving we have to worry about is a 40s period.  
+    w = 1./40
+    wLabel = str( int(1000*w) ) + ' mHz'
+
     # Label the plot and its columns. 
-    PW.setParam(title='\\mathrm{Everything \; in \; Hz \; not \; \\frac{rad}{s} }')
+    if boris==1:
+      borisLabel = ''
+    else:
+      sn = format(boris, '.0e').replace('e', '\\cdot 10^{').replace('+0', '').replace('-0', '-') + '}'
+      if sn[0]=='1':
+        borisLabel = sn.split('cdot')[-1]
+      else:
+        borisLabel = sn
+
+    PW.setParam(title='\\mathrm{Frequency \;\; Ratios \;\; at \;\; ' + wLabel +
+                      ' \;\; with \;\; \\epsilon_\\parallel = ' + borisLabel +
+                      ' \\epsilon_0}')
+
     PW[0].setParam(colLabel='\\omega^2 / \\omega_p^2')
-    PW[1].setParam(colLabel='\\omega / \\nu_{\\parallel}')
-    PW[2].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
-    PW[3].setParam(colLabel='\\frac{\\sigma_0}{\\epsilon_\\parallel} \\delta \\! t')
-    PW[4].setParam(colLabel='\\frac{\\sigma_H}{\\epsilon_\\bot} \\delta \\! t')
-    PW[5].setParam(colLabel='\\frac{\\sigma_P}{\\epsilon_\\bot} \\delta \\! t')
-    PW[6].setParam(colLabel='\\nu \; \\delta \\! t')
+    PW[1].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
+#    PW[2].setParam(colLabel='\\omega / \\nu_{\\parallel}')
+#    PW[3].setParam(colLabel='\\frac{\\sigma_0}{\\epsilon_\\parallel} \\delta \\! t')
+#    PW[4].setParam(colLabel='\\frac{\\sigma_H}{\\epsilon_\\bot} \\delta \\! t')
+#    PW[5].setParam(colLabel='\\frac{\\sigma_P}{\\epsilon_\\bot} \\delta \\! t')
+#    PW[6].setParam(colLabel='\\nu \; \\delta \\! t')
 
     # Each row is from a different model. 
     for row, model in enumerate(models):
+
       # Find the path that goes with this model. 
       path = self.getPath(model=model)
-      # Label the row. 
-      PW[row].setParam( rowLabel=str(model) )
-      # Handle the coordinates and axes. 
-      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
 
-      # Time step in seconds, based on the grid and on the plasma frequency,
-      # before applying the Boris factor. 
-      dtGrid = num( open(path + 'dt.out').readlines()[0] )
-      dtPlasma = num( open(path + 'dt.out').readlines()[1] )
+      # Label the row. 
+      PW[row].setParam(rowLabel='\\mathrm{Model \; ' + str(model) +  '}')
+
+      # Handle the coordinates and axes. 
+      PW.setParam( outline=True, nColors=10, **self.getCoords(path) )
+
+#      # Time step in seconds, based on the grid and on the plasma frequency,
+#      # before applying the Boris factor. 
+#      dtGrid = num( open(path + 'dt.out').readlines()[0] )
+#      dtPlasma = num( open(path + 'dt.out').readlines()[1] )
 
       # Number density is printed in cm^-3 but we want it in Mm^-3. 
       n = self.getArray(path + 'n.out')*1e24
@@ -360,11 +574,8 @@ class tunaPlotter:
       # Condictivity was printed in S/m and we want it in mS/m. 
       sig0 = self.getArray(path + 'sig0.out')/1e3
 
-      # Perpendicular dielectric constant in units of eps0, convert to mF/m. 
-      epsPerp = self.getArray(path + 'epsPerp.out')*eps0
-
-      # The fastest driving we have to worry about is a 40s period.  
-      w = 1./40
+#      # Perpendicular dielectric constant in units of eps0, convert to mF/m. 
+#      epsPerp = self.getArray(path + 'epsPerp.out')*eps0
 
       # Compute the plasma frequency. 
       wp = np.sqrt( n*qe**2 / (me*epsPara) ) / (2*np.pi)
@@ -372,17 +583,17 @@ class tunaPlotter:
       # Compute the collision frequency. 
       nu = n*qe**2 / (me*sig0)
 
-      # Integrating factors... 
-      s0 = sig0*dt/epsPara
-      sH = sigH*dt/epsPerp
-      sP = sigP*dt/epsPerp
+#      # Integrating factors... 
+#      s0 = sig0*dt/epsPara
+#      sH = sigH*dt/epsPerp
+#      sP = sigP*dt/epsPerp
 
       # Throw these things on the plot. Let's clip the values that are
       # basically infinity. 
       clip = 1e2
-      PW[0, row].setContour( np.minimum( clip, (w/wp)**2 ) )
-      PW[1, row].setContour( np.minimum(clip, w/nu) )
-      PW[2, row].setContour( np.minimum(clip, w*nu/wp**2) )
+      PW[0, row].setContour( np.minimum(clip, (w/wp)**2) )
+      PW[1, row].setContour( np.minimum(clip, w*nu/wp**2) )
+#      PW[2, row].setContour( np.minimum(clip, w/nu) )
 
     # Render the plot window, either as a window or as an image. 
     return self.render(PW, 'cutoff.png')
@@ -1213,6 +1424,10 @@ class plotWindow:
       for key, val in params.items():
         # Row label, to the right of the row of subplots. 
         if key=='rowlabel':
+          # Plots without very many columns may need to be rearranged. 
+          if self.cells.shape[0]==2:
+            plt.subplots_adjust(left=0.25)
+          # Figure out where the leftmost axes are, and write to the left. 
           loc = self.axes[0, self.pos].get_position()
           plt.figtext(0.3*loc.x0, loc.y0 + 0.5*loc.height, '$' + val + '$',
                       horizontalalignment='center', 
@@ -1449,9 +1664,9 @@ class plotCell:
 
     # Remove ticks without removing tick labels. 
 #    self.ax.tick_params( width=0 )
-    # Remove plot frames. 
-    for pos in ('top', 'bottom', 'left', 'right'):
-      self.ax.spines[pos].set_visible(False)
+#    # Remove plot frames. 
+#    for pos in ('top', 'bottom', 'left', 'right'):
+#      self.ax.spines[pos].set_visible(False)
     # Only put ticks on the sides with numbers. 
     self.ax.get_xaxis().tick_bottom()
     self.ax.get_yaxis().tick_left()
@@ -1593,7 +1808,8 @@ class plotColors(dict):
 
       # Kinda kludgey. See setColorbar for explanation. 
 #      norm = self.logNorm
-      return plt.get_cmap('seismic')
+#      return plt.get_cmap('seismic')
+      return None
 
     elif self.colorbar=='sym':
       norm = self.symNorm
@@ -1717,6 +1933,10 @@ class plotColors(dict):
 def by(x):
   return str( x[0] ) + 'x' + by( x[1:] ) if len(x)>1 else str( x[0] )
 
+# Left-justify and/or trim a value to fit into a fixed-width column. 
+def col(x, width=10):
+  return str(x).ljust(width)[:width-1] + ' '
+
 # Convert a string to a complex or float. 
 def com(x):
   if ',' not in x:
@@ -1725,6 +1945,13 @@ def com(x):
     # Shave off the parentheses then split into real and imaginary parts. 
     re, im = x[1:-1].split(',')
     return (float(re) + float(im)*1j)
+
+# Get a listing of directories at a given path. Remember that we always use
+# absolute paths, and that directory paths end in a slash. 
+def dirs(path=None):
+  # By default, use the current location. 
+  p = path if path is not None else os.getcwd()
+  return sorted( p + x + '/' for x in os.listdir(p) if os.path.isdir(p + x) )
 
 # Safely ask for the first element of a possibly-empty list or generator. 
 def first(x):
@@ -1750,6 +1977,13 @@ def now():
 # Turn a string into a float or integer. 
 def num(x):
   return int( float(x) ) if float(x)==int( float(x) ) else float(x)
+
+# Returns a list of non-blank lines from a file. 
+def read(filename):
+  if not os.path.isfile(filename):
+    return []
+  else:
+    return [ x.strip() for x in open(filename, 'r').readlines() if x.strip() ]
 
 # Turns the number 3 into '003'. If given a float, truncate it. 
 def znt(x, width=0):
