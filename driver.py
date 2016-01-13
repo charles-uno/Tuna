@@ -28,17 +28,14 @@ runDirName = 'stability_test'
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
            'jdrive':[1e-4], 
-           'tmax':[50],
-           'dtout':[1],
-           'azm':[1, 10, 100],
-           'inertia':[1],
-           'model':[1, 2, 3, 4],
-           'boris':[1e8],
-#           'azm':[1, 4, 16, 64, 256],
-#           'fdrive':[1./40],
-           'latdrive':[5],
-#           'dlatdrive':[5]
-#	   'drdrive':[0.5]
+           'tmax':[300],
+           'azm':[16],
+           'inertia':[-1, 1],
+           'model':[1],
+#           'model':[1, 2, 3, 4],
+           'epsfac':[-1, 1],
+#           'azm':[1, 2, 4, 8, 16, 32, 64, 128],
+#           'fdrive':[1./40]
          }
 
 # #############################################################################
@@ -60,22 +57,19 @@ def main():
   # Compile binary executable. If the compilation fails, bail. 
   if not setBin():
     print '\tCompilation failed. '
-    print '\t' + runDir + 'stdoe.txt'
+    print '\t' + rd + 'stdoe.txt'
     return
   # Iterate over the runs. 
   for r in runs:
     runRun(r)
 
-
-  return
-
-
-  # Let's just look at the Alfven speed profile. 
-  return vPlot()
-
+  # We have a plotter to look at plots. Get rid of plot stuff from the driver, 
+  # so we can call it over an SSH connection without graphics forwarding. 
+#  # Let's just look at the Alfven speed profile. 
+#  return vPlot()
   # Plot T000 for debugging. 
-  ax = initPlot()
-  showPlot(ax)
+#  ax = initPlot()
+#  showPlot(ax)
 
   return
 
@@ -147,6 +141,11 @@ def getRuns(rd):
     runs = [ dsum(r, {key:val}) for r in runs for val in parameters[key] ]
   # Cut runs that have no driving or double driving. 
   runs = [ r for r in runs if nonzero(r, 'bdrive') != nonzero(r, 'jdrive') ]
+  # Cut runs with inertial effects but no Boris factor. They will take months. 
+  for r in runs[:]:
+    if 'inertia' in r and r['inertia']>0:
+      if 'epsfac' in r and 0<r['epsfac']<10:
+        runs.remove(r)
   # Name each run based on its position in the list. 
   for i, r in enumerate(runs):
     r['name'] = 'T' + znt(i, 3)

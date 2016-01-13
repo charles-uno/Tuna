@@ -511,8 +511,10 @@ class tunaPlotter:
     models = (1, 2, 3, 4)
 
 #    PW = plotWindow(7, len(models), colorbar='log')
-    PW = plotWindow(2, len(models), colorbar='log', yPad=1)
+    PW = plotWindow(7, len(models), colorbar='log', yPad=1)
 
+    # Magnetic constant in nH/m. 
+    mu0 = 1256.63706
     # Electric constant, in mF/m. 
     eps0 = 8.854e-9
     # The Boris factor is applied to the parallel electric constant. 
@@ -521,32 +523,47 @@ class tunaPlotter:
     qe = 1.60218e-25
     # Electron mass in g. 
     me = 9.10938e-28
+    # Earth radius in Mm. 
+    RE = 6.378388
 
-    # The fastest driving we have to worry about is a 40s period.  
-    w = 1./40
-    wLabel = str( int(1000*w) ) + ' mHz'
+    # Wavelength should be order of an RE. 
+    k = 1./RE
 
-    # Label the plot and its columns. 
-    if boris==1:
-      borisLabel = ''
-    else:
-      sn = format(boris, '.0e').replace('e', '\\cdot 10^{').replace('+0', '').replace('-0', '-') + '}'
-      if sn[0]=='1':
-        borisLabel = sn.split('cdot')[-1]
-      else:
-        borisLabel = sn
+#    # The fastest driving we have to worry about is a 40s period.  
+#    w = 1./40
+#    wLabel = str( int(1000*w) ) + ' mHz'
 
-    PW.setParam(title='\\mathrm{Frequency \;\; Ratios \;\; at \;\; ' + wLabel +
-                      ' \;\; with \;\; \\epsilon_\\parallel = ' + borisLabel +
-                      ' \\epsilon_0}')
+#    # Label the plot and its columns. 
+#    if boris==1:
+#      borisLabel = ''
+#    else:
+#      sn = format(boris, '.0e').replace('e', '\\cdot 10^{').replace('+0', '').replace('-0', '-') + '}'
+#      if sn[0]=='1':
+#        borisLabel = sn.split('cdot')[-1]
+#      else:
+#        borisLabel = sn
 
-    PW[0].setParam(colLabel='\\omega^2 / \\omega_p^2')
-    PW[1].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
+#    PW.setParam(title='\\mathrm{Frequency \;\; Ratios \;\; at \;\; ' + wLabel +
+#                      ' \;\; with \;\; \\epsilon_\\parallel = ' + borisLabel +
+#                      ' \\epsilon_0}')
+
+#    PW[0].setParam(colLabel='\\omega^2 / \\omega_p^2')
+#    PW[1].setParam(colLabel='\\omega \\nu_{\\parallel} / \\omega_p^2')
 #    PW[2].setParam(colLabel='\\omega / \\nu_{\\parallel}')
 #    PW[3].setParam(colLabel='\\frac{\\sigma_0}{\\epsilon_\\parallel} \\delta \\! t')
 #    PW[4].setParam(colLabel='\\frac{\\sigma_H}{\\epsilon_\\bot} \\delta \\! t')
 #    PW[5].setParam(colLabel='\\frac{\\sigma_P}{\\epsilon_\\bot} \\delta \\! t')
 #    PW[6].setParam(colLabel='\\nu \; \\delta \\! t')
+
+    PW.setParam(title='\\mathrm{Compare \\; to \\; \\sim 10^{-2} Hz}')
+
+    PW[0].setParam(colLabel='\\nu')
+    PW[1].setParam(colLabel='\\omega_\\parallel')
+    PW[2].setParam(colLabel='c_\\parallel k')
+    PW[3].setParam(colLabel='v_A k')
+    PW[4].setParam(colLabel='\\sigma_P / \\epsilon_\\bot')
+    PW[5].setParam(colLabel='\\sigma_H / \\epsilon_\\bot')
+    PW[6].setParam(colLabel='\\sigma_0 / \\epsilon_0')
 
     # Each row is from a different model. 
     for row, model in enumerate(models):
@@ -558,7 +575,7 @@ class tunaPlotter:
       PW[row].setParam(rowLabel='\\mathrm{Model \; ' + str(model) +  '}')
 
       # Handle the coordinates and axes. 
-      PW.setParam( outline=True, nColors=10, **self.getCoords(path) )
+      PW.setParam( outline=True, nColors=14, **self.getCoords(path) )
 
 #      # Time step in seconds, based on the grid and on the plasma frequency,
 #      # before applying the Boris factor. 
@@ -570,18 +587,45 @@ class tunaPlotter:
 
       # Condictivity was printed in S/m and we want it in mS/m. 
       sig0 = self.getArray(path + 'sig0.out')/1e3
+      sigP = self.getArray(path + 'sigP.out')/1e3
+      sigH = self.getArray(path + 'sigH.out')/1e3
 
-      # Condictivity was printed in S/m and we want it in mS/m. 
-      sig0 = self.getArray(path + 'sig0.out')/1e3
-
-#      # Perpendicular dielectric constant in units of eps0, convert to mF/m. 
-#      epsPerp = self.getArray(path + 'epsPerp.out')*eps0
+      # Perpendicular dielectric constant in units of eps0, convert to mF/m. 
+      epsPerp = self.getArray(path + 'epsPerp.out')*eps0
 
       # Compute the plasma frequency. 
-      wp = np.sqrt( n*qe**2 / (me*epsPara) ) / (2*np.pi)
+      wp = np.sqrt( n*qe**2 / (me*epsPara) )
 
       # Compute the collision frequency. 
       nu = n*qe**2 / (me*sig0)
+
+      # Compute the Boris-adjusted speed of light. 
+      cc = np.ones(n.shape)/(mu0*epsPara)
+
+      # Compute the Alfven speed. 
+      vv = 1/(mu0*epsPerp)
+
+
+      clip = 1e8
+
+#      PW[0, row].setContour(nu)
+#      PW[1, row].setContour(wp)
+#      PW[2, row].setContour(np.sqrt(cc)*k)
+#      PW[3, row].setContour(np.sqrt(vv)*k)
+      PW[4, row].setContour(sigP/epsPerp)
+      PW[5, row].setContour(sigH/epsPerp)
+      PW[6, row].setContour( np.minimum(clip, sig0/epsPara) )
+
+      print 'Max sP/ep = ', np.max(sigP/epsPerp)
+      print 'Max sH/ep = ', np.max(sigH/epsPerp)
+      print 'Min s0/e0 = ', np.min(sig0/epsPara)
+
+      print 'Max e0/s0 = ', np.max(epsPara/sig0)
+      print 'Max nu/wp^2 = ', np.max(nu/wp**2)
+
+
+      print ''
+
 
 #      # Integrating factors... 
 #      s0 = sig0*dt/epsPara
@@ -590,9 +634,9 @@ class tunaPlotter:
 
       # Throw these things on the plot. Let's clip the values that are
       # basically infinity. 
-      clip = 1e2
-      PW[0, row].setContour( np.minimum(clip, (w/wp)**2) )
-      PW[1, row].setContour( np.minimum(clip, w*nu/wp**2) )
+#      clip = 1e2
+#      PW[0, row].setContour( np.minimum(clip, (w/wp)**2) )
+#      PW[1, row].setContour( np.minimum(clip, w*nu/wp**2) )
 #      PW[2, row].setContour( np.minimum(clip, w/nu) )
 
     # Render the plot window, either as a window or as an image. 

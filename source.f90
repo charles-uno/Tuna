@@ -798,8 +798,8 @@ module io
     if (varname .eq. 'jdrive'   ) defaultParam = 0.    ! Strength of driving current (in uA/m^2). 
     if (varname .eq. 'fdrive'   ) defaultParam = 1./60 ! Frequency (in Hz). 
     if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet duration (in s). 
-    if (varname .eq. 'latdrive' ) defaultParam = 5     ! Latitude (in degrees). 
-    if (varname .eq. 'dlatdrive') defaultParam = 15    ! Spread in latitude (in degrees). 
+    if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude (in degrees). 
+    if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude (in degrees). 
     if (varname .eq. 'rdrive'   ) defaultParam = 4.5   ! Radius (in RE). 
     if (varname .eq. 'drdrive'  ) defaultParam = 0.5   ! Spread in radius (in RE). 
     ! Integrated atmospheric conductivities.
