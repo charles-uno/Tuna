@@ -1607,20 +1607,16 @@ module ionos
   subroutine dtSetup()
     ! One over the zone crossing times in each direction, for computing Alfven timescale. 
     double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz
-
     ! The Alfven time step is constrained by zone crossing times. The parallel time step is
     ! constrained by sig0/eps0. The inertial time step is constrained by the plasma frequency. 
-    double precision                       :: dtAlfven, dtParallel, dtInertia
-
+    double precision                       :: dtAlfven, dtParallel
     ! We can use a Boris correction to increase eps0 above its vacuum value. This increases the
     ! plasma frequency, allowing us to stabilize parallel and inertial terms at a reasonable time
-    ! step. 
-    double precision                       :: boris
-
+    ! step. This is safe if the plasma frequency remains much higher than the waves we're driving.
+    double precision                       :: boris, borisMax
     ! Plasma oscillations are particularly susceptible to instability, so we use a fudge factor in
     ! addition to the traditional courant factor. 
     double precision                       :: fudge = 0.2
-
     ! Compute Alfven crossing times for each grid location. 
     oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
     oodty = azm*vA()/h2()
@@ -1636,116 +1632,78 @@ module ionos
     else
       dtAlfven = 1./ maxval( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
-
+    ! Record the Alfven time step. 
+    call writeReal('dt.out', readParam('cour')*dtAlfven)
+    ! We risk problems if we allow the plasma frequency to become comparable to the frequency of
+    ! the waves we're driving. We constrain our automatic Boris factor to make sure that the
+    ! plasma frequency is always at least two orders of magnitude above the driving frequency. 
+    borisMax = 1e-4*minval( n()*qe**2 / (me*eps0) ) / ( 2*pi*readParam('fdrive') )**2
     ! By default (specified with nonpositive epsfac) we automatically determine the appropriate
     ! Boris factor. 
-    if ( readParam('epsfac') .le. 0 ) then
-
-      ! For terms with electron inertial effects, this means we need to adjust the parallel electric constant until the inertial time step matches the Alfven time step. 
-
-
-
+    if (readParam('epsfac') .le. 0) then
+      ! For terms with electron inertial effects, this means we need to adjust the parallel
+      ! electric constant until the inertial time step matches the Alfven time step. 
+      if (readParam('inertia') .gt. 0) then
+        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
+        ! factor in there since inertial effects are particularly prone to instability. 
+        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+        ! Record the unmodified parallel time step. 
+        call writeReal('dt.out', readParam('cour')*dtParallel)
+        ! Compute the Boris factor. Note that eps0 appears in the square root of the plasma
+        ! frequency. 
+        boris = min( borisMax, (dtAlfven/dtParallel)**2 )
+        ! Update the parallel time step.
+        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+      ! Without electron inertial effects, the parallel time step is set by the integrating factor
+      ! used by the parallel electric field. 
+      else
+        ! The issue here isn't instability. The ratio sig0/eps0 is huge, and appears in a negative
+        ! exponential. Without a Boris correction, the parallel electric field simply doesn't
+        ! appear in the simulation. 
+        dtParallel = maxval(eps0/sig0)
+        ! Record the unmodified parallel time step. 
+        call writeReal('dt.out', readParam('cour')*dtParallel)
+        ! Compute the Boris factor. Note that eps0 appears in this time step calculation directly. 
+        boris = min(borisMax, dtAlfven/dtParallel)
+        ! Update the parallel time step.
+        dtParallel = maxval(boris*eps0/sig0)
+      end if
+    ! If we're given a positive epsfac, that means that (for some reason) the user wants to set
+    ! the Boris correction manually. 
+    else
+      ! If electron inertial effects are included, we actually do need to compute the parallel
+      ! time step based on the Boris factor. If the factor is too small, this means that time time
+      ! step will be small, and runtime will be very long. 
+      if (readParam('inertia') .gt. 0) then
+        ! Grab the Boris factor. Allow it to exceed the maximum. 
+        boris = readParam('epsfac')
+        ! Apply it to the inertial time step. Keep the fudge factor in there. 
+        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+        ! Record the unmodified parallel time step. 
+        call writeReal('dt.out', readParam('cour')*dtParallel)
+      ! We do not allow a manually-Boris-adjusted non-inertial parallel time step to trump the
+      ! Alfven time step. There may be Boris values for which this will lead to instability. In
+      ! practice, this allows a Boris factor of 1 to be used to ignore the parallel electric field
+      ! completely. 
+      else
+        ! For completeness, compute and record the unmodified parallel time step. We don't
+        ! actually use it for anything. 
+        dtParallel = maxval(eps0/sig0)
+        ! Record the unmodified parallel time step. 
+        call writeReal('dt.out', readParam('cour')*dtParallel)
+        ! Grab the Boris factor. Allow it to exceed the maximum. 
+        boris = readParam('epsfac')
+        ! Don't use it. Just set the parallel time step to "infinity." 
+        dtParallel = 1. 
+      end if
     end if
-
-
-
-
-    ! In the absence of a Boris correction (that is, if we are given boris=1), we don't worry about the parallel time step. This isn't an instability risk -- it just means that the 
-
-
-    ! If we were provided with a Boris factor, we apply it. 
-    if ( readParam('epsfac') .gt. 0 ) then
-
-
-
-    
-
-
-
-
-
-
-    ! The parallel time step is actually based on the minimum oscillation time, not the maximum.
-    ! The quantity goes to infinity, and appears in a negative exponent. We aren't worried about
-    ! overcorrection... we're worried about the term vanishing. 
-    dtParallel = 1./minval(sig0/eps0)
-
-    ! The parallel current wants to oscillate at the plasma frequency, so we need to resolve the
-    ! plasma frequency. Because the inertial effects are particularly prone to instability, we add
-    ! an extra fudge factor here. 
-    dtInertia = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
-
-!    boris=1e6
-
-    write(*,'(a, es8.0)') 'Alfven   dt = ', dtAlfven
-
-    write(*,'(a, es8.0)') 'Parallel dt = ', dtParallel
-
-    write(*,'(a, es8.0)') 'Inertial dt = ', dtInertia
-
-    ! If we were given a Boris factor, we apply it. 
-
-
-
-
-    ! If inertial effects are present, use the Alfven or inertial time step, whichever is smaller. 
-
-
-    ! If inertial effects are not present, use the Alfven or parallel time step, whichever is smaller. 
-
-
-
-    ! We can change the parallel dielectric constant to affect the speed of light, allowing us to
-    ! investigate electron inertial effects (which would ordinarily be much too fast). 
-    ! If given a nonpositive Boris factor, we wait to set epsPara until computing the time step,
-    ! then set it so that the plasma time step and the geometric time step match. Essentially, we
-    ! take the smallest Boris factor that will not shrink the time step. 
-    epsPara = eps0*max( 1., readParam('boris') )
-
-
-
-
-
-    stop
-
-
-
-
-    ! Compute the plasma frequency, which gives the timescale for plasma oscialltion if we are
-    ! considering electron inertial effects. 
-    ! We use an extra safety factor in the plasma frequency. The corners of the simulation are
-    ! prone to numerical instabilities, so we want the plasma timescale to have a larger effective
-    ! courant condition. 
-!    safety = 5.
-!    wpeSafe = safety*sqrt( n()*qe**2 / (me*epsPara) )
-
-
-    ! The file dt.out contains dt computed from the Alfven speed, dt computed from the plasma
-    ! frequency (before applying the Boris factor), and the final dt used by the simulation. 
-!    call writeReal( 'dt.out', readParam('cour')/maxval(oodt) )
-!    call writeReal( 'dt.out', readParam('cour')/maxval(wpeSafe) )
-
-
-    ! A nonpositive Boris factor means we use epsPara as small as possible without decreasing the
-    ! time step. That is, we match the plasma time step with the geometric time step. (Note that
-    ! if the boris factor is negative, epsPara is still eps0.)
-!    if (readParam('boris') .le. 0) then
-!      boris = ( maxval(wpeSafe) / maxval(oodt) )**2
-!      epsPara = epsPara * boris
-!      wpeSafe = safety*sqrt( n()*qe**2 / (me*epsPara) )
-!    end if
-    ! Time step depends on the plasma frequency only if we're including electron inertial effects. 
-!    if ( readParam('inertia') .gt. 0 ) then
-!      dt = readParam('cour')/max( maxval(oodt), maxval(wpeSafe) )
-!    else
-!      dt = readParam('cour')/maxval(oodt)
-!    end if
-    ! Write out the dt we actually use, both to file and to the terminal. 
-!    call writeReal('dt.out', dt)
-!    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
-
-
-
+    ! Output the Boris-adjusted parallel time step. 
+    call writeReal('dt.out', readParam('cour')*dtParallel)
+    ! The experimental time step is the smaller of the Alfven and parallel time steps. 
+    dt = readParam('cour')*min(dtAlfven, dtParallel)
+    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
+    ! Finally, actually apply the Boris correction to the parallel electric constant.  
+    epsPara = boris*eps0
   end subroutine dtSetup
 
   ! ----------------------------------------------------------------------------------------------
