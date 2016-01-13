@@ -777,7 +777,7 @@ module io
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
-    if (varname .eq. 'boris'  ) defaultParam = -1.     ! Boris factor for eps0. 
+    if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0. 
     ! Physical parameter profiles.
 
 
@@ -1588,14 +1588,9 @@ module ionos
 
   subroutine profileSetup()
     allocate( epsPerp(0:n1, 0:n3), sig0(0:n1, 0:n3), sigH(0:n1, 0:n3), sigP(0:n1, 0:n3) )
-    ! We can change the parallel dielectric constant to affect the speed of light, allowing us to
-    ! investigate electron inertial effects (which would ordinarily be much too fast). 
-    ! If given a nonpositive Boris factor, we wait to set epsPara until computing the time step,
-    ! then set it so that the plasma time step and the geometric time step match. Essentially, we
-    ! take the smallest Boris factor that will not shrink the time step. 
-    epsPara = eps0*max( 1., readParam('boris') )
     ! The perpendicular electric constant comes from (isotropic) tabulated values, then we add a
-    ! term for the plasmaspheric density contribution. 
+    ! term for the plasmaspheric density contribution. The parallel electric constant is handled
+    ! with the time step. 
     epsPerp = mapIonos('epsp', power=5) + mp*mmm()*n()/BB()
     ! The mapIonos function drops profiles to zero at large distances, but field-aligned
     ! conuctivity should actually go to infinity. We handle that by letting eta go to zero, then
@@ -1610,11 +1605,23 @@ module ionos
   ! ----------------------------------------------------------------------------------------------
 
   subroutine dtSetup()
-    ! One over the zone crossing times in each direction. 
-    double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz, oodt
-    ! Parallel plasma frequency. 
-    double precision, dimension(0:n1,0:n3) :: wpe
+    ! One over the zone crossing times in each direction, for computing Alfven timescale. 
+    double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz
+
+    ! The Alfven time step is constrained by zone crossing times. The parallel time step is
+    ! constrained by sig0/eps0. The inertial time step is constrained by the plasma frequency. 
+    double precision                       :: dtAlfven, dtParallel, dtInertia
+
+    ! We can use a Boris correction to increase eps0 above its vacuum value. This increases the
+    ! plasma frequency, allowing us to stabilize parallel and inertial terms at a reasonable time
+    ! step. 
     double precision                       :: boris
+
+    ! Plasma oscillations are particularly susceptible to instability, so we use a fudge factor in
+    ! addition to the traditional courant factor. 
+    double precision                       :: fudge = 0.2
+
+    ! Compute Alfven crossing times for each grid location. 
     oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
     oodty = azm*vA()/h2()
     oodtz = abs( 2*vA()/( h3()*( eoshift(usup3(), 1, dim=2) - eoshift(usup3(), -1, dim=2) ) ) )
@@ -1625,42 +1632,120 @@ module ionos
     oodtz(:,kk) = 0
     ! Get diagonal zone crossing -- still working in one over time. 
     if (azm==0) then
-      oodt = sqrt(.2)*sqrt( oodtx**2 + oodtz**2 )
+      dtAlfven = 1./ maxval( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
     else
-      oodt = sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 )
+      dtAlfven = 1./ maxval( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
+
+    ! By default (specified with nonpositive epsfac) we automatically determine the appropriate
+    ! Boris factor. 
+    if ( readParam('epsfac') .le. 0 ) then
+
+      ! For terms with electron inertial effects, this means we need to adjust the parallel electric constant until the inertial time step matches the Alfven time step. 
+
+
+
+    end if
+
+
+
+
+    ! In the absence of a Boris correction (that is, if we are given boris=1), we don't worry about the parallel time step. This isn't an instability risk -- it just means that the 
+
+
+    ! If we were provided with a Boris factor, we apply it. 
+    if ( readParam('epsfac') .gt. 0 ) then
+
+
+
+    
+
+
+
+
+
+
+    ! The parallel time step is actually based on the minimum oscillation time, not the maximum.
+    ! The quantity goes to infinity, and appears in a negative exponent. We aren't worried about
+    ! overcorrection... we're worried about the term vanishing. 
+    dtParallel = 1./minval(sig0/eps0)
+
+    ! The parallel current wants to oscillate at the plasma frequency, so we need to resolve the
+    ! plasma frequency. Because the inertial effects are particularly prone to instability, we add
+    ! an extra fudge factor here. 
+    dtInertia = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+
+!    boris=1e6
+
+    write(*,'(a, es8.0)') 'Alfven   dt = ', dtAlfven
+
+    write(*,'(a, es8.0)') 'Parallel dt = ', dtParallel
+
+    write(*,'(a, es8.0)') 'Inertial dt = ', dtInertia
+
+    ! If we were given a Boris factor, we apply it. 
+
+
+
+
+    ! If inertial effects are present, use the Alfven or inertial time step, whichever is smaller. 
+
+
+    ! If inertial effects are not present, use the Alfven or parallel time step, whichever is smaller. 
+
+
+
+    ! We can change the parallel dielectric constant to affect the speed of light, allowing us to
+    ! investigate electron inertial effects (which would ordinarily be much too fast). 
+    ! If given a nonpositive Boris factor, we wait to set epsPara until computing the time step,
+    ! then set it so that the plasma time step and the geometric time step match. Essentially, we
+    ! take the smallest Boris factor that will not shrink the time step. 
+    epsPara = eps0*max( 1., readParam('boris') )
+
+
+
+
+
+    stop
+
+
+
+
     ! Compute the plasma frequency, which gives the timescale for plasma oscialltion if we are
     ! considering electron inertial effects. 
-
-
-    wpe = sqrt( n()*qe**2 / (me*epsPara) )
+    ! We use an extra safety factor in the plasma frequency. The corners of the simulation are
+    ! prone to numerical instabilities, so we want the plasma timescale to have a larger effective
+    ! courant condition. 
+!    safety = 5.
+!    wpeSafe = safety*sqrt( n()*qe**2 / (me*epsPara) )
 
 
     ! The file dt.out contains dt computed from the Alfven speed, dt computed from the plasma
     ! frequency (before applying the Boris factor), and the final dt used by the simulation. 
-    call writeReal( 'dt.out', readParam('cour')/maxval(oodt) )
-    call writeReal( 'dt.out', readParam('cour')/maxval(wpe) )
+!    call writeReal( 'dt.out', readParam('cour')/maxval(oodt) )
+!    call writeReal( 'dt.out', readParam('cour')/maxval(wpeSafe) )
+
+
     ! A nonpositive Boris factor means we use epsPara as small as possible without decreasing the
     ! time step. That is, we match the plasma time step with the geometric time step. (Note that
     ! if the boris factor is negative, epsPara is still eps0.)
-    if (readParam('boris') .le. 0) then
-      boris = ( maxval(wpe) / maxval(oodt) )**2
-      epsPara = epsPara * boris
-
-
-      wpe = sqrt( n()*qe**2 / (me*epsPara) )
-
-
-    end if
+!    if (readParam('boris') .le. 0) then
+!      boris = ( maxval(wpeSafe) / maxval(oodt) )**2
+!      epsPara = epsPara * boris
+!      wpeSafe = safety*sqrt( n()*qe**2 / (me*epsPara) )
+!    end if
     ! Time step depends on the plasma frequency only if we're including electron inertial effects. 
-    if ( readParam('inertia') .gt. 0 ) then
-      dt = readParam('cour')/max( maxval(oodt), maxval(wpe) )
-    else
-      dt = readParam('cour')/maxval(oodt)
-    end if
+!    if ( readParam('inertia') .gt. 0 ) then
+!      dt = readParam('cour')/max( maxval(oodt), maxval(wpeSafe) )
+!    else
+!      dt = readParam('cour')/maxval(oodt)
+!    end if
     ! Write out the dt we actually use, both to file and to the terminal. 
-    call writeReal('dt.out', dt)
-    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
+!    call writeReal('dt.out', dt)
+!    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
+
+
+
   end subroutine dtSetup
 
   ! ----------------------------------------------------------------------------------------------
