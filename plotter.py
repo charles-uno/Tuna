@@ -13,6 +13,7 @@
 import gc
 import matplotlib
 import os
+from os.path import basename
 # Change matplotlib settings to allow use over SSH without X forwarding. 
 if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] is '':
   matplotlib.use('Agg')
@@ -30,8 +31,8 @@ try:
   import cPickle as pickle
 except ImportError:
   import pickle
-from sys import argv
-from time import localtime as lt, sleep
+from sys import argv, stdout
+from time import localtime as lt, sleep, time
 
 # #############################################################################
 # ######################################################################## Main
@@ -44,9 +45,21 @@ def main():
   # Initialize the Tuna Plotter. 
   TP = tunaPlotter(flags, paths)
 
+
+  allParams = TP.getAllParams()
+
+  for p in allParams:
+    print '\t', p, allParams[p]
+
+  print ''
+
+
+
   # Use the Tuna Plotter to create plots per the names and corresponding 
   # arguments from the terminal. 
 
+  if 'c' in names:
+    TP.runCheckup()
 
   if 'f' in names:
     TP.plotFrequencies( *names['f'] )
@@ -57,8 +70,15 @@ def main():
   if 'p' in names:
     TP.paramSummary()
 
-  if 'c' in names:
-    TP.runCheckup()
+  if 'q' in names:
+    for model in (1,): #(1, 2, 3, 4):
+      for azm in (8,): #(1, 8, 64):
+        TP.plotParallel(model=model, azm=azm)
+
+  if 'x' in names:
+    TP.pickle()
+
+
 
 
 
@@ -145,6 +165,27 @@ class tunaPlotter:
     line = params.split(key)[1].split('\n')[0]
     return num( line.strip(' =') )
 
+  # Get a listing of all the parameters used in these runs. Essentially, we're
+  # reconstructing the parameters dictionary at the top of the driver script. 
+  def getAllParams(self):
+    allParams = {}
+    # Scroll through all the output directories. 
+    for path in self.paths:
+      # Grab the parameter input file. 
+      paramLines = open(path + 'params.in', 'r').readlines()
+      # Split each line into key and value. 
+      for line in paramLines:
+        key = line.split('=')[0].strip()
+        val = num( line.split('=')[-1] )
+        # Add the key to our parameter dictionary, if it's not already there. 
+        if key not in allParams:
+          allParams[key] = []
+        # Add the value, if it's not already there. 
+        if val not in allParams[key]:
+          allParams[key].append(val)
+    # Return the parameter dictionary. 
+    return allParams
+
   # Given a set of run parameters, find the desired run path. 
   def getPath(self, **kargs):
     # Check all the paths we have. 
@@ -224,6 +265,8 @@ class tunaPlotter:
       params['Y'] = r*np.cos(q)
       params['xLabel'] = 'X_{GSE} \;\; (R_E)'
       params['yLabel'] = 'Z_{GSE} \;\; (R_E)'
+      # Dipole plots are outlined. 
+      params['outline'] = True
     # Unwrapped plots use normalized cos theta and the McIlwain parameter. 
     else:
       params['Y'] = r/np.sin(q)**2
@@ -311,11 +354,6 @@ class tunaPlotter:
       print ', '.join( col(key) + col(val) for key, val in kparams )
     return
 
-
-
-
-
-
   # ---------------------------------------------------------------------------
   # --------------------------------------------------------- Last Run Checkup
   # ---------------------------------------------------------------------------
@@ -328,18 +366,11 @@ class tunaPlotter:
     outDirs = dirs(root)
     # Find the one that's been modified most recently. 
     newDir = max( (os.path.getmtime(d), d) for d in outDirs )[1]
-
-#    # Sanity test. 
-#    newDir = '/export/scratch/users/mceachern/stability_test_autoboris/'
-
-
     print ''
     print 'Checking on: ', newDir.replace(root, '')
     print ''
     # Get the paths for each run within the most recent output directory. 
     runDirs = [ d for d in dirs(newDir) if 'params.in' in os.listdir(d) ]
-
-
     # Use a dictionary of dictionaries to keep track of parameters. 
     paramDict = {}
     for d in runDirs:
@@ -369,9 +400,6 @@ class tunaPlotter:
 
     print header
 
-#    kparams = sorted( paramDict[d].items() )
-#    print ''.join( col(key, 6) + col(val, 6) for key, val in kparams ),
-
     # Scroll through each run and check on its progress. 
     for d in runDirs:
 
@@ -397,64 +425,7 @@ class tunaPlotter:
       else:
         print 'Waiting...'
 
-
-
-#      print '\t' + ''.join(line.strip() for line in out)
-#      print '\t' + ''.join(line.strip() for line in err)
-
-
-
-
-
     return
-
-
-
-    # We'll keep a dictionary of dictionaries. 
-    paramDict = {}
-    # Scroll through the paths and grab the parameters used by each. 
-    for path in self.paths:
-      # Each path gets a dictionary of parameters. 
-      paramDict[path] = {}
-      # Grab the parameters input file. 
-      paramLines = open(path + 'params.in').readlines()
-      # Lines are always formatted as 'key = val'
-      for line in paramLines:
-        key, val = [ x.strip() for x in line.split('=') ]
-        # Store this in the dictionary. 
-        paramDict[path][key] = val
-    # Don't bother printing out a parameter shared by all runs. 
-    for key, val in paramDict[ self.paths[0] ].items():
-      # Check if any path has a different value for this key. 
-      for path in self.paths:
-        if key not in paramDict[path] or paramDict[path][key]!=val:
-          break
-      # If all paths have the same value for this key, cut it. 
-      else:
-        for path in self.paths:
-          if key in paramDict[path]:
-            del paramDict[path][key]
-    # Now print off the parameters used for each path. 
-    for path in self.paths:
-      # Just keep the immediate directory name as a label. 
-      shortPath = path.split('/')[-2].split('_')[0]
-      print col(shortPath + ': '),
-      # Print out the params as a comma-delimited set of columns. 
-      kparams = sorted( paramDict[path].items() )
-      print ', '.join( col(key) + col(val) for key, val in kparams )
-    return
-
-
-
-
-
-
-
-
-
-
-
-
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------------- Lazy Plot
@@ -501,6 +472,139 @@ class tunaPlotter:
     PW.setParam( title= ' \\quad '.join(titles) )
     # Render the plot window, either as a window or as an image. 
     return self.render(PW, 'lazy.png')
+
+
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------------- Parallel Plot
+  # ---------------------------------------------------------------------------
+
+  def plotParallel(self, model=1, azm=1):
+
+    # Three columns: no E3, no J3, yes J3. 
+    # Four rows: SzT, SzP, Ez, Jz. 
+    PW = plotWindow(4, 3, colorbar='sym', yPad=1)
+
+    # Magnetic constant in nH/m. 
+    mu0 = 1256.63706
+
+    # Iterate through the columns. 
+    for row in range(3):
+      # -1 means no inertia, and automatic Boris factor. With a manual Boris
+      # factor of 1, the parallel electric field doesn't show up at all. 
+      inertia = 1 if row==2 else -1
+      epsfac = 1 if row==0 else -1
+      # Find the appropriate data path. 
+      path = self.getPath(inertia=inertia, epsfac=epsfac, model=model, azm=azm)
+
+      # Label the column. 
+      rowLabels = ('\\mathrm{No} \\;\\; E_\\parallel', 
+                   '\\mathrm{No} \\;\\; J_\\parallel', 
+                   '\\mathrm{Yes} \\;\\; J_\\parallel')
+      PW[row].setParam( rowLabel=rowLabels[row] )
+      # Handle the coordinate grid and axis labels. 
+      PW.setParam( **self.getCoords(path) )
+
+      # Label each row. 
+      PW[0].setParam(colLabel='\\frac{1}{\\mu_0} E_x B_y^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
+      PW[1].setParam(colLabel='-\\frac{1}{\\mu_0} E_y B_x^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
+      PW[2].setParam(colLabel='E_z \\quad \\mathrm{(\\frac{mV}{m})}')
+      PW[3].setParam(colLabel='J_z \\quad \\mathrm{(\\frac{\\mu A}{m^2})}')
+
+      # Read in the data. For the moment, let's look at the last time step. 
+      step = -1
+      tLabel = str( self.getArray(path + 't.dat')[step] ) + 's'
+
+      # Poloidal Poynting flux. 
+      Ex = np.real( self.getArray(path + 'Ex.dat')[..., step] )
+      By = np.real( self.getArray(path + 'By.dat')[..., step] )
+      PW[0, row].setContour( Ex*By/mu0 )
+
+      # Toroidal Poynting flux. Imaginary components. Conjugate of Bx. 
+      Ey = np.imag( self.getArray(path + 'Ey.dat')[..., step] )
+      Bx = -np.imag( self.getArray(path + 'Bx.dat')[..., step] )
+      PW[1, row].setContour( Ey*Bx/mu0 )
+
+
+
+
+    # Plot supertitle. 
+    PW.setParam(title='\\mathrm{Model \\;\\; ' + str(model) +
+                      ' \\;\\; with \\;\\; } m = \\mathrm{' + str(azm) +
+                      ' \\;\\; at \\;\\; } t = \\mathrm{' + tLabel + '}')
+
+
+    return self.render(PW, 'parallel.png')
+
+
+
+
+
+
+
+    # We will plot the real and imaginary components for each field. 
+    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'jz')
+    # Each run gets two rows: one real and one imaginary. 
+    PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
+    # Keep track of the runs we're comparing -- particularly their time stamps. 
+    titles = []
+    # Scroll through the runs. 
+    for runNum, path in enumerate(self.paths):
+      # Match each run's name up with its time stamp. 
+      timeStamp = format(self.getArray(path + 't.out')[step], '.2f') + 's'
+      shortPath = path.split('/')[-2].split('_')[0]
+      titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
+      # Handle the coordinate grid and axis labels. 
+      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
+      # Each field gets a column. 
+      for col, name in enumerate(fields):
+        # Label the column. 
+        units = ( ' \\quad \mathrm{(' + 
+                  {'B':'nT', 
+                   'E':'\\frac{mV}{m}', 
+                   'j':'\\frac{\\mu A}{m^2}'}[ name[0] ] +
+                  ')}' )
+        PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
+        # Grab the data. 
+        zComp = self.getArray(path + name + '.out')[:, :, step]
+        # Plot real and imaginary components. 
+        for ReIm in ('R', 'I'):
+          # Figure out which row this plot actually belongs on. 
+          row = runNum if ReIm=='R' else len(self.paths) + runNum
+          # Label the row. 
+          rowLabel = '\\mathbb{' + ReIm + '} \;\; \\mathrm{' + shortPath + '}'
+          PW[row].setParam(rowLabel=rowLabel)
+          # Grab the appropriate data component. 
+          Z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
+          # Plot the contour. 
+          PW[col, row].setContour(Z)
+    # Add a title to the top so we know the time stamp(s). 
+    PW.setParam( title= ' \\quad '.join(titles) )
+    # Render the plot window, either as a window or as an image. 
+    return self.render(PW, 'lazy.png')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------ Frequency Plot
@@ -623,9 +727,7 @@ class tunaPlotter:
       print 'Max e0/s0 = ', np.max(epsPara/sig0)
       print 'Max nu/wp^2 = ', np.max(nu/wp**2)
 
-
       print ''
-
 
 #      # Integrating factors... 
 #      s0 = sig0*dt/epsPara
@@ -641,6 +743,30 @@ class tunaPlotter:
 
     # Render the plot window, either as a window or as an image. 
     return self.render(PW, 'cutoff.png')
+
+  # ---------------------------------------------------------------------------
+  # -------------------------------------------------------------- Data Pickler
+  # ---------------------------------------------------------------------------
+
+  # This routine takes the time to read in all of the arrays from a run, then
+  # writes them back out as pickles for easy access later. 
+  def pickle(self):
+    # Scroll through the output directories. 
+    for path in self.paths:
+      # Print whenever we go to a new directory. 
+      print ''
+      print path
+      # Find all of the data arrays to be read in, and scroll through them. 
+      datFiles = files(path, end='.dat')
+      for f in datFiles:
+        print '\t' + basename(f)
+        # We call readArray directly. The Tuna Plotter wants to store a copy of
+        # everything we read in but we don't actually care about this data. 
+        readArray(f, indent='\t\t')
+    return
+
+
+
 
   '''
 
@@ -1576,8 +1702,9 @@ class plotCell:
   X, Y, Z = None, None, None
   # If any lines are to be drawn on the plot, they are stored here. 
   lines = ()
-  # By default, do not use a legend.
+  # By default, do not use a legend or an outline.
   legend = False
+  outline = False
 
   # ---------------------------------------------------------------------------
   # ------------------------------------- Initialize Plot Cell from Axis Object
@@ -1994,8 +2121,17 @@ def com(x):
 # absolute paths, and that directory paths end in a slash. 
 def dirs(path=None):
   # By default, use the current location. 
-  p = path if path is not None else os.getcwd()
+  p = path if path is not None else os.getcwd() + '/'
   return sorted( p + x + '/' for x in os.listdir(p) if os.path.isdir(p + x) )
+
+# Grab all files in the given directory. Remember that we always use absolute
+# paths, and that directory names always end with a slash. 
+def files(path=None, end=''):
+  p = path if path is not None else os.getcwd()
+  # Grab all files in the directory. 
+  f = [ p + x for x in os.listdir(p) if os.path.isfile(p + x) ]
+  # Only return the ones that end with our desired extension. 
+  return sorted( x for x in f if x.endswith(end) )
 
 # Safely ask for the first element of a possibly-empty list or generator. 
 def first(x):
@@ -2072,61 +2208,99 @@ def getArgs():
 # ============================================================ Data File Access
 # =============================================================================
 
-def readArray(filename):
-  # If a pickle is available, use that. 
-  pklname = filename[:filename.rfind('.')] + '.pkl'
-  if os.path.isfile( pklname ):
-    print 'Reading ' + '/'.join(pklname.split('/')[-2:])
+def readArray(filename, indent='\t'):
+  # The out prefix is just an older convention for dat files, Fortran output.
+  # We ultimately want to use the Python data format, pickles. 
+  name = filename[ :filename.rfind('.') ]
+  datname, outname, pklname = name + '.dat', name + '.out', name + '.pkl'
+  # If we're looking at an out postfix, move it to dat. 
+  if os.path.isfile(outname) and not os.path.exists(datname):
+    os.rename(outname, datname)
+    print ( indent + 'WARNING: Renamed ' + basename(outname) + ' to ' +
+            basename(datname) )
+
+#  # Get the expected array dimensions from the dat file. Note that this seems
+#  # to slow things down significantly. Rather than perform this check, let's
+#  # just report the dimensions. 
+#  if os.path.exists(datname):
+#    # Grab the first line of the dat file, while contains the dimensions. 
+#    with open(datname, 'r') as f:
+#      dimLine = f.readline()
+#    # The first line is the array dimensions. 
+#    dims = [ int(x) for x in dimLine.split() ]
+#  else:
+#    print indent + 'WARNING: ' + basename(datname) + ' not found. '
+#    dims = (0,)
+
+  # If a pickle is available, read that instead of parsing the Fortran output. 
+  if os.path.isfile(pklname):
+    print indent + 'Reading ' + col( basename(pklname), 10) + ' ... ',
+    stdout.flush()
+    # Note how long it takes to read the file. 
+    start = time()
     with open(pklname, 'rb') as handle:
-      return pickle.load(handle)
-  # Make sure the file exists before trying to access it. 
-  elif os.path.isfile(filename):
-    print 'Reading ' + '/'.join(filename.split('/')[-2:])
-  else:
-    print 'WARNING: ' + '/'.join(filename.split('/')[-2:]) + ' not found. '
-    return None
-  # Read in the file as a list of strings. 
-  arrayLines = open(filename, 'r').readlines()
-  # The first line is the array dimensions. 
-  dims = [ int(x) for x in arrayLines.pop(0).split() ]
-  # Assemble a one-dimensional array large enough to hold all of the values.
-  # (This is much faster than appending as we go.) This means figuring out if
-  # we want reals or complexes. 
-  firstValue = com( arrayLines[0].split()[0] )
-  dtype = np.complex if isinstance(firstValue, np.complex) else np.float
-  nVals = np.prod(dims)
-  vals = np.empty(nVals, dtype=dtype)
-  # Now fill the array with values one at a time. Stop when it's full, or when
-  # we run out of values. 
-  i = 0
-  for line in arrayLines:
-    for val in line.split():
-      # Check if the array is full. 
-      if i==nVals:
-        break
-      # If it's not, grab the next value. 
-      else:
-        vals[i] = com(val)
-        i = i + 1
-  # Before returning the array, reshape and transpose it. Fortran and Python
-  # have opposite conventions for which index should change fastest. 
-  arr = np.transpose( np.reshape( vals, dims[::-1] ) )
-  # Check if the array is full before returning it. If it's not, the run may
-  # have crashed or run out of time. Return as many time steps as possible. 
-  if i==nVals:
-    # Dump a pickle so we can read it fast next time. 
-    with open(pklname, 'wb') as handle:
-        pickle.dump(arr, handle, protocol=-1)
-    print '\tCreated ' + '/'.join(pklname.split('/')[-2:])
-    # Then return the array. 
+      arr = pickle.load(handle)
+    print format(time() - start, '5.1f') + 's' + ' ... ' + by(arr.shape)
     return arr
+
+  # If the pickle doesn't exist yet, parse the Fortran output. 
   else:
+    print indent + 'Reading ' + basename(datname) + ' ... ',
+    stdout.flush()
+    # Note how long it takes to read the file. 
+    start = time()
+    # Grab the data as a list of strings. 
+    with open(datname, 'r') as f:
+      arrayLines = f.readlines()
+    # The first line is the dimensions of the array. 
+    dims = [ int(x) for x in arrayLines.pop(0).split() ]
+    # Assemble a one-dimensional array large enough to hold all of the values.
+    # (This is much faster than appending as we go.) This means figuring out if
+    # we want reals or complexes. 
+    firstValue = com( arrayLines[0].split()[0] )
+    dtype = np.complex if isinstance(firstValue, np.complex) else np.float
+    nVals = np.prod(dims)
+    vals = np.empty(nVals, dtype=dtype)
+    # Now fill the array with values one at a time. Stop when it's full, or
+    # when we run out of values. 
+    i = 0
+    for line in arrayLines:
+      for val in line.split():
+        # Check if the array is full. 
+        if i==nVals:
+          break
+        # If it's not, grab the next value. 
+        else:
+          vals[i] = com(val)
+          i = i + 1
+    # Reshape and transpose the array. Fortran and Python have opposite
+    # indexing conventions. 
+    arr = np.transpose( np.reshape( vals, dims[::-1] ) )
+    # Check the array dimensions. If it's not full, the run may have crashed. 
     actualDims = dims[:-1] + [ np.int( i/np.prod(dims[:-1]) ) ]
-    print '\tWARNING: Expected ' + by(dims) + ' but found ' + by(actualDims)
+    # Keep only the time steps that actually got printed. 
+    if dims!=actualDims:
+      arr = arr[ ..., :actualDims[-1] ]
+    # Report how long this all took. 
+    print format(time() - start, '5.1f') + 's'
+    # Dump a pickle for next time. 
+    print indent + 'Creating ' + basename(pklname) + ' ... ',
+    stdout.flush()
+    start = time()
     with open(pklname, 'wb') as handle:
-        pickle.dump(arr[..., :actualDims[-1] ], handle, protocol=-1)
-    print '\tCreated ' + '/'.join(pklname.split('/')[-2:])
-    return arr[..., :actualDims[-1] ]
+      pickle.dump(arr, handle, protocol=-1)
+    print format(time() - start, '5.1f') + 's'
+    # Check if the data dimensions are consistent with the dimensions in the
+    # header of the dat file. 
+    if by(dims)!=by(arr.shape):
+      print ( indent + 'WARNING: Expected ' + by(dims) + ' but found ' +
+              by(arr.shape) )
+    # When we read in lots of arrays in quick succession, Python's automatic
+    # garbage collection gets overwhelmed. We solve that by manually forcing
+    # garbage collection. 
+    gc.collect()
+    # Finally, return the array. 
+    return arr
 
 # #############################################################################
 # ########################################################### For Importability
