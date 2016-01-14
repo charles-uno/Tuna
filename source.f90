@@ -683,7 +683,7 @@ module loop
 end module loop
 
 ! #############################################################################
-! ################################################################ Input Module
+! ######################################################### Input/Output Module
 ! #############################################################################
 
 ! The IO module also exists at the top level, bringing in no other modules. 
@@ -777,14 +777,12 @@ module io
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
-    if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0. 
+    ! Parallel physics handling parameters. 
+    if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0.
+
+
+    if (varname .eq. 'inertia'  ) defaultParam = 1.    ! Include electron inertial effects. 
     ! Physical parameter profiles.
-
-
-
-
-
-
     if (varname .eq. 'model') defaultParam = 1         ! Ionospheric profile. 
     if (varname .eq. 'naz'  ) defaultParam = 10        ! Density at auroral base, 1/cm^3. 
     if (varname .eq. 'haz'  ) defaultParam = 1         ! Scale height (in RE) of auroral density. 
@@ -796,7 +794,7 @@ module io
     if (varname .eq. 'idrive'   ) defaultParam = 1     ! Waveform index. 
     if (varname .eq. 'bdrive'   ) defaultParam = 0.    ! Strength of driving B field (in nT). 
     if (varname .eq. 'jdrive'   ) defaultParam = 0.    ! Strength of driving current (in uA/m^2). 
-    if (varname .eq. 'fdrive'   ) defaultParam = 1./60 ! Frequency (in Hz). 
+    if (varname .eq. 'fdrive'   ) defaultParam = 0.015 ! Frequency (in Hz). 
     if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet duration (in s). 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude (in degrees). 
     if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude (in degrees). 
@@ -807,6 +805,24 @@ module io
     if (varname .eq. 'sighatm') defaultParam = -1     ! If < 0, value is integrated from profile. 
     if (varname .eq. 'sigpatm') defaultParam = -1
   end function defaultParam
+
+  ! ==============================================================================================
+  ! ======================================================================== Write Parameter Value
+  ! ==============================================================================================
+
+  ! While most of the output is in the form of arrays (in DAT files), we also want to be able to
+  ! report snapshots of the parameter scales we're working with. These just go to stdout. 
+  subroutine writeParam(key, val, units)
+    character(len=*), intent(in)           :: key
+    double precision, intent(in)           :: val
+    character(len=*), intent(in), optional :: units
+    ! Output is lined up nicely in columns. If units are given, they're printed. 
+    if ( present(units) ) then
+      write(*, '(a30, a, es10.2, 2a)') key, ' = ', val, ' ', units
+    else
+      write(*, '(a30, a, es10.2)') key, ' = ', val
+    end if
+  end subroutine writeParam
 
   ! ==============================================================================================
   ! ========================================================================== Write Complex Array
@@ -879,6 +895,8 @@ module io
     double precision, dimension(0:), intent(in), optional :: c1, c2, c3, c4, c5, c6, c7, c8, c9
     integer                                               :: line, nLines
     open(unit=99, file=filename, action='write', access='append')
+    ! Print the number of lines. 
+    write(99, *) size(c0)
     ! Assume all columns are of the same length. 
     nLines = size(c0) - 1
     do line=0,nLines
@@ -1245,17 +1263,18 @@ module geometry
 
   subroutine writeGeometry()
     integer :: inu
-    call writeRealArray('q.out', q)
+    call writeRealArray('q.dat', q)
     ! Convert distances from Mm to RE for easier plotting. 
-    call writeRealArray('r.out', r/RE)
-    call writeRealArray('X.out', r*sin(q)/RE)
-    call writeRealArray('Z.out', r*cos(q)/RE)
+    call writeRealArray('r.dat', r/RE)
+!    call writeRealArray('X.out', r*sin(q)/RE)
+!    call writeRealArray('Z.out', r*cos(q)/RE)
     ! Write out the eigenvalues and eigenvectors at the ionosphere. 
-    call writeRealColumns('nu.out', nu)
-    do inu=0,nModes-1
-      write(evecfile(5:7),'(i3.3)') inu
-      call writeRealColumns( evecfile, usup1_(), Yinv(inu, :) )
-    end do
+    call writeRealColumns('evals.dat', nu)
+    call writeRealArray( 'evecs.dat', Yinv(0:nModes-1, :) )
+!    do inu=0,nModes-1
+!      write(evecfile(5:7),'(i3.3)') inu
+!      call writeRealColumns( evecfile, usup1_(), Yinv(inu, :) )
+!    end do
   end subroutine writeGeometry
 
   ! ----------------------------------------------------------------------------------------------
@@ -1604,6 +1623,9 @@ module ionos
   ! ---------------------------------------------------------------------------- Compute Time Step
   ! ----------------------------------------------------------------------------------------------
 
+  ! This routine computes the time step according to the Alfven speed and grid spacing, the time
+  ! step based on parallel plasma motions, adjusts them based on any Boris corrections, and
+  ! chooses a time step for the experiment. 
   subroutine dtSetup()
     ! One over the zone crossing times in each direction, for computing Alfven timescale. 
     double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz
@@ -1633,11 +1655,12 @@ module ionos
       dtAlfven = 1./ maxval( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
     ! Record the Alfven time step. 
-    call writeReal('dt.out', readParam('cour')*dtAlfven)
+    call writeParam('Alfven dt', readParam('cour')*dtAlfven, 's')
     ! We risk problems if we allow the plasma frequency to become comparable to the frequency of
     ! the waves we're driving. We constrain our automatic Boris factor to make sure that the
     ! plasma frequency is always at least two orders of magnitude above the driving frequency. 
     borisMax = 1e-4*minval( n()*qe**2 / (me*eps0) ) / ( 2*pi*readParam('fdrive') )**2
+    call writeParam('Maximum Boris Factor', borisMax)
     ! By default (specified with nonpositive epsfac) we automatically determine the appropriate
     ! Boris factor. 
     if (readParam('epsfac') .le. 0) then
@@ -1647,8 +1670,7 @@ module ionos
         ! The inertial time step is computed from the plasma frequency. There's an extra fudge
         ! factor in there since inertial effects are particularly prone to instability. 
         dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
-        ! Record the unmodified parallel time step. 
-        call writeReal('dt.out', readParam('cour')*dtParallel)
+        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Compute the Boris factor. Note that eps0 appears in the square root of the plasma
         ! frequency. 
         boris = min( borisMax, (dtAlfven/dtParallel)**2 )
@@ -1661,13 +1683,14 @@ module ionos
         ! exponential. Without a Boris correction, the parallel electric field simply doesn't
         ! appear in the simulation. 
         dtParallel = maxval(eps0/sig0)
-        ! Record the unmodified parallel time step. 
-        call writeReal('dt.out', readParam('cour')*dtParallel)
+        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Compute the Boris factor. Note that eps0 appears in this time step calculation directly. 
         boris = min(borisMax, dtAlfven/dtParallel)
         ! Update the parallel time step.
         dtParallel = maxval(boris*eps0/sig0)
       end if
+      ! Report the automatic Boris factor. 
+      call writeParam('Automatic Boris Factor', boris)
     ! If we're given a positive epsfac, that means that (for some reason) the user wants to set
     ! the Boris correction manually. 
     else
@@ -1675,12 +1698,14 @@ module ionos
       ! time step based on the Boris factor. If the factor is too small, this means that time time
       ! step will be small, and runtime will be very long. 
       if (readParam('inertia') .gt. 0) then
+        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
+        ! factor in there since inertial effects are particularly prone to instability. 
+        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Grab the Boris factor. Allow it to exceed the maximum. 
         boris = readParam('epsfac')
         ! Apply it to the inertial time step. Keep the fudge factor in there. 
         dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
-        ! Record the unmodified parallel time step. 
-        call writeReal('dt.out', readParam('cour')*dtParallel)
       ! We do not allow a manually-Boris-adjusted non-inertial parallel time step to trump the
       ! Alfven time step. There may be Boris values for which this will lead to instability. In
       ! practice, this allows a Boris factor of 1 to be used to ignore the parallel electric field
@@ -1689,19 +1714,20 @@ module ionos
         ! For completeness, compute and record the unmodified parallel time step. We don't
         ! actually use it for anything. 
         dtParallel = maxval(eps0/sig0)
-        ! Record the unmodified parallel time step. 
-        call writeReal('dt.out', readParam('cour')*dtParallel)
+        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Grab the Boris factor. Allow it to exceed the maximum. 
         boris = readParam('epsfac')
         ! Don't use it. Just set the parallel time step to "infinity." 
         dtParallel = 1. 
       end if
+      ! Report the manually-set Boris factor. 
+      call writeParam('Manual Boris Factor', boris)
     end if
     ! Output the Boris-adjusted parallel time step. 
-    call writeReal('dt.out', readParam('cour')*dtParallel)
+    call writeParam('Adjusted Parallel dt', readParam('cour')*dtParallel, 's')
     ! The experimental time step is the smaller of the Alfven and parallel time steps. 
     dt = readParam('cour')*min(dtAlfven, dtParallel)
-    write(*,'(a, es9.1, a)') 'dt = ', 1e6*dt, 'us'
+    call writeParam('dt', dt, 's')
     ! Finally, actually apply the Boris correction to the parallel electric constant.  
     epsPara = boris*eps0
   end subroutine dtSetup
@@ -1713,26 +1739,41 @@ module ionos
   subroutine writeIonos()
     double precision, dimension(0:n1, 0:n3) :: dz, v
     ! Conductivity profiles are printed in S/m (Mho/m). 
-    call writeRealArray('sig0.out', 1000*sig0)
-    call writeRealArray('sigH.out', 1000*sigH)
-    call writeRealArray('sigP.out', 1000*sigP)
-    ! Alfven speed in km/s. 
-    call writeRealArray('vA.out', 1000*vA())
-    ! Number density in cm^-3. 
-    call writeRealArray( 'n.out', 1e-24*n() )
-    ! Plasma frequencies for electrons and protons in radians/s. 
-    call writeRealArray( 'wpe.out', sqrt( n()*qe**2 / (me*epsPara) ) )
-    call writeRealArray( 'wpp.out', sqrt( n()*qe**2 / (mp*epsPara) ) )
-    ! Gyrofrequencies for electrons and protons in radians/s. 
-    call writeRealArray('wce.out', qe*sqrt( BB() )/me)
-    call writeRealArray('wcp.out', qe*sqrt( BB() )/mp)
+    call writeRealArray('sig0.dat', 1000*sig0)
+    call writeRealArray('sigH.dat', 1000*sigH)
+    call writeRealArray('sigP.dat', 1000*sigP)
     ! Perpendicular electric constant in units of eps0. 
-    call writeRealArray('epsPerp.out', epsPerp/eps0)
+    call writeRealArray('epsPerp.dat', epsPerp/eps0)
+    ! Number density in cm^-3. 
+    call writeRealArray( 'n.dat', 1e-24*n() )
+    ! We don't print out profiles for the plasma frequency and Alfven speed, since those can be
+    ! easily computed from the parameters we do print out. Instead, we give snapshots. 
+    call writeParam('Alfven Speed Min', 1000*minval( vA() ), 'km/s')
+    call writeParam('Alfven Speed Max', 1000*maxval( vA() ), 'km/s')
+    call writeParam('Plasma Frequency Min', minval( sqrt( n()*qe**2 / (me*eps0) ) ), 'rad/s')
+    call writeParam('Plasma Frequency Max', maxval( sqrt( n()*qe**2 / (me*eps0) ) ), 'rad/s')
+    call writeParam('Adjusted Plasma Frequency Min', minval( sqrt( n()*qe**2 / (me*epsPara) ) ), 'rad/s')
+    call writeParam('Adjusted Plasma Frequency Max', maxval( sqrt( n()*qe**2 / (me*epsPara) ) ), 'rad/s')
+    call writeParam('epsPerp/sigP Min', minval(epsPerp/sigP), 's')
+    call writeParam('epsPerp/sigH Min', minval(epsPerp/sigH), 's')
+    call writeParam('eps0/sig0    Max', maxval(eps0/sig0), 's')
+    call writeParam('epsPara/sig0 Max', maxval(epsPerp/sig0), 's')
+    call writeParam('Collision Frequency Max', maxval( n()*qe**2 / (me*sig0) ), 'Hz')
+    call writeParam('Adjusted Speed of Light', 1000*sqrt( 1./(mu0*epsPara) ), 'km/s')
+!    ! Alfven speed in km/s. 
+!    call writeRealArray('vA.out', 1000*vA())
+!    ! Plasma frequencies for electrons and protons in radians/s. 
+!    call writeRealArray( 'wpe.out', sqrt( n()*qe**2 / (me*epsPara) ) )
+!    call writeRealArray( 'wpp.out', sqrt( n()*qe**2 / (mp*epsPara) ) )
+!    ! Gyrofrequencies for electrons and protons in radians/s. 
+!    call writeRealArray('wce.out', qe*sqrt( BB() )/me)
+!    call writeRealArray('wcp.out', qe*sqrt( BB() )/mp)
     ! Bounce time (factor of 2 for there and back) in seconds. Compute the distance along the
     ! field line between each pair of points, divide by the average Alfven speed, and sum. 
     dz = abs( eoshift(usup3()*h3(), 1, dim=2) - usup3()*h3() )
     v = 0.5*( eoshift(vA(), 1, dim=2) + vA() )
-    call writeRealColumns('tBounce.out', L_(), 2*sum( dz(:, 0:n3-1)/v(:, 0:n3-1), dim=2 ) )
+    call writeRealColumns( 'L.dat', L_() )
+    call writeRealColumns( 'tBounce.dat', 2*sum( dz(:, 0:n3-1)/v(:, 0:n3-1), dim=2 ) )
   end subroutine writeIonos
 
   ! ----------------------------------------------------------------------------------------------
@@ -1741,7 +1782,7 @@ module ionos
 
   subroutine ionosSetup()
     ! Alter the ionosfile path to get the model we want. 
-    write(ionosfile(len(ionosfile) - 4:len(ionosfile) - 4),'(i1)') int(readParam('model'))
+    write(ionosfile(len(ionosfile) - 4:len(ionosfile) - 4),'(i1)') int( readParam('model') )
     ! Integrate atmospheric conductivities. 
     call atmSetup()
     ! Compute grid-resolved electric constant and conductivities. 
@@ -2035,36 +2076,28 @@ module fields
     integer :: nt
     nt = int(tmax/dtout)
     ! Time stamps. 
-    call writeInteger('t.out', nt)
+    call writeInteger('t.dat', nt)
+    call writeInteger('driveScale.dat', nt)
     ! Bulk magnetic fields mapped to physical coordinates in nT. 
-    call writeComplexArray('Bx.out', Bx(), onlyheader=.true., nt=nt)
-    call writeComplexArray('By.out', By(), onlyheader=.true., nt=nt)
-    call writeComplexArray('Bz.out', Bz(), onlyheader=.true., nt=nt)
+    call writeComplexArray('Bx.dat', Bx(), onlyheader=.true., nt=nt)
+    call writeComplexArray('By.dat', By(), onlyheader=.true., nt=nt)
+    call writeComplexArray('Bz.dat', Bz(), onlyheader=.true., nt=nt)
     ! Bulk electric fields mapped to physical coordinates in mV/m. 
-    call writeComplexArray('Ex.out', Ex(), onlyheader=.true., nt=nt)
-    call writeComplexArray('Ey.out', Ey(), onlyheader=.true., nt=nt)
-    call writeComplexArray('Ez.out', Ez(), onlyheader=.true., nt=nt)
-    ! Parallel current mapped to physical coordinates in uA/m^2. 
-    call writeComplexArray('jz.out', jz(), onlyheader=.true., nt=nt)
-!    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
-!    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlyheader=.true., nt=nt)
-!    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlyheader=.true., nt=nt)
+    call writeComplexArray('Ex.dat', Ex(), onlyheader=.true., nt=nt)
+    call writeComplexArray('Ey.dat', Ey(), onlyheader=.true., nt=nt)
+    call writeComplexArray('Ez.dat', Ez(), onlyheader=.true., nt=nt)
+    ! Parallel and driving current mapped to physical coordinates in uA/m^2. 
+    call writeComplexArray('Jz.dat', jz(), onlyheader=.true., nt=nt)
+    call writeRealArray( 'JyDrive.dat', j2drive/h2() )
     ! Scalar magnetic potential in... nT*Mm? This may not be a physically meaningful quantity. 
-    call writeComplexArray('PsiE.out', PsiE, onlyheader=.true., nt=nt)
-    call writeComplexArray('PsiI.out', PsiI, onlyheader=.true., nt=nt)
+    call writeComplexArray('PsiE.dat', PsiE, onlyheader=.true., nt=nt)
+    call writeComplexArray('PsiI.dat', PsiI, onlyheader=.true., nt=nt)
     ! Edge magnetic fields in nT. 
-    call writeComplexArray('BfE.out', Bf(RE), onlyheader=.true., nt=nt)
-    call writeComplexArray('BfI.out', Bf(RI), onlyheader=.true., nt=nt)
-    call writeComplexArray('BqE.out', Bq(RE), onlyheader=.true., nt=nt)
-    call writeComplexArray('BqI.out', Bq(RI), onlyheader=.true., nt=nt)
-    call writeComplexArray('Br.out', Br(), onlyheader=.true., nt=nt)
-    ! Electromagnetic energy density (per height), in nJ/m^3. 
-!    call writeComplexArray('u.out', u(), onlyheader=.true., nt=nt)
-
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Print time, driving.
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+    call writeComplexArray('BfE.dat', Bf(RE), onlyheader=.true., nt=nt)
+    call writeComplexArray('BfI.dat', Bf(RI), onlyheader=.true., nt=nt)
+    call writeComplexArray('BqE.dat', Bq(RE), onlyheader=.true., nt=nt)
+    call writeComplexArray('BqI.dat', Bq(RI), onlyheader=.true., nt=nt)
+    call writeComplexArray('Br.dat', Br(), onlyheader=.true., nt=nt)
   end subroutine writeFieldHeaders
 
   ! ----------------------------------------------------------------------------------------------
@@ -2270,7 +2303,8 @@ module fields
 
   subroutine writeFields()
     ! Time stamp. 
-    call writeReal('t.out', t)
+    call writeReal('t.dat', t)
+    call writeReal( 'driveScale.dat', getDriveScale(t) )
     ! Each field is defined on its own parity in i and k, but all fields are printed out at even i
     ! and even k. That means some interpolation is necessary before output. 
     call interpolateEvenFields()
@@ -2278,35 +2312,25 @@ module fields
     ! ground is the lower boundary to our Laplace's equation. We just have to go get them. 
     call computeGroundFields()
     ! Bulk magnetic fields mapped to physical coordinates in nT. 
-    call writeComplexArray('Bx.out', Bx(), onlydata=.true.)
-    call writeComplexArray('By.out', By(), onlydata=.true.)
-    call writeComplexArray('Bz.out', Bz(), onlydata=.true.)
+    call writeComplexArray('Bx.dat', Bx(), onlydata=.true.)
+    call writeComplexArray('By.dat', By(), onlydata=.true.)
+    call writeComplexArray('Bz.dat', Bz(), onlydata=.true.)
     ! Bulk electric fields mapped to physical coordinates in mV/m. 
-    call writeComplexArray('Ex.out', Ex(), onlydata=.true.)
-    call writeComplexArray('Ey.out', Ey(), onlydata=.true.)
-    call writeComplexArray('Ez.out', Ez(), onlydata=.true.)
+    call writeComplexArray('Ex.dat', Ex(), onlydata=.true.)
+    call writeComplexArray('Ey.dat', Ey(), onlydata=.true.)
+    call writeComplexArray('Ez.dat', Ez(), onlydata=.true.)
     ! Parallel current mapped to physical coordinates in uA/m^2. 
-    call writeComplexArray('jz.out', jz(), onlydata=.true.)
-!    ! Poloidal and toroidal Poynting flux components, in mW/m^2 (equally, erg/cm^2/s). 
-!    call writeComplexArray('ExBy.out', Ex()*conjg( By() )/mu0, onlydata=.true.)
-!    call writeComplexArray('EyBx.out', Ey()*conjg( Bx() )/mu0, onlydata=.true.)
+    call writeComplexArray('Jz.dat', jz(), onlydata=.true.)
     ! Scalar magnetic potential in... nT*Mm? This may not be a physically meaningful quantity. 
-    call writeComplexArray('PsiE.out', PsiE, onlydata=.true.)
-    call writeComplexArray('PsiI.out', PsiI, onlydata=.true.)
+    call writeComplexArray('PsiE.dat', PsiE, onlydata=.true.)
+    call writeComplexArray('PsiI.dat', PsiI, onlydata=.true.)
     ! Edge magnetic fields in nT. 
-    call writeComplexArray('BfE.out', Bf(RE), onlydata=.true.)
-    call writeComplexArray('BfI.out', Bf(RI), onlydata=.true.)
-    call writeComplexArray('BqE.out', Bq(RE), onlydata=.true.)
-    call writeComplexArray('BqI.out', Bq(RI), onlydata=.true.)
-    call writeComplexArray('Br.out', Br(), onlydata=.true.)
-    ! Electromagnetic energy density (per height), in nJ/m^3. 
-!    call writeComplexArray('u.out', u(), onlydata=.true.)
-
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Print time, driving
-    ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    end subroutine writeFields
+    call writeComplexArray('BfE.dat', Bf(RE), onlydata=.true.)
+    call writeComplexArray('BfI.dat', Bf(RI), onlydata=.true.)
+    call writeComplexArray('BqE.dat', Bq(RE), onlydata=.true.)
+    call writeComplexArray('BqI.dat', Bq(RI), onlydata=.true.)
+    call writeComplexArray('Br.dat', Br(), onlydata=.true.)
+  end subroutine writeFields
 
   ! ==============================================================================================
   ! ====================================================================== Physical Field "Arrays"
@@ -2387,20 +2411,6 @@ module fields
     double complex, dimension(0:n1, 0:n3) :: Cz
     Cz = (g31()*JCsup1 + g33()*JCsup3)/( h3()*J() )
   end function Cz
-
-  ! ----------------------------------------------------------------------------------------------
-  ! -------------------------------------------------------------------------- Bulk Energy Density
-  ! ----------------------------------------------------------------------------------------------
-
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%% Is this allowed? Should we be using a linear code to look at a nonlinear quantity? 
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-!  function u()
-!    double precision, dimension(0:n1, 0:n3) :: u
-!    u = 0.5*( Bx()*conjg( Bx() ) + By()*conjg( By() ) + Bz()*conjg( Bz() ) )/mu0                 &
-!      + 0.5*( Ex()*conjg( Ex() ) + Ey()*conjg( Ey() ) + Ez()*conjg( Ez() ) )*epsPerp
-!  end function u
 
   ! ----------------------------------------------------------------------------------------------
   ! ------------------------------------------------------------------------- Edge Magnetic Fields
