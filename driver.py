@@ -23,19 +23,24 @@ from time import localtime as lt, time
 # #############################################################################
 
 # If we want to give this run a custom directory name, put that here. 
-runDirName = 'stability_test'
+runDirName = 'inertial_length'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
-           'jdrive':[1e-4], 
-           'tmax':[300],
-           'azm':[16],
-           'inertia':[-1, 1],
-           'model':[1],
-#           'model':[1, 2, 3, 4],
-           'epsfac':[-1, 1],
-#           'azm':[1, 2, 4, 8, 16, 32, 64, 128],
-#           'fdrive':[1./40]
+              'jdrive':[1e-4], 
+              'dtout':[0.01],
+              'tmax':[5],
+              'azm':[16],
+              'lmin':[5],
+              'lmax':[7],
+              'n1':[100, 150, 200],
+              'n3':[400, 450, 500, 550],
+              'sfac':[1.02, 1.04],
+              'fudge':[0.1],
+              'model':[1],
+              'inertia':[1]
+#              'azm':[1, 2, 4, 8, 16, 32, 64, 128],
+#              'fdrive':[0.015]
          }
 
 # #############################################################################
@@ -226,7 +231,7 @@ def setPBS(run):
   # A 100s run should complete in an hour. 
   hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/100.) )
   # Write out the PBS script. 
-  append('#!/bin/bash -l', pbs)
+  append('#!/bin/bash -l', 'tuna.pbs')
   # Indicate the size and length of the job. 
   append('#PBS -l nodes=1:ppn=16,walltime=' + hours + ':00:00', 'tuna.pbs')
   # Get email when the job begins, ends, or aborts. 

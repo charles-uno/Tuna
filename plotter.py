@@ -53,16 +53,36 @@ def main():
 
   print ''
 
-
-
   # Use the Tuna Plotter to create plots per the names and corresponding 
   # arguments from the terminal. 
+
+  if 'a' in names:
+    for model in (1, 2, 3, 4):
+      for azm in (1, 8, 64):
+        TP.plotAtmosphere(model=model, azm=azm)
 
   if 'c' in names:
     TP.runCheckup()
 
+  if 'd' in names:
+    for model in (1, 2, 3, 4):
+      for azm in (1, 8, 64):
+        TP.plotDownward(model=model, azm=azm)
+
+
+  if 'e' in names:
+    TP.plotExample()
+
+
+
   if 'f' in names:
     TP.plotFrequencies( *names['f'] )
+
+  if 'g' in names:
+    TP.plotGrid( *names['g'] )
+
+
+
 
   if 'l' in names:
     TP.plotLazy( *names['l'] )
@@ -71,8 +91,8 @@ def main():
     TP.paramSummary()
 
   if 'q' in names:
-    for model in (1,): #(1, 2, 3, 4):
-      for azm in (8,): #(1, 8, 64):
+    for model in (1, 2, 3, 4):
+      for azm in (1, 8, 64):
         TP.plotParallel(model=model, azm=azm)
 
   if 'x' in names:
@@ -175,6 +195,9 @@ class tunaPlotter:
       paramLines = open(path + 'params.in', 'r').readlines()
       # Split each line into key and value. 
       for line in paramLines:
+        # Watch out for input compatible with Bob's code. 
+        if ',' in line:
+          continue
         key = line.split('=')[0].strip()
         val = num( line.split('=')[-1] )
         # Add the key to our parameter dictionary, if it's not already there. 
@@ -267,6 +290,15 @@ class tunaPlotter:
       params['yLabel'] = 'Z_{GSE} \;\; (R_E)'
       # Dipole plots are outlined. 
       params['outline'] = True
+      # Snap the grid to nice round numbers. 
+      if 0 < np.min( params['X'] ) <= 2 and 8 < np.max( params['X'] ) <= 12:
+        params['xTicks'] = (0, 2, 4, 6, 8, 10)
+        params['xTickLabels'] = ('$0$', '$2$', '$4$', '$6$', '$8$', '$10$')
+        params['xLimits'] = (0, 10)
+      if 3 < -np.min( params['Y'] ) <= 4 and 3 < np.max( params['Y'] ) <= 4:
+        params['yTicks'] = (-4, -2, 0, 2, 4)
+        params['yTickLabels'] = ('$-4$', '$-2$', '$0$', '$+2$', '$+4$')
+        params['yLimits'] = (-4, 4)
     # Unwrapped plots use normalized cos theta and the McIlwain parameter. 
     else:
       params['Y'] = r/np.sin(q)**2
@@ -283,11 +315,13 @@ class tunaPlotter:
         params['yTicks'] = (2, 4, 6, 8, 10)
         params['yTickLabels'] = ('$2$', '$4$', '$6$', '$8$', '$10$')
     # Sometimes Python gets a little overenthusiastic about significant digits.
-    # Round the domain boundaries to round numbers.  
-    params['xLimits'] = ( float( format(np.min(params['X']), '.2e') ), 
-                          float( format(np.max(params['X']), '.2e') ) )
-    params['yLimits'] = ( float( format(np.min(params['Y']), '.2e') ), 
-                          float( format(np.max(params['Y']), '.2e') ) )
+    # Round the domain boundaries to round numbers. 
+    if 'xLimits' not in params:
+      params['xLimits'] = ( float( format(np.min(params['X']), '.2e') ), 
+                            float( format(np.max(params['X']), '.2e') ) )
+    if 'yLimits' not in params:
+      params['yLimits'] = ( float( format(np.min(params['Y']), '.2e') ), 
+                            float( format(np.max(params['Y']), '.2e') ) )
     # Return these as a dictionary to be unpacked. 
     return params
 
@@ -405,7 +439,7 @@ class tunaPlotter:
 
       name = d.replace(newDir, '').rstrip('/')
       tMax = self.getParam(d, 'tmax')
-      tLast = num( read(d + 't.out')[-1] )
+      tLast = num( read(d + 't.dat')[-1] )
 
       # Run name. 
       print col(name),
@@ -433,7 +467,7 @@ class tunaPlotter:
 
   def plotLazy(self, step=-1):
     # We will plot the real and imaginary components for each field. 
-    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'jz')
+    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
     # Each run gets two rows: one real and one imaginary. 
     PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
     # Keep track of the runs we're comparing -- particularly their time stamps. 
@@ -445,14 +479,14 @@ class tunaPlotter:
       shortPath = path.split('/')[-2].split('_')[0]
       titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
       # Handle the coordinate grid and axis labels. 
-      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
+      PW.setParam( nColors=12, **self.getCoords(path) )
       # Each field gets a column. 
       for col, name in enumerate(fields):
         # Label the column. 
         units = ( ' \\quad \mathrm{(' + 
                   {'B':'nT', 
                    'E':'\\frac{mV}{m}', 
-                   'j':'\\frac{\\mu A}{m^2}'}[ name[0] ] +
+                   'J':'\\frac{\\mu A}{m^2}'}[ name[0] ] +
                   ')}' )
         PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
         # Grab the data. 
@@ -466,6 +500,18 @@ class tunaPlotter:
           PW[row].setParam(rowLabel=rowLabel)
           # Grab the appropriate data component. 
           Z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
+
+
+          zmax = np.max(Z)
+          imax = np.unravel_index( np.argmax(Z), Z.shape)
+          coords = self.getCoords(path)
+          xmax = coords['X'][imax]
+          ymax = coords['Y'][imax]
+
+
+          print 'max ' + name + ' = ', zmax, ' at ', imax, ' -> ', xmax, ', ', ymax
+
+
           # Plot the contour. 
           PW[col, row].setContour(Z)
     # Add a title to the top so we know the time stamp(s). 
@@ -473,22 +519,22 @@ class tunaPlotter:
     # Render the plot window, either as a window or as an image. 
     return self.render(PW, 'lazy.png')
 
-
-
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------- Parallel Plot
   # ---------------------------------------------------------------------------
 
-  def plotParallel(self, model=1, azm=1):
+  def plotParallel(self, model=1, azm=1, step=-1):
 
-    # Three columns: no E3, no J3, yes J3. 
-    # Four rows: SzT, SzP, Ez, Jz. 
+    # Compare no E3, no J3, yes J3. 
+
+#    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
+#    PW = plotWindow(len(fields), 3, colorbar='sym', yPad=1)
     PW = plotWindow(4, 3, colorbar='sym', yPad=1)
 
     # Magnetic constant in nH/m. 
     mu0 = 1256.63706
 
-    # Iterate through the columns. 
+    # Iterate through the rows. 
     for row in range(3):
       # -1 means no inertia, and automatic Boris factor. With a manual Boris
       # factor of 1, the parallel electric field doesn't show up at all. 
@@ -503,106 +549,218 @@ class tunaPlotter:
                    '\\mathrm{Yes} \\;\\; J_\\parallel')
       PW[row].setParam( rowLabel=rowLabels[row] )
       # Handle the coordinate grid and axis labels. 
-      PW.setParam( **self.getCoords(path) )
+      PW.setParam( nColors=10, **self.getCoords(path) )
 
-      # Label each row. 
+      re, im = ' \\mathbb{R}\\mathrm{e} \\; ', ' \\mathbb{I}\\mathrm{m} \\; '
+
+      units = {'B':' \\;\\; \\mathrm{(\\frac{mV}{m})} ', 
+               'E':' \\;\\; \\mathrm{(nT)} ',
+               'J':' \\;\\; \\mathrm{(\\frac{\\mu A}{m^2})} ',
+               'S':' \\;\\; \\mathrm{(\\frac{mW}{m^2})} '}
+
+      # Toroidal Poynting flux. Imaginary components. Conjugate of By. 
+      Ex = np.imag( self.getArray(path + 'Ex.dat')[..., step] )
+      By = -np.imag( self.getArray(path + 'By.dat')[..., step] )
+      PW[0, row].setContour( Ex*By/mu0 )
       PW[0].setParam(colLabel='\\frac{1}{\\mu_0} E_x B_y^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
-      PW[1].setParam(colLabel='-\\frac{1}{\\mu_0} E_y B_x^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
-      PW[2].setParam(colLabel='E_z \\quad \\mathrm{(\\frac{mV}{m})}')
-      PW[3].setParam(colLabel='J_z \\quad \\mathrm{(\\frac{\\mu A}{m^2})}')
-
-      # Read in the data. For the moment, let's look at the last time step. 
-      step = -1
-      tLabel = str( self.getArray(path + 't.dat')[step] ) + 's'
 
       # Poloidal Poynting flux. 
-      Ex = np.real( self.getArray(path + 'Ex.dat')[..., step] )
-      By = np.real( self.getArray(path + 'By.dat')[..., step] )
-      PW[0, row].setContour( Ex*By/mu0 )
+      Ey = np.real( self.getArray(path + 'Ey.dat')[..., step] )
+      Bx = np.real( self.getArray(path + 'Bx.dat')[..., step] )
+      PW[1, row].setContour( -Ey*Bx/mu0 )
+      PW[1].setParam(colLabel='-\\frac{1}{\\mu_0} E_y B_x^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
 
-      # Toroidal Poynting flux. Imaginary components. Conjugate of Bx. 
-      Ey = np.imag( self.getArray(path + 'Ey.dat')[..., step] )
-      Bx = -np.imag( self.getArray(path + 'Bx.dat')[..., step] )
-      PW[1, row].setContour( Ey*Bx/mu0 )
+      # Parallel electric field. 
+      Ez = np.imag( self.getArray(path + 'Ez.dat')[..., step] )
+      PW[2, row].setContour(Ez)
+      PW[2].setParam(colLabel='\\mathbb{I}\\mathrm{m} \\; E_z \\quad \\mathrm{(\\frac{mV}{m})}')
 
+      # Parallel current. 
+      Jz = np.imag( self.getArray(path + 'Jz.dat')[..., step] )
+      PW[3, row].setContour(Jz)
+      PW[3].setParam(colLabel='\\mathbb{I}\\mathrm{m} \\; J_z \\quad \\mathrm{(\\frac{\\mu A}{m^2})}')
 
+#      # Go through the columns. 
+#      for col, name in enumerate(fields):
+#
+#        arr = self.getArray(path + name + '.dat')[..., step]
+#
+#        realMax = np.median( np.abs( np.real(arr) ) )
+#        imagMax = np.median( np.abs( np.imag(arr) ) )
+#
+#        if realMax>imagMax:
+#          PW[col, row].setContour( np.real(arr) )
+#          colLabel = re + name[0] + '_' + name[1] + units[ name[0] ]
+#        else:
+#          PW[col, row].setContour( np.imag(arr) )
+#          colLabel = im + name[0] + '_' + name[1] + units[ name[0] ]
+#        PW[col].setParam(colLabel=colLabel)
 
+    # Read in the data. For the moment, let's look at the last time step. 
+    tLabel = str( int( self.getArray(path + 't.dat')[step] ) ) + 's'
 
     # Plot supertitle. 
     PW.setParam(title='\\mathrm{Model \\;\\; ' + str(model) +
                       ' \\;\\; with \\;\\; } m = \\mathrm{' + str(azm) +
                       ' \\;\\; at \\;\\; } t = \\mathrm{' + tLabel + '}')
 
-
-    return self.render(PW, 'parallel.png')
-
+    pngName = 'parallel_' + str(model) + '_' + str(azm).zfill(3) + '_' + tLabel + '.png'
 
 
+    return self.render(PW, pngName)
 
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------- Atmospheric Plot
+  # ---------------------------------------------------------------------------
 
+  def plotAtmosphere(self, azm=1, model=1):
 
+    fields = ('Br', 'BfE', 'BfI', 'BqE', 'BqI')
 
-    # We will plot the real and imaginary components for each field. 
-    fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'jz')
-    # Each run gets two rows: one real and one imaginary. 
-    PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
-    # Keep track of the runs we're comparing -- particularly their time stamps. 
-    titles = []
-    # Scroll through the runs. 
-    for runNum, path in enumerate(self.paths):
-      # Match each run's name up with its time stamp. 
-      timeStamp = format(self.getArray(path + 't.out')[step], '.2f') + 's'
-      shortPath = path.split('/')[-2].split('_')[0]
-      titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
-      # Handle the coordinate grid and axis labels. 
-      PW.setParam( outline=True, nColors=12, **self.getCoords(path) )
-      # Each field gets a column. 
+    PW = plotWindow(nCols=len(fields), nRows=2, colorbar='sym', yPad=1)
+
+    re, im = ' \\mathbb{R}\\mathrm{e} \\; ', ' \\mathbb{I}\\mathrm{m} \\; '
+
+    nT = ' \\; \\mathrm{(nT)} '
+
+    def texName(name):
+      sub = name[1].replace('f', '\\phi').replace('q', '\\theta')
+      if not len(name)>2 or name[2]=='I':
+        return name[0] + '_' + sub + ' \\mathrm{\\; at \\;} R_I '
+      else:
+        return name[0] + '_' + sub + ' \\mathrm{\\; at \\;} R_E '
+
+    # Iterate through the rows. 
+    for row in range(2):
+      # -1 means no inertia, and automatic Boris factor. With a manual Boris
+      # factor of 1, the parallel electric field doesn't show up at all. 
+      inertia = (-1)**(row+1)
+      epsfac = (-1)**(row)
+
+      # Find the appropriate data path. 
+      path = self.getPath(inertia=inertia, epsfac=epsfac, model=model, azm=azm)
+
+      # Label the column. 
+      rowLabels = ('\\mathrm{Inertia \\; Off}', 
+                   '\\mathrm{Inertia \\; On}')
+      PW[row].setParam( rowLabel=rowLabels[row] )
+
+      q = self.getArray(path + 'q.dat')
+      lat = q[:, 0]*180/np.pi
+      t = self.getArray(path + 't.dat')
+
       for col, name in enumerate(fields):
-        # Label the column. 
-        units = ( ' \\quad \mathrm{(' + 
-                  {'B':'nT', 
-                   'E':'\\frac{mV}{m}', 
-                   'j':'\\frac{\\mu A}{m^2}'}[ name[0] ] +
-                  ')}' )
-        PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
-        # Grab the data. 
-        zComp = self.getArray(path + name + '.out')[:, :, step]
-        # Plot real and imaginary components. 
-        for ReIm in ('R', 'I'):
-          # Figure out which row this plot actually belongs on. 
-          row = runNum if ReIm=='R' else len(self.paths) + runNum
-          # Label the row. 
-          rowLabel = '\\mathbb{' + ReIm + '} \;\; \\mathrm{' + shortPath + '}'
-          PW[row].setParam(rowLabel=rowLabel)
-          # Grab the appropriate data component. 
-          Z = np.real(zComp) if ReIm=='R' else np.imag(zComp)
-          # Plot the contour. 
-          PW[col, row].setContour(Z)
-    # Add a title to the top so we know the time stamp(s). 
-    PW.setParam( title= ' \\quad '.join(titles) )
-    # Render the plot window, either as a window or as an image. 
-    return self.render(PW, 'lazy.png')
+
+        PW.setParam(x=t, xLabel='\\mathrm{Time \\;\\; (s)}', y=lat, 
+                    yLabel='\\mathrm{Latitude \\;\\; (^\\circ)}')
+
+        # Grab the field data. 
+        arr = self.getArray(path + name + '.dat')[:, 0, :]
+        # Figure out if we want the real or imaginary component. 
+        realMed = np.median( np.abs( np.real(arr) ) )
+        imagMed = np.median( np.abs( np.imag(arr) ) )
+        if realMed>imagMed:
+          PW[col, row].setContour( np.real(arr) )
+          colLabel = re + texName(name) + nT
+        else:
+          PW[col, row].setContour( np.imag(arr) )
+          colLabel = im + texName(name) + nT
+        PW[col].setParam(colLabel=colLabel)
+
+    # Plot supertitle. 
+    PW.setParam(title='\\mathrm{Model \\;\\; ' + str(model) +
+                      ' \\;\\; with \\;\\; } m = \\mathrm{' + str(azm) + '}')
+
+    pngName = 'atm_' + str(model) + '_' + str(azm).zfill(3) + '.png'
+
+    return self.render(PW, pngName)
 
 
 
+  # ---------------------------------------------------------------------------
+  # -------------------------------------------------------- Downward Flux Plot
+  # ---------------------------------------------------------------------------
 
+  def plotDownward(self, azm=1, model=1):
 
+    # Magnetic constant in nH/m. 
+    mu0 = 1256.63706
 
+    PW = plotWindow(nCols=4, nRows=2, colorbar='sym', yPad=1)
 
+    north, south = '\\mathrm{N} \\; ', '\\mathrm{S} \\; '
 
+    torName = '\\frac{1}{\\mu_0} E_x B_y^*'
+    polName = '-\\frac{1}{\\mu_0} E_y B_x^*'
 
+    units = ' \\; \\mathrm{(\\frac{mW}{m^2})} '
 
+    # Iterate through the rows. 
+    for row in range(2):
+      # -1 means no inertia, and automatic Boris factor. With a manual Boris
+      # factor of 1, the parallel electric field doesn't show up at all. 
+      inertia = (-1)**(row+1)
+      epsfac = (-1)**(row)
+      # Find the appropriate data path. 
+      path = self.getPath(inertia=inertia, epsfac=epsfac, model=model, azm=azm)
+      # Label the column. 
+      rowLabels = ('\\mathrm{Inertia \\; Off}', 
+                   '\\mathrm{Inertia \\; On}')
+      PW[row].setParam( rowLabel=rowLabels[row] )
+      # Figure out coordinates. 
+      q = self.getArray(path + 'q.dat')
+      lat = q[:, 0]*180/np.pi
+      t = self.getArray(path + 't.dat')
 
+      # Toroidal fields. Imaginary. Complex conjugate for By. 
+      Ex = np.imag( self.getArray(path + 'Ex.dat') )
+      By = -np.imag( self.getArray(path + 'By.dat') )
 
+      # Poloidal fields. 
+      Ey = np.real( self.getArray(path + 'Ey.dat') )
+      Bx = np.real( self.getArray(path + 'Bx.dat') )
 
+      # We want the downward Poynting flux at each ionosphere. That means we
+      # need to take the edge slices in k, and flip the southern ones. 
+      SNtor = Ex[:, 0, :]*By[:, 0, :]/mu0
+      SStor = -Ex[:, -1, :]*By[:, -1, :]/mu0
+      SNpol = Ey[:, 0, :]*Bx[:, 0, :]/mu0
+      SSpol = -Ey[:, -1, :]*Bx[:, -1, :]/mu0
 
+      PW[0, row].setContour(SNtor)
+      PW[0].setParam(colLabel=torName + units + north)
 
+      PW[1, row].setContour(SStor)
+      PW[1].setParam(colLabel=torName + units + south)
 
+      PW[2, row].setContour(SNpol)
+      PW[2].setParam(colLabel=polName + units + north)
 
+      PW[3, row].setContour(SSpol)
+      PW[3].setParam(colLabel=polName + units + south)
 
+#      # Toroidal Poynting flux. Imaginary components. Conjugate of By. 
+#      Ex = np.imag( self.getArray(path + 'Ex.dat')[..., step] )
+#      By = -np.imag( self.getArray(path + 'By.dat')[..., step] )
+#      PW[0, row].setContour( Ex*By/mu0 )
+#      PW[0].setParam(colLabel='\\frac{1}{\\mu_0} E_x B_y^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
 
+#      # Poloidal Poynting flux. 
+#      Ey = np.real( self.getArray(path + 'Ey.dat')[..., step] )
+#      Bx = np.real( self.getArray(path + 'Bx.dat')[..., step] )
+#      PW[1, row].setContour( -Ey*Bx/mu0 )
+#      PW[1].setParam(colLabel='-\\frac{1}{\\mu_0} E_y B_x^* \\quad \\mathrm{(\\frac{mW}{m^2})}')
 
+    PW.setParam(x=t, xLabel='\\mathrm{Time \\;\\; (s)}', y=lat, 
+                    yLabel='\\mathrm{|Latitude| \\;\\; (^\\circ)}')
 
+    # Plot supertitle. 
+    PW.setParam(title='\\mathrm{Model \\;\\; ' + str(model) +
+                      ' \\;\\; with \\;\\; } m = \\mathrm{' + str(azm) + '}')
+
+    pngName = 's_' + str(model) + '_' + str(azm).zfill(3) + '.png'
+
+    return self.render(PW, pngName)
 
 
 
@@ -764,6 +922,95 @@ class tunaPlotter:
         # everything we read in but we don't actually care about this data. 
         readArray(f, indent='\t\t')
     return
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # ----------------------------------------------------------------- Grid Plot
+  # ---------------------------------------------------------------------------
+
+  def plotGrid(self, stride=1):
+    # One plot cell, no color bar. 
+    PW = plotWindow(colorbar=None)
+
+#    plt.axis('equal')
+
+    PW.setParam(title='\\mathrm{Dipole \\; Grid}')
+
+    # Just grab the first path. 
+    path = self.paths[0]
+    # Grab the coordinates. 
+    coords = self.getCoords(path)
+    PW.setParam(**coords)
+    # Draw some lines. 
+    x, y = coords['X'], coords['Y']
+    n1, n3 = x.shape
+    [ PW.setLine( x[i, :], y[i, :] ) for i in range(0, n1, stride) ]
+    [ PW.setLine( x[:, k], y[:, k] ) for k in range(0, n3, stride) ]
+    # Show the plot. 
+    return self.render(PW, 'grid.png')
+
+
+
+
+
+
+
+
+  # ---------------------------------------------------------------------------
+  # -------------------------------------------------------------- Example Plot
+  # ---------------------------------------------------------------------------
+
+  def plotExample(self):
+    # One plot cell, no color bar. 
+    PW = plotWindow(4, 4, colorbar='sym')
+
+    PW.setParam(title='\\mathrm{Dipole \\; Grid}')
+
+    for col, model in enumerate( (1, 2, 3, 4) ):
+
+      for row, azm in enumerate( (1, 8, 64) ):
+
+        path = self.getPath(inertia=1, model=model, azm=azm)
+
+        PW[col, row].setParam( **self.getCoords(path) )
+
+
+
+
+
+
+
+#    # Just grab the first path. 
+#    path = self.paths[0]
+#    # Grab the coordinates. 
+#    coords = self.getCoords(path)
+#    PW.setParam(**coords)
+#    # Draw some lines. 
+#    x, y = coords['X'], coords['Y']
+#    n1, n3 = x.shape
+#    [ PW.setLine( x[i, :], y[i, :] ) for i in range(0, n1, stride) ]
+#    [ PW.setLine( x[:, k], y[:, k] ) for k in range(0, n3, stride) ]
+
+
+    # Show the plot. 
+    return self.render(PW, 'grid.png')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1721,9 +1968,9 @@ class plotCell:
   # All parameter handling -- coordinates, labels, etc -- is handled here using
   # keyword arguments. 
   def setParam(self, **kargs):
-    # At this point, the keys should all have been dropped to lower case. Now
-    # we just need to scroll through and apply them. 
     for key, val in kargs.items():
+      # Caps insensitivity. 
+      key = key.lower()
       # Outline of grid (in case of dipole geometry or whatever).  
       if key=='outline':
         self.outline = val
@@ -2093,7 +2340,7 @@ class plotColors(dict):
     if x==0:
       return '$0$'
     # Otherwise, just keep the sign and the power of ten. 
-    power = format(np.log10( abs(x) ), '.0f')
+    power = format(np.log10( np.abs(x) ), '.0f')
     return '$ ' + ( '-' if x<0 else '+' ) + ' 10^{' + power + '}$'
 
 # #############################################################################
@@ -2213,6 +2460,10 @@ def readArray(filename, indent='\t'):
   # We ultimately want to use the Python data format, pickles. 
   name = filename[ :filename.rfind('.') ]
   datname, outname, pklname = name + '.dat', name + '.out', name + '.pkl'
+
+  # Rename jz.out to Jz.dat (change in capitalization). 
+  outname = outname.replace('Jz', 'jz')
+
   # If we're looking at an out postfix, move it to dat. 
   if os.path.isfile(outname) and not os.path.exists(datname):
     os.rename(outname, datname)
@@ -2242,10 +2493,9 @@ def readArray(filename, indent='\t'):
       arr = pickle.load(handle)
     print format(time() - start, '5.1f') + 's' + ' ... ' + by(arr.shape)
     return arr
-
   # If the pickle doesn't exist yet, parse the Fortran output. 
-  else:
-    print indent + 'Reading ' + basename(datname) + ' ... ',
+  elif os.path.isfile(datname):
+    print indent + 'Reading ' + col( basename(datname), 10) + ' ... ',
     stdout.flush()
     # Note how long it takes to read the file. 
     start = time()
@@ -2256,9 +2506,13 @@ def readArray(filename, indent='\t'):
     dims = [ int(x) for x in arrayLines.pop(0).split() ]
     # Assemble a one-dimensional array large enough to hold all of the values.
     # (This is much faster than appending as we go.) This means figuring out if
-    # we want reals or complexes. 
-    firstValue = com( arrayLines[0].split()[0] )
-    dtype = np.complex if isinstance(firstValue, np.complex) else np.float
+    # we want reals or complexes. We check by looking for a comma, since
+    # complex values are listed as ordered pairs. 
+    if len(arrayLines)>0 and ',' in arrayLines[0]:
+      dtype = np.complex
+    else:
+      dtype = np.float
+    # Create the empty array. 
     nVals = np.prod(dims)
     vals = np.empty(nVals, dtype=dtype)
     # Now fill the array with values one at a time. Stop when it's full, or
@@ -2301,6 +2555,9 @@ def readArray(filename, indent='\t'):
     gc.collect()
     # Finally, return the array. 
     return arr
+  # If the pickle doesn't exist and there's no Fortran output, return nothing. 
+  else:
+    print indent + 'WARNING: ' + datname + ' not found. '
 
 # #############################################################################
 # ########################################################### For Importability
