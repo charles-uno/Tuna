@@ -770,6 +770,9 @@ module io
     if (varname .eq. 'n3'  ) defaultParam = 320        ! Grid points per line. 
     if (varname .eq. 'lmin') defaultParam = 1.5        ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
+
+    if (varname .eq. 'sfac') defaultParam = 1.04       ! Geometric spacing factor along the outermost field line. 
+
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
     if (varname .eq. 'azm' ) defaultParam = 0          ! Azimuthal modenumber. 
     if (varname .eq. 'modes'  ) defaultParam = 0.25    ! Harmonics to keep. 
@@ -777,6 +780,9 @@ module io
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
+
+    if (varname .eq. 'fudge'  ) defaultParam = 0.2     ! The plasma time step is prone to instability. This stacks with the Courant condition. 
+
     ! Parallel physics handling parameters. 
     if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0.
 
@@ -858,28 +864,40 @@ module io
   ! ============================================================================= Write Real Array
   ! ==============================================================================================
 
-  subroutine writeRealArray(filename, arr, onlyheader, onlydata, nt)
+  subroutine writeRealArray(filename, arr, onlyheader, onlydata, noskip, nt)
     character(len=*), intent(in)  :: filename
     double precision, dimension(:,:) :: arr
-    logical, intent(in), optional :: onlyheader, onlydata
+    logical, intent(in), optional :: onlyheader, onlydata, noskip
     integer, intent(in), optional :: nt
+    integer                       :: nx, nz, stride
+    ! By default, we print out every other grid point in each dimension to reduce data size. 
+    if ( .not. present(noskip) ) then
+      nx = 1 + size(arr, 1)/2
+      nz = 1 + size(arr, 2)/2
+      stride = 2
+    ! If requested, we can print out the entire array instead. 
+    else
+      nx = size(arr, 1)
+      nz = size(arr, 2)
+      stride = 1
+    end if
     open(unit=99, file=filename, action='write', access='append')
     ! Unless asked not to, print out the header. 
     if ( .not. present(onlydata) ) then
       ! Dimensions of the (sliced) 2d array, including time steps, if applicable. 
       if (present(nt)) then
-        write(99,*) 1 + size(arr, 1)/2, 1 + size(arr, 2)/2, nt
+        write(99,*) nx, nz, nt
       else
-        write(99,*) 1 + size(arr, 1)/2, 1 + size(arr, 2)/2
+        write(99,*) nx, nz
       end if
     end if
     ! Unless asked not to, print the array. 
     if (.not. present(onlyheader)) then
-      ! Only even rows and columns are printed, unless there are exactly two columns. 
+      ! If there are exactly two columns, always print them both. 
       if (size(arr, 2) .eq. 2) then
-        write(99,*) arr(::2, :)
+        write(99,*) arr(::stride, :)
       else
-        write(99,*) arr(::2, ::2)
+        write(99,*) arr(::stride, ::stride)
       end if
     end if
   end subroutine writeRealArray
@@ -1050,8 +1068,10 @@ module geometry
   ! Spacing in usup3 is determined by placing points along the outermost field line. 
   subroutine usup3Setup()
     double precision, dimension(0:n3)   :: qMin, qMax, sFinal, sTry
-    double precision                    :: sFac = 1.03
+    double precision                    :: sFac
     integer                             :: k, m
+    ! Geometric factor by which grid spacing increases along the outermost field line. 
+    sFac = readParam('sfac')
     ! Spacing along the outermost line increases geometrically to the equator, then is reflected
     ! to the southern hemisphere. The increase is set to semi-arbitrarily to 3%. 
     do k=0,n3/2
@@ -1266,15 +1286,27 @@ module geometry
     call writeRealArray('q.dat', q)
     ! Convert distances from Mm to RE for easier plotting. 
     call writeRealArray('r.dat', r/RE)
-!    call writeRealArray('X.out', r*sin(q)/RE)
-!    call writeRealArray('Z.out', r*cos(q)/RE)
+    ! Let's report some characteristic scales. 
+
+    call writeParam('dr Min at Equator', 1000*( r(1, n3/2) - r(0, n3/2) ) , 'km')
+    call writeParam('dr Max at Equator', 1000*( r(n1, n3/2) - r(n1-1, n3/2) ) , 'km')
+
+    call writeParam('dr Min at Ionosphere', 1000*( r(0, 1) - r(0, 0) ) , 'km')
+    call writeParam('dr Max at Ionosphere', 1000*( r(n1, 1) - r(n1, 0) ) , 'km')
+
+    call writeParam('r dtheta Min at Equator',                                &
+                    1000*r(0, n3/2)*( q(0, 1+n3/2) - q(0, n3/2) ) , 'km')
+    call writeParam('r dtheta Max at Equator',                                &
+                    1000*r(n1, n3/2)*( q(n1, 1+n3/2) - q(n1, n3/2) ) , 'km')
+
+    call writeParam('r dtheta Min at Ionosphere',                             &
+                    1000*r(0, 0)*( q(1, 0) - q(0, 0) ) , 'km')
+    call writeParam('r dtheta Max at Ionosphere',                             &
+                    1000*r(n1, 0)*( q(n1, 0) - q(n1-1, 0) ) , 'km')
+
     ! Write out the eigenvalues and eigenvectors at the ionosphere. 
     call writeRealColumns('evals.dat', nu)
-    call writeRealArray( 'evecs.dat', Yinv(0:nModes-1, :) )
-!    do inu=0,nModes-1
-!      write(evecfile(5:7),'(i3.3)') inu
-!      call writeRealColumns( evecfile, usup1_(), Yinv(inu, :) )
-!    end do
+    call writeRealArray('evecs.dat', Yinv(0:nModes-1, :), noskip=.true.)
   end subroutine writeGeometry
 
   ! ----------------------------------------------------------------------------------------------
@@ -1636,9 +1668,6 @@ module ionos
     ! plasma frequency, allowing us to stabilize parallel and inertial terms at a reasonable time
     ! step. This is safe if the plasma frequency remains much higher than the waves we're driving.
     double precision                       :: boris, borisMax
-    ! Plasma oscillations are particularly susceptible to instability, so we use a fudge factor in
-    ! addition to the traditional courant factor. 
-    double precision                       :: fudge = 0.2
     ! Compute Alfven crossing times for each grid location. 
     oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
     oodty = azm*vA()/h2()
@@ -1669,13 +1698,13 @@ module ionos
       if (readParam('inertia') .gt. 0) then
         ! The inertial time step is computed from the plasma frequency. There's an extra fudge
         ! factor in there since inertial effects are particularly prone to instability. 
-        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
         call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Compute the Boris factor. Note that eps0 appears in the square root of the plasma
         ! frequency. 
         boris = min( borisMax, (dtAlfven/dtParallel)**2 )
         ! Update the parallel time step.
-        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
       ! Without electron inertial effects, the parallel time step is set by the integrating factor
       ! used by the parallel electric field. 
       else
@@ -1700,12 +1729,12 @@ module ionos
       if (readParam('inertia') .gt. 0) then
         ! The inertial time step is computed from the plasma frequency. There's an extra fudge
         ! factor in there since inertial effects are particularly prone to instability. 
-        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
         call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
         ! Grab the Boris factor. Allow it to exceed the maximum. 
         boris = readParam('epsfac')
         ! Apply it to the inertial time step. Keep the fudge factor in there. 
-        dtParallel = fudge/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
       ! We do not allow a manually-Boris-adjusted non-inertial parallel time step to trump the
       ! Alfven time step. There may be Boris values for which this will lead to instability. In
       ! practice, this allows a Boris factor of 1 to be used to ignore the parallel electric field
@@ -1750,10 +1779,16 @@ module ionos
     ! easily computed from the parameters we do print out. Instead, we give snapshots. 
     call writeParam('Alfven Speed Min', 1000*minval( vA() ), 'km/s')
     call writeParam('Alfven Speed Max', 1000*maxval( vA() ), 'km/s')
+
+    call writeParam('Electron Inertial Length Min', 1000*minval( sqrt( me / ( mu0*n()*qe**2 ) ) ), 'km')
+    call writeParam('Electron Inertial Length Max', 1000*maxval( sqrt( me / ( mu0*n()*qe**2 ) ) ), 'km')
+
     call writeParam('Plasma Frequency Min', minval( sqrt( n()*qe**2 / (me*eps0) ) ), 'rad/s')
     call writeParam('Plasma Frequency Max', maxval( sqrt( n()*qe**2 / (me*eps0) ) ), 'rad/s')
+
     call writeParam('Adjusted Plasma Frequency Min', minval( sqrt( n()*qe**2 / (me*epsPara) ) ), 'rad/s')
     call writeParam('Adjusted Plasma Frequency Max', maxval( sqrt( n()*qe**2 / (me*epsPara) ) ), 'rad/s')
+
     call writeParam('epsPerp/sigP Min', minval(epsPerp/sigP), 's')
     call writeParam('epsPerp/sigH Min', minval(epsPerp/sigH), 's')
     call writeParam('eps0/sig0    Max', maxval(eps0/sig0), 's')
@@ -2726,6 +2761,7 @@ program tuna
   ! coefficients. Geometric scale factors and ionospheric parameter values are combined here, so
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
+
 
 !  call peekCoefficients(0.83*RE, 0.58*RE)
 !  stop
