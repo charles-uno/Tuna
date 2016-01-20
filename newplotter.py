@@ -69,7 +69,14 @@ def main():
 # utilities specific to Tuna. (The Plot Window itself is fairly general.)
 class tunaPlotter:
 
+  # Keep track of the paths where our data is coming from. 
   paths = None
+  # Physical constants, for crunching out the Poynting flux, etc. 
+  mu0 = 1256.63706 # nH/m
+  eps0 = 8.854e-9 # mF/m
+  qe = 1.60218e-25 # MC
+  me = 9.10938e-28 # g
+  RE = 6.378388 # Mm
 
   # ===========================================================================
   # ============================================================= Path Handling
@@ -109,7 +116,6 @@ class tunaPlotter:
       exit()
     else:
       return paths[0]
-
 
   # ===========================================================================
   # ==================================================== LaTeX Helper Functions
@@ -161,50 +167,46 @@ class tunaPlotter:
             }
     return self.texText( ' (' + ( '?' if x not in units else units[x] ) + ')' )
 
-  def texLabel(self, x):
-    return self.texReIm(x) + self.texName(x) + self.texUnit(x)
+  def texLabel(self, x, units=True):
+    if units:
+      return self.texReIm(x) + self.texName(x) + self.texUnit(x)
+    else:
+      return self.texReIm(x) + self.texName(x)
 
   # ===========================================================================
   # =============================================================== Data Access
   # ===========================================================================
 
-
+  # All arrays come in through here. It knows which fields are predominantly
+  # imaginary (well, it knows how to look it up), and it knows how to combine
+  # fields to get energy density, Poynting flux, etc. This is how we keep the
+  # individual plot methods clean. 
   def getArray(self, path, name):
-
+    # Check if we're looking for something that corresponds to a data file...
     if name in ('Bx', 'By', 'Bz', 'r', 'q', 't'):
-      return readArray(path + name + '.dat')
+      phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
+      return phase( readArray(path + name + '.dat') )
+    # Or if it's a compound quantity that we will need to crunch out. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       return r*np.sin(q)
     elif name=='Z':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       return r*np.cos(q)
-
+    # Keep an eye out for typos. 
     else:
       print 'ERROR: Not sure how to get ' + name
       exit()
-
-
-
-
-
 
   # ===========================================================================
   # ====================================================== Coordinate Shorthand
   # ===========================================================================
 
+  # This function returns a dictionary of keyword arguments meant to be plugged
+  # straight into plotWindow.setParams(). 
   def getCoords(self, path, x='X', y='Z'):
-
-    # This function returns a dictionary of keyword arguments meant to be
-    # plugged straight into plotWindow.setParams(). 
-
-    params = {'x':self.getArray(path, x), 
-              'xlabel':self.texLabel(x),
-              'y':self.getArray(path, y), 
-              'ylabel':self.texLabel(y)}
-
-    return params
-
+    return { 'x':self.getArray(path, x), 'xlabel':self.texLabel(x),
+             'y':self.getArray(path, y), 'ylabel':self.texLabel(y) }
 
   # ===========================================================================
   # ============================================================= Plot Assembly
@@ -224,279 +226,30 @@ class tunaPlotter:
 
     # Create row and column labels. 
     rowLabels = [ 'm = ' + str(azm) for azm in azms ]
-    colLabels = [ self.texLabel(name) for name in names ]
+    colLabels = [ self.texLabel(name, units=False) for name in names ]
     PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
 
     # Loop through the rows and columns. 
     for row, azm in enumerate(azms):
-      for col, name in enumerate(names[:-1]):
+      for col, name in enumerate(names):
 
         # Find the path that matches the parameters we want for this cell. 
         path = self.getPath(inertia=1, azm=azm, model=model)
 
-#        x = self.getArray(path, 'X')
-#        y = self.getArray(path, 'Z')
-        z = self.getArray(path, name)
-
-        # Fields should be overwhelmingly real or complex. It's safe to label
-        # the column based on the first row. 
-        if row==0:
-          colLabels[col] = z.phase + colLabels[col]
-
+        # Plug in the coordinates and the contour values. 
         PW[row, col].setParams( **self.getCoords(path, 'X', 'Z') )
-        PW[row, col].setContour( z[:, :, step] )
+        PW[row, col].setContour( self.getArray(path, name)[:, :, step] )
 
+        # Figure out what time we're plotting at, for the title. 
         t = self.getArray(path, 't')
 
-    title = self.texName(model) + self.texText('Magnetic Field') + self.texTime( t[step] ) + self.texUnit('nT')
-
-    PW.setParams(title=title)
-
-
-#    xlabel = texLabel('X')
-#    ylabel = texLabel('Z')
-
-#    title = conditions + description + time + (units)
-#    title = text('Plot Title') + unit('S')
-#    rowLabels = [ text( 'Row ' + str(row) ) for row in range(nrows) ]
-#    colLabels = [ text( 'Column ' + str(col) ) for col in range(ncols) ]
-
-#    for row in range(nrows):
-#      for col in range(ncols):
-#        z = np.random.randn(20, 20)
-#        PW[row, col].setContour(x, y, z)
+    # Assemble the title. 
+    PW.setParams(title=self.texName(model) + self.texText('Magnetic Field') +
+                       self.texTime( t[step] ) + self.texUnit('nT') )
 
     return PW.render()
 
-
   '''
-
-
-
-
-
-  # ---------------------------------------------------------------------------
-  # --------------------------------------------------------------- Data Access
-  # ---------------------------------------------------------------------------
-
-  # If we're only plotting one time slice for each field, we had better make
-  # sure it's a good one. 
-  def getBestSlice(self, filename, ReIm='real'):
-    # Grab the real or imaginary component of the array. 
-    if ReIm=='real':
-      arr = np.real( self.getArray(filename) )
-    else:
-      arr = np.imag( self.getArray(filename) )
-    # Make sure it's safe to slice the array. 
-    if len(arr.shape)>2:
-      # Look at each time step's standard deviation. That's probably a good
-      # proxy for wave activity. Return the one with the most. 
-      nSteps = arr.shape[2]
-      stdev = [ np.std( np.abs( arr[:, :, step] ) ) for step in range(nSteps) ]
-      bestStep = np.argmax(stdev)
-      return arr[:, :, bestStep], bestStep
-    # Arrays without steps don't get sliced, but do still get returned. 
-    else:
-      print 'WARNING: Can\'t slice ' + filename
-      return arr, None
-
-  def getArray(self, filename):
-    # If we haven't yet read in this array, we need to do that. 
-    if filename not in self.data:
-      self.data[filename] = readArray(filename)
-    # Return the array. 
-    return self.data[filename]
-
-  def refresh(self):
-    # Release all of the data we read in for this plot. 
-    self.data = {}
-    # Python's automatic garbage collection is not fast enough to handle the
-    # amount of data running through this routine. Every time we make a plot,
-    # let's also manually run garbage collection to release memory that's no
-    # longer being used. 
-    print 'Collecting garbage... ', gc.collect()
-    return
-
-  # ===========================================================================
-  # ==================================================== Tuna Plotter Utilities
-  # ===========================================================================
-
-  # To avoid spending time reading in the same file more than once, data input
-  # and access is centralized. 
-  data = {}
-
-  # ---------------------------------------------------------------------------
-  # --------------------------------------------------- Initialize Tuna Plotter
-  # ---------------------------------------------------------------------------
-
-  def __init__(self, flags, paths):
-    # Keep track of flags from the terminal. 
-    self.flags = flags
-    # If we'll be saving output, figure out where to put it. 
-    self.outDir = '/home/user1/mceachern/Desktop/plots/plots_' + now() + '/'
-    # Sort the paths before storing them. 
-    self.paths = sorted(paths)
-    return
-
-  # ---------------------------------------------------------------------------
-  # ------------------------------------------------------------ Data Selection
-  # ---------------------------------------------------------------------------
-
-  # Look at the parameter input file for a given path and find a value. 
-  def getParam(self, path, key):
-    # Grab the input parameters. 
-    params = '\n'.join( open(path + 'params.in', 'r').readlines() )
-    # Make sure the parameter was actually provided in this run. 
-    if key not in params:
-      return None
-    # Split out the line with the key we want. 
-    line = params.split(key)[1].split('\n')[0]
-    return num( line.strip(' =') )
-
-  # Get a listing of all the parameters used in these runs. Essentially, we're
-  # reconstructing the parameters dictionary at the top of the driver script. 
-  def getAllParams(self):
-    allParams = {}
-    # Scroll through all the output directories. 
-    for path in self.paths:
-      # Grab the parameter input file. 
-      paramLines = open(path + 'params.in', 'r').readlines()
-      # Split each line into key and value. 
-      for line in paramLines:
-        # Watch out for input compatible with Bob's code. 
-        if ',' in line:
-          continue
-        key = line.split('=')[0].strip()
-        val = num( line.split('=')[-1] )
-        # Add the key to our parameter dictionary, if it's not already there. 
-        if key not in allParams:
-          allParams[key] = []
-        # Add the value, if it's not already there. 
-        if val not in allParams[key]:
-          allParams[key].append(val)
-    # Return the parameter dictionary. 
-    return allParams
-
-  # Given a set of run parameters, find the desired run path. 
-  def getPath(self, **kargs):
-    # Check all the paths we have. 
-    paths = self.paths
-    # Weed out any that don't match. 
-    for key in kargs:
-      paths = [ p for p in paths if self.getParam(p, key)==kargs[key] ]
-    # If there's anything other than exactly one match, something is wrong. 
-    if len(paths)<1:
-      print 'ERROR: No matching path found for ', kargs
-      exit()
-    elif len(paths)>1:
-      print 'ERROR: Multiple matching paths found for ', kargs
-      exit()
-    else:
-      return paths[0]
-
-  # ---------------------------------------------------------------------------
-  # --------------------------------------------------------------- Data Access
-  # ---------------------------------------------------------------------------
-
-  # If we're only plotting one time slice for each field, we had better make
-  # sure it's a good one. 
-  def getBestSlice(self, filename, ReIm='real'):
-    # Grab the real or imaginary component of the array. 
-    if ReIm=='real':
-      arr = np.real( self.getArray(filename) )
-    else:
-      arr = np.imag( self.getArray(filename) )
-    # Make sure it's safe to slice the array. 
-    if len(arr.shape)>2:
-      # Look at each time step's standard deviation. That's probably a good
-      # proxy for wave activity. Return the one with the most. 
-      nSteps = arr.shape[2]
-      stdev = [ np.std( np.abs( arr[:, :, step] ) ) for step in range(nSteps) ]
-      bestStep = np.argmax(stdev)
-      return arr[:, :, bestStep], bestStep
-    # Arrays without steps don't get sliced, but do still get returned. 
-    else:
-      print 'WARNING: Can\'t slice ' + filename
-      return arr, None
-
-  def getArray(self, filename):
-    # If we haven't yet read in this array, we need to do that. 
-    if filename not in self.data:
-      self.data[filename] = readArray(filename)
-    # Return the array. 
-    return self.data[filename]
-
-  def refresh(self):
-    # Release all of the data we read in for this plot. 
-    self.data = {}
-    # Python's automatic garbage collection is not fast enough to handle the
-    # amount of data running through this routine. Every time we make a plot,
-    # let's also manually run garbage collection to release memory that's no
-    # longer being used. 
-    print 'Collecting garbage... ', gc.collect()
-    return
-
-  # ---------------------------------------------------------------------------
-  # ------------------------------------------------------- Coordinate Handling
-  # ---------------------------------------------------------------------------
-
-  # For setting up the axes on a dipole or unwrapped plot. 
-  def getCoords(self, path):
-    # We'll be returning a coordinate dictionary to be passed as a list of
-    # keyword arguments to the plot window's setParam method. 
-    params = {}
-    # Grab the coordinates. 
-    r, q = self.getArray(path + 'r.out'), self.getArray(path + 'q.out')
-    # If this run is on the dayside, flip theta (which in effect flips X). 
-    if path in self.paths and self.getParam(path, 'model')<3:
-      q = -q
-    # Dipole plots want GSE X and Z. 
-    if '-u' not in self.flags:
-      params['X'] = r*np.sin(q)
-      params['Y'] = r*np.cos(q)
-      params['xLabel'] = 'X_{GSE} \;\; (R_E)'
-      params['yLabel'] = 'Z_{GSE} \;\; (R_E)'
-      # Dipole plots are outlined. 
-      params['outline'] = True
-      # Snap the grid to nice round numbers. 
-      if 0 < np.min( params['X'] ) <= 2 and 8 < np.max( params['X'] ) <= 12:
-        params['xTicks'] = (0, 2, 4, 6, 8, 10)
-        params['xTickLabels'] = ('$0$', '$2$', '$4$', '$6$', '$8$', '$10$')
-        params['xLimits'] = (0, 10)
-      if 3 < -np.min( params['Y'] ) <= 4 and 3 < np.max( params['Y'] ) <= 4:
-        params['yTicks'] = (-4, -2, 0, 2, 4)
-        params['yTickLabels'] = ('$-4$', '$-2$', '$0$', '$+2$', '$+4$')
-        params['yLimits'] = (-4, 4)
-    # Unwrapped plots use normalized cos theta and the McIlwain parameter. 
-    else:
-      params['Y'] = r/np.sin(q)**2
-      params['X'] = np.cos(q)/np.sqrt(1 - np.min(r)/params['Y'])
-      params['xLabel'] = '\\cos \\theta / \\cos \\theta_0'
-#      params['yLabel'] = 'L = \\frac{r}{\\sin^2 \\theta} \;\; (R_E)'
-      params['yLabel'] = 'L \;\; (R_E)'
-      # The x axis needs to go from -1 to 1, and just needs to be labeled N/S. 
-      params['xTicks'] = (-1, 0, 1)
-      params['xTickLabels'] = ('$\\mathrm{S}$', '', '$\\mathrm{N}$')
-      # In principle Lmin and Lmax could change, so let's only overwrite the
-      # ticks and tick labels for the usual values, 1.5 and 10 (respectively). 
-      if 1 < np.min( params['Y'] ) <= 2 and 10 <= np.max( params['Y'] ) < 12:
-        params['yTicks'] = (2, 4, 6, 8, 10)
-        params['yTickLabels'] = ('$2$', '$4$', '$6$', '$8$', '$10$')
-    # Sometimes Python gets a little overenthusiastic about significant digits.
-    # Round the domain boundaries to round numbers. 
-    if 'xLimits' not in params:
-      params['xLimits'] = ( float( format(np.min(params['X']), '.2e') ), 
-                            float( format(np.max(params['X']), '.2e') ) )
-    if 'yLimits' not in params:
-      params['yLimits'] = ( float( format(np.min(params['Y']), '.2e') ), 
-                            float( format(np.max(params['Y']), '.2e') ) )
-    # Return these as a dictionary to be unpacked. 
-    return params
-
-  # ---------------------------------------------------------------------------
-  # ---------------------------------------------------------- Display Handling
-  # ---------------------------------------------------------------------------
-
   # Either display the plot or save it as an image. 
   def render(self, PW, name='plot.png'):
     # All of the data that the plot needs has been deposited in the plot window
@@ -511,16 +264,6 @@ class tunaPlotter:
     else:
       return PW.render()
 '''
-
-
-
-
-
-
-
-
-
-
 
 # #############################################################################
 # ########################################################## Plot Window Object
@@ -700,10 +443,6 @@ class plotWindow:
     zmn = [ cell.zmin() for cell in self.cells.flatten() ]
     return None if max(zmn) is None else min( z for z in zmn if z is not None )
 
-
-
-
-
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------- Render Window
   # ---------------------------------------------------------------------------
@@ -725,11 +464,8 @@ class plotWindow:
     colors = plotColors(zmax=self.zmax(), cax=self.cax, colorbar=self.colorbar)
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
 
-
-
     return plt.show()
 #    return plt.savefig('/home/user1/mceachern/Desktop/plots/test.pdf')
-
 
 '''
     # If given a filename, save the plot window as an image. 
@@ -747,7 +483,6 @@ class plotWindow:
       plt.show()
     return
 '''
-
 
 # #############################################################################
 # ############################################################ Plot Cell Object
@@ -806,62 +541,6 @@ class plotCell:
       else:
         print 'WARNING: Unknown param ', key, ' = ', val
     return
-
-
-  '''
-
-  def setParam(self, **kargs):
-    for key, val in kargs.items():
-      # Caps insensitivity. 
-      key = key.lower()
-      # Outline of grid (in case of dipole geometry or whatever).  
-      if key=='outline':
-        self.outline = val
-      # Title. 
-      elif key=='title':
-        self.ax.set_title('$' + val + '$')
-      # Array of horizontal coordinate values. 
-      elif key=='x':
-        self.X = val
-      # Horizontal axis label. 
-      elif key=='xlabel':
-        self.ax.set_xlabel('$' + val + '$')
-      # Horizontal axis bounds. 
-      elif key.startswith('xlim'):
-        self.ax.set_xlim(val)
-      # Horizontal axis log scale. 
-      elif key=='xlog' and val==True:
-        self.ax.set_xscale('log')
-      # Horizontal axis tick locations. 
-      elif key=='xticks':
-        self.ax.set_xticks(val)
-      # Horizontal axis tick labels. 
-      elif key=='xticklabels':
-        self.ax.set_xticklabels(val)
-      # Array of vertical coordinate values. 
-      elif key=='y':
-        self.Y = val
-      # Vertical axis label. 
-      elif key=='ylabel':
-        self.ax.set_ylabel('$' + val + '$')
-      # Vertical axis bounds. 
-      elif key.startswith('ylim'):
-        self.ax.set_ylim(val)
-      # Vertical axis log scale. 
-      elif key=='ylog' and val==True:
-        self.ax.set_yscale('log')
-      # Vertical axis tick locations. 
-      elif key=='yticks':
-        self.ax.set_yticks(val)
-      # Vertical axis tick labels. 
-      elif key=='yticklabels':
-        self.ax.set_yticklabels(val)
-
-      else:
-        print 'UNKNOWN KEY: ', key
-
-    return
-'''
 
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------------- Set Cell Data
@@ -939,16 +618,11 @@ class plotCell:
     if self.lines is not None:
       [ self.ax.plot(x, y, *args, **kargs) for x, y, args, kargs in self.lines ]
 
-#    # These subplots can get cramped. Let's reduce the number of ticks. 
-#    self.ax.xaxis.set_major_locator( plt.MaxNLocator(3) )
-#    self.ax.yaxis.set_major_locator( plt.MaxNLocator(3) )
-
-#    # Only put numbers on axes with labels (usually, just the edge axes). 
-#    if not self.ax.get_xlabel():
-#      self.ax.set_xticklabels( [] )
-#    if not self.ax.get_ylabel():
-#      self.ax.set_yticklabels( [] )
-
+    '''
+    # These subplots can get cramped. Let's reduce the number of ticks. 
+    self.ax.xaxis.set_major_locator( plt.MaxNLocator(3) )
+    self.ax.yaxis.set_major_locator( plt.MaxNLocator(3) )
+    '''
     return
 
 # #############################################################################
@@ -1218,48 +892,8 @@ def num(x):
   return int( float(x) ) if float(x)==int( float(x) ) else float(x)
 
 # #############################################################################
-# #################################################### Array Access and Storage
+# ################################################################ Array Reader
 # #############################################################################
-
-# Data is stored in files full of complex numbers. We want to plot arrays of
-# real numbers. 
-
-# =============================================================================
-# =============================================================== Array Storage
-# =============================================================================
-
-# Given a complex array, this class decides whether the real or imaginary
-# component is more interesting (based on its median). It keeps only that
-# slice, which now acts like a real array, and remembers which slice it kept. 
-class arr(np.ndarray):
-  # Proper use of __new__, __init__, and __array_finalize__ is tricky. Luckily,
-  # there are plenty of examples online. 
-  def __new__(cls, inputArray):
-    # If this object is complex...
-    if np.iscomplexobj(inputArray):
-      re = np.median( np.abs( np.real(inputArray) ) )
-      im = np.median( np.abs( np.imag(inputArray) ) )
-      # Figure out whether the real or imaginary values are more interesting.
-      # Add a label that we can just slap right into a plot title. 
-      if im>re:
-        obj = np.asarray( np.imag(inputArray) ).view(cls)
-        obj.phase = ' \\mathbb{I}\\mathrm{m}\\;\\; '
-      else:
-        obj = np.asarray( np.real(inputArray) ).view(cls)
-        obj.phase = ' \\mathbb{R}\\mathrm{e}\\;\\; '
-    # If this isn't a complex array, we don't really do anything. 
-    else:
-      obj = np.asarray(inputArray).view(cls)
-      obj.phase = ''
-    return obj
-  # Finalize the array...
-  def __array_finalize__(self, obj):
-    self.phase = getattr(obj, 'phase', None)
-    return
-
-# =============================================================================
-# =========================================================== Array File Parser
-# =============================================================================
 
 # Read a file of values into an array. We expect the first line to give the
 # array dimensions. The rest of the file should just be real or complex
@@ -1287,8 +921,7 @@ def readArray(filename):
     with open(pklname, 'rb') as handle:
       inputArray = pickle.load(handle)
     print format(time() - start, '5.1f') + 's' + ' ... ' + by(inputArray.shape)
-    # Return the array as an arr (see above class definition). 
-    return arr(inputArray)
+    return inputArray
   # If the pickle doesn't exist yet, parse the Fortran output. 
   elif os.path.isfile(datname):
     print 'Reading ' + basename(datname) + ' ... ',
@@ -1340,14 +973,7 @@ def readArray(filename):
     with open(pklname, 'wb') as handle:
       pickle.dump(inputArray, handle, protocol=-1)
     print format(time() - start, '5.1f') + 's'
-
-#    # Check if the data dimensions are consistent with the dimensions in the
-#    # header of the dat file. 
-#    if by(dims)!=by(inputArray.shape):
-#      print '\tWARNING: Expected ' + by(dims) + ' but found ' + by(inputArray.shape)
-
-    # Return the array as an arr (see above class definition). 
-    return arr(inputArray)
+    return inputArray
   # If the pickle doesn't exist and there's no Fortran output, return nothing. 
   else:
     print 'WARNING: ' + datname + ' not found. '
