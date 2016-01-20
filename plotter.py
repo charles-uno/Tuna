@@ -57,9 +57,13 @@ def main():
   # arguments from the terminal. 
 
   if 'a' in names:
-    for model in (1, 2, 3, 4):
-      for azm in (1, 8, 64):
-        TP.plotAtmosphere(model=model, azm=azm)
+
+    TP.plotAtmosphere(model=1, azm=8)
+
+
+#    for model in (1, 2, 3, 4):
+#      for azm in (1, 8, 64):
+#        TP.plotAtmosphere(model=model, azm=azm)
 
   if 'c' in names:
     TP.runCheckup()
@@ -70,16 +74,16 @@ def main():
         TP.plotDownward(model=model, azm=azm)
 
 
-  if 'e' in names:
-    TP.plotExample()
-
-
 
   if 'f' in names:
     TP.plotFrequencies( *names['f'] )
 
   if 'g' in names:
     TP.plotGrid( *names['g'] )
+
+
+  if 'i' in names:
+    TP.plotInsitu()
 
 
 
@@ -95,8 +99,21 @@ def main():
       for azm in (1, 8, 64):
         TP.plotParallel(model=model, azm=azm)
 
+
+
+  if 's' in names:
+    TP.plotSnapshots()
+
+
+
+  if 'u' in names:
+    TP.plotU()
+
+
+
   if 'x' in names:
     TP.pickle()
+
 
 
 
@@ -615,67 +632,35 @@ class tunaPlotter:
 
   def plotAtmosphere(self, azm=1, model=1):
 
-    fields = ('Br', 'BfE', 'BfI', 'BqE', 'BqI')
+    PW = plotWindow(2, 2, colorbar='sym', yPad=1)
 
-    PW = plotWindow(nCols=len(fields), nRows=2, colorbar='sym', yPad=1)
+    path = self.getPath(inertia=1, epsfac=-1, model=model, azm=azm)
 
-    re, im = ' \\mathbb{R}\\mathrm{e} \\; ', ' \\mathbb{I}\\mathrm{m} \\; '
+    q = self.getArray(path + 'q.dat')
+    lat = q[:, 0]*180/np.pi
+    t = self.getArray(path + 't.dat')
 
-    nT = ' \\; \\mathrm{(nT)} '
+    PW.setParam(title='\\mathrm{Horizontal \\;\\; Magnetic \\;\\; Fields ' +
+                      ' \\;\\; in \\;\\; the \\;\\; Northern \\;\\; Hemisphere}')
 
-    def texName(name):
-      sub = name[1].replace('f', '\\phi').replace('q', '\\theta')
-      if not len(name)>2 or name[2]=='I':
-        return name[0] + '_' + sub + ' \\mathrm{\\; at \\;} R_I '
-      else:
-        return name[0] + '_' + sub + ' \\mathrm{\\; at \\;} R_E '
+    PW.setParam(x=t, xLabel='\\mathrm{Time \\;\\; (s)}', y=lat, 
+                yLabel='\\mathrm{Latitude \\;\\; (^\\circ)}')
 
-    # Iterate through the rows. 
-    for row in range(2):
-      # -1 means no inertia, and automatic Boris factor. With a manual Boris
-      # factor of 1, the parallel electric field doesn't show up at all. 
-      inertia = (-1)**(row+1)
-      epsfac = (-1)**(row)
+    PW[0].setParam(rowLabel='R_I')
+    PW[1].setParam(rowLabel='R_E')
 
-      # Find the appropriate data path. 
-      path = self.getPath(inertia=inertia, epsfac=epsfac, model=model, azm=azm)
+    PW[0].setParam(colLabel='\\mathbb{I}\\mathrm{m} \\;\\; B_\\theta')
+    PW[1].setParam(colLabel='\\mathbb{R}\\mathrm{e} \\;\\; B_\\phi')
 
-      # Label the column. 
-      rowLabels = ('\\mathrm{Inertia \\; Off}', 
-                   '\\mathrm{Inertia \\; On}')
-      PW[row].setParam( rowLabel=rowLabels[row] )
+    for col, alt in enumerate( ('I', 'E') ):
 
-      q = self.getArray(path + 'q.dat')
-      lat = q[:, 0]*180/np.pi
-      t = self.getArray(path + 't.dat')
+        Bq = np.imag( self.getArray(path + 'Bq' + alt + '.dat')[:, 0, :] )
+        Bf = np.real( self.getArray(path + 'Bf' + alt + '.dat')[:, 0, :] )
 
-      for col, name in enumerate(fields):
+        PW[col, 0].setContour(Bq)
+        PW[col, 1].setContour(Bf)
 
-        PW.setParam(x=t, xLabel='\\mathrm{Time \\;\\; (s)}', y=lat, 
-                    yLabel='\\mathrm{Latitude \\;\\; (^\\circ)}')
-
-        # Grab the field data. 
-        arr = self.getArray(path + name + '.dat')[:, 0, :]
-        # Figure out if we want the real or imaginary component. 
-        realMed = np.median( np.abs( np.real(arr) ) )
-        imagMed = np.median( np.abs( np.imag(arr) ) )
-        if realMed>imagMed:
-          PW[col, row].setContour( np.real(arr) )
-          colLabel = re + texName(name) + nT
-        else:
-          PW[col, row].setContour( np.imag(arr) )
-          colLabel = im + texName(name) + nT
-        PW[col].setParam(colLabel=colLabel)
-
-    # Plot supertitle. 
-    PW.setParam(title='\\mathrm{Model \\;\\; ' + str(model) +
-                      ' \\;\\; with \\;\\; } m = \\mathrm{' + str(azm) + '}')
-
-    pngName = 'atm_' + str(model) + '_' + str(azm).zfill(3) + '.png'
-
-    return self.render(PW, pngName)
-
-
+    return self.render(PW, 'horizontal.pdf')
 
   # ---------------------------------------------------------------------------
   # -------------------------------------------------------- Downward Flux Plot
@@ -959,28 +944,105 @@ class tunaPlotter:
 
 
   # ---------------------------------------------------------------------------
-  # -------------------------------------------------------------- Example Plot
+  # ---------------------------------------------------- Integrated Energy Plot
   # ---------------------------------------------------------------------------
 
-  def plotExample(self):
-    # One plot cell, no color bar. 
-    PW = plotWindow(4, 4, colorbar='sym')
+  def plotU(self):
 
-    PW.setParam(title='\\mathrm{Dipole \\; Grid}')
+    PW = plotWindow(4, 3, colorbar=None)
+
+    # Electric constant, in mF/m. 
+    eps0 = 8.854e-9
+    # Magnetic constant, in nH/m. 
+    mu0 = 1256.63706
+    # Geocentric radii to earth's surface and ionospheric boundary, in Mm. 
+    RE, RI = 6.378388, 6.478388
+
+    # Set outer axis labels.  
+    PW.setParam(xlabel='\\mathrm{Time \\;\\; (s)}', 
+                ylabel='\\mathrm{Energy \\;\\; (\\frac{GJ}{rad})}')
+
+    # Set row and column labels. 
+    PW[0].setParam()
+
+    profiles = {1:'\\mathrm{Active \\;\\; Day} ',
+                2:'\\mathrm{Quiet \\;\\; Day} ',
+                3:'\\mathrm{Active \\;\\; Night} ',
+                4:'\\mathrm{Quiet \\;\\; Night} '}
+
+    [ PW[col].setParam(colLabel=profiles[col+1]) for col in range(4) ]
+
+    PW[0].setParam(rowLabel='m = 1')
+    PW[1].setParam(rowLabel='m = 8')
+    PW[2].setParam(rowLabel='m = 64')
+
+    PW.setParam(title='\\mathrm{Toroidal \\;\\; (Red) \\;\\; and \\;\\; ' +
+                      ' Poloidal \\;\\; (Blue) \\;\\; Electromagnetic \\;\\; Energy}')
+
+    # Keep track of extrema so we can have a shared y axis. 
+    Umin, Umax = 0, 0
 
     for col, model in enumerate( (1, 2, 3, 4) ):
 
       for row, azm in enumerate( (1, 8, 64) ):
 
+        # This plot takes a ton of data. Clean up memory regularly. 
+        self.refresh()
+
         path = self.getPath(inertia=1, model=model, azm=azm)
 
-        PW[col, row].setParam( **self.getCoords(path) )
+        # Perpendicular electric constant, in mF/m. Careful of zeros.  
+        epsp = eps0*( 1e-10 + self.getArray(path + 'epsp.dat') )
+        # Geocentric radius, in Mm. 
+        r = RE*self.getArray(path + 'r.dat')
+        # Colatitude, in radians. 
+        q = self.getArray(path + 'q.dat')
+        # Cosine of the invariant latitude. 
+        cosq0 = np.sqrt( 1 - RI*np.sin(q)**2/r )
+        # Dipole coordinates. 
+        u1 = -RI/r * np.sin(q)**2
+        u3 = RI**2/r**2 * np.cos(q)/cosq0
+        # Crunch out the Jacobian, in Mm^3. 
+        Jacobian = r**6/RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
+        # Time, in seconds. 
+        t = self.getArray(path + 't.dat')
+        # Take absolute values so we don't have to worry about real vs imaginary.
+        # Each field should have one component that is by far dominant. 
+        # Electric fields, in mV/m. 
+        Ex = np.abs( self.getArray(path + 'Ex.dat') )
+        Ey = np.abs( self.getArray(path + 'Ey.dat') )
+        # Magnetic fields, in nT. 
+        Bx = np.abs( self.getArray(path + 'Bx.dat') )
+        By = np.abs( self.getArray(path + 'By.dat') )
+        # Compute the energy density. 
+        uP, uT = np.zeros(Ex.shape), np.zeros(Ex.shape)
+        for step in range(uP.shape[2]):
+          uP[:, :, step] = epsp*Ey[:, :, step]**2 + Bx[:, :, step]**2/mu0
+          uT[:, :, step] = epsp*Ex[:, :, step]**2 + By[:, :, step]**2/mu0
+        # Now integrate the total energy over the spatial grid. 
+        UP = np.zeros( len(t) )
+        UT = np.zeros( len(t) )
+        for i in range(1, q.shape[0]-1):
+          for k in range(1, q.shape[1]-1):
+            # The Jacobian maps between a volume in nonorthogonal coordinate 
+            # space and a volume in physical space. 
+            du1 = u1[i+1, k] - u1[i-1, k]/2
+            du3 = u3[i, k+1] - u3[i, k-1]/2
+            # Add this area's contribution to all time steps. 
+            UP = UP + du1*du3*Jacobian[i, k]*2*np.pi*uP[i, k, :]
+            UT = UT + du1*du3*Jacobian[i, k]*2*np.pi*uT[i, k, :]
+        # Get the extrema, for the purpose of adjusting the Y limits. 
+        Umin = min( Umin, np.min(UP), np.min(UT) )
+        Umax = max( Umax, np.max(UP), np.max(UT) )
+        # Add these lines to the plot. 
+        PW[col, row].setLine(t, UT, color='r', label='\\mathrm{Toroidal}')
+        PW[col, row].setLine(t, UP, color='b', label='\\mathrm{Poloidal}')
 
+    # Round up to the nearest power of ten? 
+    Umax = 10**( np.ceil( np.log10(Umax) ) )
+    PW.setParam(ylimits=[10, Umax], ylog=True)
 
-
-
-
-
+#        PW[col, row].setParam( **self.getCoords(path) )
 
 #    # Just grab the first path. 
 #    path = self.paths[0]
@@ -995,9 +1057,140 @@ class tunaPlotter:
 
 
     # Show the plot. 
-    return self.render(PW, 'grid.png')
+    return self.render(PW, 'energy.png')
 
 
+  # ---------------------------------------------------------------------------
+  # -------------------------------------------------------------- In Situ Plot
+  # ---------------------------------------------------------------------------
+
+  def plotInsitu(self):
+
+    PW = plotWindow(3, 3, colorbar=None, yPad=1)
+
+    Lvals = (5, 6, 7)
+    lats = (20, 0, -20)
+
+    # Set title and labels. 
+    PW.setParam(title='\\mathrm{``In \\;\\; Situ\" \\;\\; Magnetic \\;\\; Fields}: ' + 
+                      '\\;\\; B_x \\;\\; \\mathrm{(Blue), \\;\\; }' + 
+                      '\\;\\; B_y \\;\\; \\mathrm{(Green), \\;\\; }' + 
+                      '\\;\\; B_z \\;\\; \\mathrm{(Red)}')
+
+    [ PW[col].setParam( colLabel='L = ' + str(x) ) for col, x in enumerate(Lvals) ]
+    [ PW[row].setParam( rowLabel=str(x) + '^\\circ' ) for row, x in enumerate(lats) ]
+
+    PW.setParam(xlabel='\\mathrm{Time \\;\\; (s)}', 
+                ylabel='\\mathrm{Magnetic \\;\\; Field \\;\\; (nT)}')
+
+    # Grab some data. 
+    path = self.getPath(azm=1, inertia=1, model=1)
+
+    # Radius in RE and colatitude in radians. 
+    r, q = self.getArray(path + 'r.dat'), self.getArray(path + 'q.dat')
+    # McIlwain parameter. Find the closest match to get the closest field line. 
+    L = ( r/np.sin(q)**2 )[:, 0]
+    # Latitude in degrees. 
+    lat = 90 - 180*q/np.pi
+    # Time in seconds. 
+    t = self.getArray(path + 't.dat')
+
+    # Magnetic fields in nT. 
+    Bx = self.getArray(path + 'Bx.dat')
+    By = self.getArray(path + 'By.dat')
+    Bz = self.getArray(path + 'Bz.dat')
+
+    # Figure out the azimuthal modenumber used for this run. 
+    azm = self.getParam(path, 'azm')
+
+    # What if our observer is moving? Rotate by exp(i m phi) where phi = v t / 2 pi r. 
+    # Earth radius in Mm. Note that what we read in was in RE. 
+    RE = 6.378388
+    # Velocity in Mm/s. 
+    v = 1e-2
+
+    # Let's have a shared y axis. 
+    Bmax = 0
+
+    for col, L0 in enumerate(Lvals):
+      for row, lat0 in enumerate(lats):
+
+        # Find the coordinates that are closest to where we want to plot. 
+        i = np.argmin( np.abs(L - L0) )
+        k = np.argmin( np.abs(lat[i, :] - lat0) )
+
+        print 'L = ', L0, ' and lat = ', lat0
+        print '\tclosest is at', i, k, ' with L = ', format(L[i], '.1f'), ' and lat = ', format(lat[i, k], '.1f')
+
+        rot = np.exp(1j * azm * v*t / (2*np.pi*r[i, k]*RE) )
+
+        # For the moment, let's plot the real components. 
+        PW[col, row].setLine(t, np.real( rot*Bx[i, k, :] ), color='b', label='B_x')
+        PW[col, row].setLine(t, np.real( rot*By[i, k, :] ), color='g', label='B_y')
+        PW[col, row].setLine(t, np.real( rot*Bz[i, k, :] ), color='r', label='B_z')
+
+        print 'Bmax = ', Bmax
+
+        Bmax = max(Bmax, *[ np.max(np.real(B[i, k, :])) for B in (Bx, By, Bz) ] )
+
+        print 'Bmax = ', Bmax
+
+    PW.setParam( ylimits=(-Bmax, Bmax) )
+
+
+    # Show the plot. 
+    return self.render(PW, 'insitu.png')
+
+
+
+  # ---------------------------------------------------------------------------
+  # ------------------------------------------------------ Successive Snapshots
+  # ---------------------------------------------------------------------------
+
+  def plotSnapshots(self):
+
+    # Magnetic constant, in nH/m. 
+    mu0 = 1256.63706
+
+    steps = (269, 279, 289, 299)
+
+    PW = plotWindow(nCols=2, nRows=len(steps), colorbar='sym', yPad=1)
+
+    # Grab some data. 
+    path = self.getPath(azm=8, inertia=1, model=1)
+
+    # Set up the coordinate system. 
+    PW.setParam( **self.getCoords(path) )
+
+    # Time in seconds. 
+    t = self.getArray(path + 't.dat')
+
+    # Grab toroidal data. Imaginary values, conjugate of By. 
+    Ex = np.imag( self.getArray(path + 'Ex.dat') )
+    By = -np.imag( self.getArray(path + 'By.dat') )
+    Stor = Ex*By/mu0
+
+    # Grab poloidal data. Real values. 
+    Ey = np.real( self.getArray(path + 'Ey.dat') )
+    Bx = np.real( self.getArray(path + 'Bx.dat') )
+    Spol = -Ey*Bx/mu0
+
+    # Super title. 
+    PW.setParam(title='\\mathrm{Successive \\;\\; Snapshots \\;\\; of ' +
+                      '\\;\\; Toroidal \\;\\; (Left) \\;\\; and \\;\\;' +
+                      ' Poloidal \\;\\; (Right) \\;\\; Poynting \\;\\; Flux}')
+    # Column labels. 
+    PW[0].setParam(colLabel='\\frac{1}{\\mu_0} E_x B_y^* \\;\\; \\mathrm{(\\frac{mW}{m^2})}')
+    PW[1].setParam(colLabel='\\frac{-1}{\\mu_0} E_y B_x^* \\;\\; \\mathrm{(\\frac{mW}{m^2})}')
+    # Row labels. 
+    for row, s in enumerate(steps):
+      PW[row].setParam(rowLabel='\\mathrm{' + format(t[s], '.0f')  + 's}')
+
+      PW[0, row].setContour(Stor[:, :, s])
+      PW[1, row].setContour(Spol[:, :, s])
+
+    # Show the plot. 
+    return self.render(PW, 'snapshots.pdf')
 
 
 
@@ -1776,8 +1969,14 @@ class plotWindow:
     rc('text', usetex=True)
     rc('text.latex', preamble='\usepackage{amsmath}, \usepackage{amssymb}')
     # Figure proportions are determined by the number of subplots. 
+
+
 #    self.fig = plt.figure(figsize=(15., nRows*10./nCols), facecolor='white')
+#    self.fig = plt.figure(figsize=(10., nRows*8./nCols), facecolor='white')
+
     self.fig = plt.figure(figsize=(nCols*15./nRows, 10.), facecolor='white')
+
+
     self.fig.canvas.set_window_title('Tuna Plotter')
     # The default subplot spacing sometimes overlaps labels, etc. We instead
     # use GridSpec. The subplots (and color bar, if any) are spaced out in
@@ -2455,7 +2654,7 @@ def getArgs():
 # ============================================================ Data File Access
 # =============================================================================
 
-def readArray(filename, indent='\t'):
+def readArray(filename, indent=''):
   # The out prefix is just an older convention for dat files, Fortran output.
   # We ultimately want to use the Python data format, pickles. 
   name = filename[ :filename.rfind('.') ]
@@ -2463,6 +2662,10 @@ def readArray(filename, indent='\t'):
 
   # Rename jz.out to Jz.dat (change in capitalization). 
   outname = outname.replace('Jz', 'jz')
+
+  # Rename epsPerp.out to epsp.dat (change in capitalization). 
+  outname = outname.replace('epsp', 'epsPerp')
+
 
   # If we're looking at an out postfix, move it to dat. 
   if os.path.isfile(outname) and not os.path.exists(datname):

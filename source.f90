@@ -768,7 +768,7 @@ module io
     ! Geometric parameters.
     if (varname .eq. 'n1'  ) defaultParam = 128        ! Number of field lines.
     if (varname .eq. 'n3'  ) defaultParam = 320        ! Grid points per line. 
-    if (varname .eq. 'lmin') defaultParam = 1.5        ! Innermost L value. 
+    if (varname .eq. 'lmin') defaultParam = 2          ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
 
     if (varname .eq. 'sfac') defaultParam = 1.04       ! Geometric spacing factor along the outermost field line. 
@@ -796,6 +796,8 @@ module io
     if (varname .eq. 'lps'  ) defaultParam = 1.0857    ! Scale L of plasmasphere.  
     if (varname .eq. 'lpp'  ) defaultParam = 4         ! L value of plasmapause. 
     if (varname .eq. 'dlpp' ) defaultParam = 0.1       ! Thickness (in L) of plasmapause. 
+    if (varname .eq. 'sighfac' ) defaultParam = 1.     ! To turn off Hall conductivity for debugging. 
+    if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! To turn off Pedersen conductivity for debugging. 
     ! Drive parameters.
     if (varname .eq. 'idrive'   ) defaultParam = 1     ! Waveform index. 
     if (varname .eq. 'bdrive'   ) defaultParam = 0.    ! Strength of driving B field (in nT). 
@@ -1286,24 +1288,19 @@ module geometry
     call writeRealArray('q.dat', q)
     ! Convert distances from Mm to RE for easier plotting. 
     call writeRealArray('r.dat', r/RE)
-    ! Let's report some characteristic scales. 
-
-    call writeParam('dr Min at Equator', 1000*( r(1, n3/2) - r(0, n3/2) ) , 'km')
-    call writeParam('dr Max at Equator', 1000*( r(n1, n3/2) - r(n1-1, n3/2) ) , 'km')
-
-    call writeParam('dr Min at Ionosphere', 1000*( r(0, 1) - r(0, 0) ) , 'km')
-    call writeParam('dr Max at Ionosphere', 1000*( r(n1, 1) - r(n1, 0) ) , 'km')
-
-    call writeParam('r dtheta Min at Equator',                                &
-                    1000*r(0, n3/2)*( q(0, 1+n3/2) - q(0, n3/2) ) , 'km')
-    call writeParam('r dtheta Max at Equator',                                &
-                    1000*r(n1, n3/2)*( q(n1, 1+n3/2) - q(n1, n3/2) ) , 'km')
-
-    call writeParam('r dtheta Min at Ionosphere',                             &
-                    1000*r(0, 0)*( q(1, 0) - q(0, 0) ) , 'km')
-    call writeParam('r dtheta Max at Ionosphere',                             &
-                    1000*r(n1, 0)*( q(n1, 0) - q(n1-1, 0) ) , 'km')
-
+!    ! Let's report some characteristic scales. 
+!    call writeParam('dr Min at Equator', 1000*( r(1, n3/2) - r(0, n3/2) ) , 'km')
+!    call writeParam('dr Max at Equator', 1000*( r(n1, n3/2) - r(n1-1, n3/2) ) , 'km')
+!    call writeParam('dr Min at Ionosphere', 1000*( r(0, 1) - r(0, 0) ) , 'km')
+!    call writeParam('dr Max at Ionosphere', 1000*( r(n1, 1) - r(n1, 0) ) , 'km')
+!    call writeParam('r dtheta Min at Equator',                                &
+!                    1000*r(0, n3/2)*( q(0, 1+n3/2) - q(0, n3/2) ) , 'km')
+!    call writeParam('r dtheta Max at Equator',                                &
+!                    1000*r(n1, n3/2)*( q(n1, 1+n3/2) - q(n1, n3/2) ) , 'km')
+!    call writeParam('r dtheta Min at Ionosphere',                             &
+!                    1000*r(0, 0)*( q(1, 0) - q(0, 0) ) , 'km')
+!    call writeParam('r dtheta Max at Ionosphere',                             &
+!                    1000*r(n1, 0)*( q(n1, 0) - q(n1-1, 0) ) , 'km')
     ! Write out the eigenvalues and eigenvectors at the ionosphere. 
     call writeRealColumns('evals.dat', nu)
     call writeRealArray('evecs.dat', Yinv(0:nModes-1, :), noskip=.true.)
@@ -1647,8 +1644,8 @@ module ionos
     ! conuctivity should actually go to infinity. We handle that by letting eta go to zero, then
     ! taking its inverse. 
     sig0 = 1/( mu0*mapIonos('eta') )
-    sigH = mapIonos('sigH')
-    sigP = mapIonos('sigP')
+    sigH = readParam('sighfac')*mapIonos('sigH')
+    sigP = readParam('sigpfac')*mapIonos('sigP')
   end subroutine profileSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -1659,106 +1656,202 @@ module ionos
   ! step based on parallel plasma motions, adjusts them based on any Boris corrections, and
   ! chooses a time step for the experiment. 
   subroutine dtSetup()
-    ! One over the zone crossing times in each direction, for computing Alfven timescale. 
-    double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz
-    ! The Alfven time step is constrained by zone crossing times. The parallel time step is
-    ! constrained by sig0/eps0. The inertial time step is constrained by the plasma frequency. 
-    double precision                       :: dtAlfven, dtParallel
+    ! One over the zone crossing times in each direction. 
+!    double precision, dimension(0:n1,0:n3) :: oodtx, oodty, oodtz
+    double precision                       :: oodtx, oodty, oodtz
+    ! The Alfven time step is constrained by zone crossing times. The inertial time step is
+    ! constrained by the plasma frequency. The compressional time step is constrained by
+    ! speed-of-light crossing time. 
+    double precision                       :: dtAlfven, dtInertial, dtCompressional
+
+
+
     ! We can use a Boris correction to increase eps0 above its vacuum value. This increases the
     ! plasma frequency, allowing us to stabilize parallel and inertial terms at a reasonable time
     ! step. This is safe if the plasma frequency remains much higher than the waves we're driving.
+
     double precision                       :: boris, borisMax
-    ! Compute Alfven crossing times for each grid location. 
-    oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
-    oodty = azm*vA()/h2()
-    oodtz = abs( 2*vA()/( h3()*( eoshift(usup3(), 1, dim=2) - eoshift(usup3(), -1, dim=2) ) ) )
-    ! We used eoshift, so the edges are garbage. Ignore them. 
-    oodtx(ii,:) = 0
-    oodtx(:,kk) = 0
-    oodtz(ii,:) = 0
-    oodtz(:,kk) = 0
+
+    double precision                       :: c, wdrive
+    double precision, dimension(0:n1,0:n3) :: wp, np
+
+    double precision, dimension(0:n1,0:n3) :: dx, dy, dz
+
+    ! Compute the grid spacing. We'll need it when we get to crossing times. 
+    dx = 0.5*h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) )
+    dy = h2()/azm
+    dz = -0.5*h3()*( eoshift(usup3(), 1, dim=2) - eoshift(usup3(), -1, dim=2) )
+    ! We used eoshift, so the edges are garbage. Set them to "infinity." 
+    dx(ii,:) = 1e10
+    dx(:,kk) = 1e10
+    dz(ii,:) = 1e10
+    dz(:,kk) = 1e10
+
+    ! Our Boris factor is constrained by wdrive**2/wp**2 << 1 and wdrive*np/wp**2 << 1. Let's keep
+    ! four orders of magnitude, just to be safe. Note that wp and np are the plasma frequency and
+    ! the parallel collision frequency, respectively. 
+    wp = sqrt( n()*qe**2 / (me*eps0) )
+    np = n()*qe**2 / (me*sig0)
+    wdrive = 2*pi*readParam('fdrive')
+    ! Note that wp**2 scales as 1/eps0. 
+    call writeParam( 'Max w**2/wp**2', maxval(wdrive/wp)**2 )
+    call writeParam( 'Max w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
+    borisMax = 1e-4 / max( maxval( wdrive**2 / wp**2 ), maxval( wdrive*np / wp**2 ) )
+    call writeParam('Maximum Boris Factor', borisMax)
+
+    ! If we're given a Boris factor, use that. 
+    if (readParam('epsfac') .gt. 0) then
+      boris = readParam('epsfac')
+    ! Otherwise, use the biggest one we can get away with. 
+    else
+      boris = borisMax
+    end if
+
+    call writeParam('Boris Factor', boris)
+
+    ! Recompute the plasma frequency with the Boris factor. Also compute adjusted speed of light. 
+    epsPara = eps0*boris
+    wp = sqrt( n()*qe**2 / (me*epsPara) )
+    c = sqrt( 1/(mu0*epsPara) )
+
+    ! Confirm that we're not worried about stability. 
+    call writeParam( 'Max Boris-Adjusted w**2/wp**2', maxval(wdrive/wp)**2 )
+    call writeParam( 'Max Boris-Adjusted w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
+
+    ! Now figure out the time step. We are constrained by Alfven zone crossing time, compressional
+    ! (speed of light) zone crossing time, and the plasma frequency. Let's compute the grid spacing
+    ! everywhere. 
+
+    call writeParam('Min Boris-Adjusted 1/wp', minval(1/wp), 's')
+    dtInertial = readParam('cour')*minval(1/wp)
+    call writeParam('Inertial dt', dtInertial, 's')
+
+    oodtx = maxval(c/dx)
+    oodty = maxval(c/dy)
+    oodtz = maxval(c/dz)
+    call writeParam('Min Boris-Adjusted dx/c', 1/oodtx, 's')
+    call writeParam('Min Boris-Adjusted dy/c', 1/oodty, 's')
+    call writeParam('Min Boris-Adjusted dz/c', 1/oodtz, 's')
     ! Get diagonal zone crossing -- still working in one over time. 
     if (azm==0) then
-      dtAlfven = 1./ maxval( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
+      dtCompressional = readParam('cour')/ ( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
     else
-      dtAlfven = 1./ maxval( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
+      dtCompressional = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
-    ! Record the Alfven time step. 
-    call writeParam('Alfven dt', readParam('cour')*dtAlfven, 's')
-    ! We risk problems if we allow the plasma frequency to become comparable to the frequency of
-    ! the waves we're driving. We constrain our automatic Boris factor to make sure that the
-    ! plasma frequency is always at least two orders of magnitude above the driving frequency. 
-    borisMax = 1e-4*minval( n()*qe**2 / (me*eps0) ) / ( 2*pi*readParam('fdrive') )**2
-    call writeParam('Maximum Boris Factor', borisMax)
-    ! By default (specified with nonpositive epsfac) we automatically determine the appropriate
-    ! Boris factor. 
-    if (readParam('epsfac') .le. 0) then
-      ! For terms with electron inertial effects, this means we need to adjust the parallel
-      ! electric constant until the inertial time step matches the Alfven time step. 
-      if (readParam('inertia') .gt. 0) then
-        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
-        ! factor in there since inertial effects are particularly prone to instability. 
-        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
-        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
-        ! Compute the Boris factor. Note that eps0 appears in the square root of the plasma
-        ! frequency. 
-        boris = min( borisMax, (dtAlfven/dtParallel)**2 )
-        ! Update the parallel time step.
-        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
-      ! Without electron inertial effects, the parallel time step is set by the integrating factor
-      ! used by the parallel electric field. 
-      else
-        ! The issue here isn't instability. The ratio sig0/eps0 is huge, and appears in a negative
-        ! exponential. Without a Boris correction, the parallel electric field simply doesn't
-        ! appear in the simulation. 
-        dtParallel = maxval(eps0/sig0)
-        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
-        ! Compute the Boris factor. Note that eps0 appears in this time step calculation directly. 
-        boris = min(borisMax, dtAlfven/dtParallel)
-        ! Update the parallel time step.
-        dtParallel = maxval(boris*eps0/sig0)
-      end if
-      ! Report the automatic Boris factor. 
-      call writeParam('Automatic Boris Factor', boris)
-    ! If we're given a positive epsfac, that means that (for some reason) the user wants to set
-    ! the Boris correction manually. 
+    call writeParam('Compressional dt', dtCompressional, 's')
+
+    oodtx = maxval(vA()/dx)
+    oodty = maxval(vA()/dy)
+    oodtz = maxval(vA()/dz)
+    call writeParam('Min Boris-Adjusted dx/vA', 1/oodtx, 's')
+    call writeParam('Min Boris-Adjusted dy/vA', 1/oodty, 's')
+    call writeParam('Min Boris-Adjusted dz/vA', 1/oodtz, 's')
+    ! Get diagonal zone crossing -- still working in one over time. 
+    if (azm==0) then
+      dtAlfven = readParam('cour')/ ( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
     else
-      ! If electron inertial effects are included, we actually do need to compute the parallel
-      ! time step based on the Boris factor. If the factor is too small, this means that time time
-      ! step will be small, and runtime will be very long. 
-      if (readParam('inertia') .gt. 0) then
-        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
-        ! factor in there since inertial effects are particularly prone to instability. 
-        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
-        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
-        ! Grab the Boris factor. Allow it to exceed the maximum. 
-        boris = readParam('epsfac')
-        ! Apply it to the inertial time step. Keep the fudge factor in there. 
-        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
-      ! We do not allow a manually-Boris-adjusted non-inertial parallel time step to trump the
-      ! Alfven time step. There may be Boris values for which this will lead to instability. In
-      ! practice, this allows a Boris factor of 1 to be used to ignore the parallel electric field
-      ! completely. 
-      else
-        ! For completeness, compute and record the unmodified parallel time step. We don't
-        ! actually use it for anything. 
-        dtParallel = maxval(eps0/sig0)
-        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
-        ! Grab the Boris factor. Allow it to exceed the maximum. 
-        boris = readParam('epsfac')
-        ! Don't use it. Just set the parallel time step to "infinity." 
-        dtParallel = 1. 
-      end if
-      ! Report the manually-set Boris factor. 
-      call writeParam('Manual Boris Factor', boris)
+      dtAlfven = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
-    ! Output the Boris-adjusted parallel time step. 
-    call writeParam('Adjusted Parallel dt', readParam('cour')*dtParallel, 's')
-    ! The experimental time step is the smaller of the Alfven and parallel time steps. 
-    dt = readParam('cour')*min(dtAlfven, dtParallel)
+    call writeParam('Alfven dt', dtAlfven, 's')
+
+
+    dt = min( dtAlfven, dtInertial, dtCompressional )
     call writeParam('dt', dt, 's')
-    ! Finally, actually apply the Boris correction to the parallel electric constant.  
-    epsPara = boris*eps0
+
+
+
+
+!    ! Compute Alfven crossing times for each grid location. 
+!    oodtx = abs( 2*vA()/( h1()*( eoshift(usup1(), 1, dim=1) - eoshift(usup1(), -1, dim=1) ) ) )
+!    oodty = azm*vA()/h2()
+!    oodtz = abs( 2*vA()/( h3()*( eoshift(usup3(), 1, dim=2) - eoshift(usup3(), -1, dim=2) ) ) )
+!    ! We used eoshift, so the edges are garbage. Ignore them. 
+!    oodtx(ii,:) = 0
+!    oodtx(:,kk) = 0
+!    oodtz(ii,:) = 0
+!    oodtz(:,kk) = 0
+!    ! Get diagonal zone crossing -- still working in one over time. 
+!    if (azm==0) then
+!      dtAlfven = 1./ maxval( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
+!    else
+!      dtAlfven = 1./ maxval( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
+!    end if
+!    ! Record the Alfven time step. 
+!    call writeParam('Alfven dt', readParam('cour')*dtAlfven, 's')
+!    ! We risk problems if we allow the plasma frequency to become comparable to the frequency of
+!    ! the waves we're driving. We constrain our automatic Boris factor to make sure that the
+!    ! plasma frequency is always at least two orders of magnitude above the driving frequency. 
+!    borisMax = 1e-4*minval( n()*qe**2 / (me*eps0) ) / ( 2*pi*readParam('fdrive') )**2
+!    call writeParam('Maximum Boris Factor', borisMax)
+!    ! By default (specified with nonpositive epsfac) we automatically determine the appropriate
+!    ! Boris factor. 
+!    if (readParam('epsfac') .le. 0) then
+!      ! For terms with electron inertial effects, this means we need to adjust the parallel
+!      ! electric constant until the inertial time step matches the Alfven time step. 
+!      if (readParam('inertia') .gt. 0) then
+!        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
+!        ! factor in there since inertial effects are particularly prone to instability. 
+!        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+!        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
+!        ! Compute the Boris factor. Note that eps0 appears in the square root of the plasma
+!        ! frequency. 
+!        boris = min( borisMax, (dtAlfven/dtParallel)**2 )
+!        ! Update the parallel time step.
+!        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+!      ! Without electron inertial effects, the parallel time step is set by the integrating factor
+!      ! used by the parallel electric field. 
+!      else
+!        ! The issue here isn't instability. The ratio sig0/eps0 is huge, and appears in a negative
+!        ! exponential. Without a Boris correction, the parallel electric field simply doesn't
+!        ! appear in the simulation. 
+!        dtParallel = maxval(eps0/sig0)
+!        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
+!        ! Compute the Boris factor. Note that eps0 appears in this time step calculation directly. 
+!        boris = min(borisMax, dtAlfven/dtParallel)
+!        ! Update the parallel time step.
+!        dtParallel = maxval(boris*eps0/sig0)
+!      end if
+!      ! Report the automatic Boris factor. 
+!      call writeParam('Automatic Boris Factor', boris)
+!    ! If we're given a positive epsfac, that means that (for some reason) the user wants to set
+!    ! the Boris correction manually. 
+!    else
+!      ! If electron inertial effects are included, we actually do need to compute the parallel
+!      ! time step based on the Boris factor. If the factor is too small, this means that time time
+!      ! step will be small, and runtime will be very long. 
+!      if (readParam('inertia') .gt. 0) then
+!        ! The inertial time step is computed from the plasma frequency. There's an extra fudge
+!        ! factor in there since inertial effects are particularly prone to instability. 
+!        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*eps0) ) )
+!        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
+!        ! Grab the Boris factor. Allow it to exceed the maximum. 
+!        boris = readParam('epsfac')
+!        ! Apply it to the inertial time step. Keep the fudge factor in there. 
+!        dtParallel = readParam('fudge')/maxval( sqrt( n()*qe**2 / (me*boris*eps0) ) )
+!      ! We do not allow a manually-Boris-adjusted non-inertial parallel time step to trump the
+!      ! Alfven time step. There may be Boris values for which this will lead to instability. In
+!      ! practice, this allows a Boris factor of 1 to be used to ignore the parallel electric field
+!      ! completely. 
+!      else
+!        ! For completeness, compute and record the unmodified parallel time step. We don't
+!        ! actually use it for anything. 
+!        dtParallel = maxval(eps0/sig0)
+!        call writeParam('Parallel dt', readParam('cour')*dtParallel, 's')
+!        ! Grab the Boris factor. Allow it to exceed the maximum. 
+!        boris = readParam('epsfac')
+!        ! Don't use it. Just set the parallel time step to "infinity." 
+!        dtParallel = 1. 
+!      end if
+!      ! Report the manually-set Boris factor. 
+!      call writeParam('Manual Boris Factor', boris)
+!    end if
+!    ! Output the Boris-adjusted parallel time step. 
+!    call writeParam('Adjusted Parallel dt', readParam('cour')*dtParallel, 's')
+!    ! The experimental time step is the smaller of the Alfven and parallel time steps. 
+!    dt = readParam('cour')*min(dtAlfven, dtParallel)
+!    call writeParam('dt', dt, 's')
+!    ! Finally, actually apply the Boris correction to the parallel electric constant.  
+!    epsPara = boris*eps0
   end subroutine dtSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -1792,6 +1885,10 @@ module ionos
     call writeParam('epsPerp/sigP Min', minval(epsPerp/sigP), 's')
     call writeParam('epsPerp/sigH Min', minval(epsPerp/sigH), 's')
     call writeParam('eps0/sig0    Max', maxval(eps0/sig0), 's')
+
+    call writeParam('vA*epsPerp/sigP Min', 1000*minval(vA()*epsPerp/sigP), 'km')
+    call writeParam('vA*epsPerp/sigH Min', 1000*minval(vA()*epsPerp/sigH), 'km')
+
     call writeParam('epsPara/sig0 Max', maxval(epsPerp/sig0), 's')
     call writeParam('Collision Frequency Max', maxval( n()*qe**2 / (me*sig0) ), 'Hz')
     call writeParam('Adjusted Speed of Light', 1000*sqrt( 1./(mu0*epsPara) ), 'km/s')
@@ -2761,6 +2858,7 @@ program tuna
   ! coefficients. Geometric scale factors and ionospheric parameter values are combined here, so
   ! that in the main loop we can advance fields in as few floating point operations as possible. 
   call coefficientSetup()
+
 
 
 !  call peekCoefficients(0.83*RE, 0.58*RE)

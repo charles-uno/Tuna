@@ -28,15 +28,15 @@ runDirName = 'inertial_length'
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
               'jdrive':[1e-4], 
-              'dtout':[0.01],
-              'tmax':[5],
+              'dtout':[0.1],
+              'tmax':[0],
               'azm':[16],
               'lmin':[5],
               'lmax':[7],
-              'n1':[100, 150, 200],
-              'n3':[400, 450, 500, 550],
-              'sfac':[1.02, 1.04],
-              'fudge':[0.1],
+              'n1':[20],
+              'n3':[400],
+#              'cour':[0.01],
+#              'fudge':[0.1],
               'model':[1],
               'inertia':[1]
 #              'azm':[1, 2, 4, 8, 16, 32, 64, 128],
@@ -413,9 +413,9 @@ def mods():
   else:
     return ('intel', 'mkl/10.2.5.035')
 
-# How many cores do we have access to?
+# On Eelpout, don't bother parallelizing. On Itasca, use as many cores as possible. 
 def nproc():
-  return 2 if local() else 16
+  return 1 if local() else 16
 
 # Where should the run be carried out? 
 def runDir(runDirName):
