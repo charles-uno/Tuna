@@ -27,18 +27,17 @@ runDirName = 'inertial_length'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
-              'jdrive':[1e-4], 
+#              'jdrive':[1e-4], 
+              'bdrive':[10], 
               'dtout':[0.1],
               'tmax':[0],
               'azm':[16],
-              'lmin':[5],
-              'lmax':[7],
-              'n1':[20],
+#              'lmin':[5],
+#              'lmax':[7],
+              'n1':[150],
               'n3':[400],
-#              'cour':[0.01],
-#              'fudge':[0.1],
               'model':[1],
-              'inertia':[1]
+              'inertia':[1],
 #              'azm':[1, 2, 4, 8, 16, 32, 64, 128],
 #              'fdrive':[0.015]
          }

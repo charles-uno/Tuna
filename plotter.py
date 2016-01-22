@@ -491,10 +491,14 @@ class tunaPlotter:
     titles = []
     # Scroll through the runs. 
     for runNum, path in enumerate(self.paths):
+
+
       # Match each run's name up with its time stamp. 
-      timeStamp = format(self.getArray(path + 't.out')[step], '.2f') + 's'
+      timeStamp = format(self.getArray(path + 't.dat')[step], '.2f') + 's'
       shortPath = path.split('/')[-2].split('_')[0]
       titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
+
+
       # Handle the coordinate grid and axis labels. 
       PW.setParam( nColors=12, **self.getCoords(path) )
       # Each field gets a column. 

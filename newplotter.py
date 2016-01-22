@@ -59,7 +59,7 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plot()
+  return TP.plotA()
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -132,9 +132,12 @@ class tunaPlotter:
              3:self.texText('Active Nightside '),
              4:self.texText('Quiet Nightside '),
              # Names for fields, axes, etc. 
+             'alt':self.texText('Altitude'), 
              'Bx':'B_x', 
              'By':'B_y', 
              'Bz':'B_z', 
+             'Jz':'J_z', 
+             'lat':self.texText('Latitude'), 
              'X':'X', 
              'Z':'Z'
             }
@@ -155,10 +158,15 @@ class tunaPlotter:
 
   def texUnit(self, x):
     units = {
+             'alt':'km',
              'B':'nT',
              'Bx':'nT', 
              'By':'nT', 
              'Bz':'nT', 
+             'deg':'^\\circ',
+             'Jz':'\\frac{\\mu\\!J}{m^2}',
+             'km':'km',
+             'lat':'^\\circ',
              'nT':'nT',
              's':'s',
              't':'s',
@@ -186,6 +194,12 @@ class tunaPlotter:
     if name in ('Bx', 'By', 'Bz', 'r', 'q', 't'):
       phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
       return phase( readArray(path + name + '.dat') )
+    # Altitude in km. Note that we read r in RE and we store RE in Mm. 
+    elif name=='alt':
+      return 1000*self.RE*(self.getArray(path, 'r') - 1)
+    # Latitude in degrees, from colatitude in radians. 
+    elif name=='lat':
+      return 90 - self.getArray(path, 'q')*180/np.pi
     # Or if it's a compound quantity that we will need to crunch out. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -204,15 +218,78 @@ class tunaPlotter:
 
   # This function returns a dictionary of keyword arguments meant to be plugged
   # straight into plotWindow.setParams(). 
-  def getCoords(self, path, x='X', y='Z'):
-    return { 'x':self.getArray(path, x), 'xlabel':self.texLabel(x),
-             'y':self.getArray(path, y), 'ylabel':self.texLabel(y) }
+  def getCoords(self, path, xaxis='X', yaxis='Z', lim=None):
+    coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
+             'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
+
+    # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
+    # in on the ionosphere. 
+    if xaxis=='lat' and yaxis=='alt':
+      # Set the window range based on the latitudes seen at the northern
+      # hemisphere boundary, and the altitudes we resolve at those latitudes.
+      lat, alt = coords['x'], coords['y']
+      xmin, xmax = np.min( lat[:, 0] ), np.max( lat[:, 0] )
+      ymin = np.min(alt)
+      # Allow the altitude maximum to be overwritten to zoom in. 
+      ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
+      coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
+
+    return coords
 
   # ===========================================================================
   # ============================================================= Plot Assembly
   # ===========================================================================
 
-  def plot(self, path='/export/scratch/users/mceachern/parallel_test'):
+  def plotA(self, path='/export/scratch/users/mceachern/inertial_length_20160120_171344/'):
+
+    self.setPaths(path)
+
+    n3s = (450, 500)
+
+    inertias = (1, -1)
+
+    PW = plotWindow(nrows=len(n3s), ncols=len(inertias), colorbar='sym')
+
+    # Create row and column labels. 
+    rowLabels = [ self.texText('Inertia'), self.texText('No Inertia') ]
+    colLabels = [ 'n3 = ' + str(n3) for n3 in n3s ]
+
+    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
+
+    step = 200
+
+    for row, inertia in enumerate( inertias[:1] ):
+      for col, n3 in enumerate(n3s):
+
+        path = self.getPath(n3=n3, inertia=inertia)
+        PW[row, col].setParams( **self.getCoords(path, 'lat', 'alt', lim=500) )
+        PW[row, col].setContour( self.getArray(path, 'Bz')[:, :, -1] )
+
+    PW.setParams(title=self.texName('Bz') + self.texTime(20) + self.texUnit('nT') )
+
+
+    return PW.render()
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+  # ===========================================================================
+  # ============================================================= Plot Assembly
+  # ===========================================================================
+
+  def plotB(self, path='/export/scratch/users/mceachern/parallel_test'):
+
     # Starting at the given path, find all directories with data. 
     self.setPaths(path)
     # Let's plot magnetic field components at different m values. 
@@ -399,9 +476,9 @@ class plotWindow:
       # Only the leftmost y axes get labels. 
       elif key=='ylabel':
         [ cell.setParams(ylabel=val) for cell in self.cells[:, 0] ]
-      # Report if we see any parameter we're not prepared for. 
+      # Any other parameters get sent to the cells. 
       else:
-        print 'WARNING: Unknown param ', key, ' = ', val
+        [ cell.setParams( **{key:val} ) for cell in self.cells.flatten() ]
     return
 
   # ---------------------------------------------------------------------------
@@ -455,11 +532,10 @@ class plotWindow:
       cell.setParams( xlabel='', xticklabels=() )
     for cell in self.cells[:, 1:].flatten():
       cell.setParams( ylabel='', yticklabels=() )
-    # Use the most extreme x and y values to set the plot domain. This should
-    # work for both line and contour plots. 
-    xlm = [ np.floor( self.xmin() ), np.ceil( self.xmax() ) ]
-    ylm = [ np.floor( self.ymin() ), np.ceil( self.ymax() ) ]
-    [ cell.setParams(xlims=xlm, ylims=ylm) for cell in self.cells.flatten() ]
+    # Use the most extreme x and y values, rounded to integers, to set the plot
+    # domain. This should work for both line and contour plots. 
+    self.setParams( xlims=( np.floor( self.xmin() ), np.ceil( self.xmax() ) ),
+                    ylims=( np.floor( self.ymin() ), np.ceil( self.ymax() ) ) )
     # Use the most extreme contour value among all plots to set the color bar. 
     colors = plotColors(zmax=self.zmax(), cax=self.cax, colorbar=self.colorbar)
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
@@ -495,6 +571,9 @@ class plotCell:
   x, y, z, kargs = None, None, None, None
   # A plot can have any number of lines drawn on it. Those will be stored here. 
   lines = None
+  # If we manually set the axis limits, we want to ignore the automatically-set
+  # limits that come down the line later. 
+  xlims, ylims = None, None
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------- Initialize Cell
@@ -521,7 +600,11 @@ class plotCell:
         self.ax.set_xlabel('' if not val else '$' + val + '$')
       # Set horizontal axis domain. 
       elif key.startswith('xlim'):
-        self.ax.set_xlim(val)
+        # If the limits are set manually, we want to ignore the automatic
+        # limits that come down the line later. 
+        if self.xlims is None:
+          self.xlims = val
+          self.ax.set_xlim(val)
       # Set the horizontal axis tick labels. 
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
@@ -531,9 +614,13 @@ class plotCell:
       # Label the vertical axis. 
       elif key=='ylabel':
         self.ax.set_ylabel('' if not val else '$' + val + '$')
-      # Set vertical axis domain. 
+      # Set the vertical axis domain. 
       elif key.startswith('ylim'):
-        self.ax.set_ylim(val)
+        # If the limits are set manually, we want to ignore the automatic
+        # limits that come down the line later. 
+        if self.ylims is None:
+          self.ylims = val
+          self.ax.set_ylim(val)
       # Set the horizontal axis tick labels. 
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
