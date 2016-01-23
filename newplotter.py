@@ -31,6 +31,9 @@
 ## To easily draw a half-black-half-white semicircle. 
 #from matplotlib.patches import Wedge
 #import numpy as np
+#from matplotlib.ticker import FuncFormatter
+#import matplotlib.ticker as ticker
+
 
 # The cPickle module is faster, but not always available. 
 try:
@@ -48,9 +51,6 @@ from os.path import basename
 from sys import argv, stdout
 from time import localtime as lt, time
 
-#from matplotlib.ticker import FuncFormatter
-#import matplotlib.ticker as ticker
-
 # #############################################################################
 # ######################################################################## Main
 # #############################################################################
@@ -59,7 +59,7 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plotA()
+  return TP.plotD()
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -77,17 +77,22 @@ class tunaPlotter:
   qe = 1.60218e-25 # MC
   me = 9.10938e-28 # g
   RE = 6.378388 # Mm
+  RI = 6.478388 # Mm
 
   # ===========================================================================
   # ============================================================= Path Handling
   # ===========================================================================
 
-  # Given a path, find all data directories. 
-  def setPaths(self, path):
+  # Given one or more paths, find all data directories. 
+  def setPaths(self, *args):
     self.paths = []
-    for root, dirs, files in os.walk(path):
-      if 'params.in' in files:
-        self.paths.append( os.path.abspath(root) + '/' )
+    # Increment over everything we're passed. 
+    for arg in args:
+      # Ignore non-paths. 
+      if os.path.isdir(arg):
+        for root, dirs, files in os.walk(arg):
+          if 'params.in' in files:
+            self.paths.append( os.path.abspath(root) + '/' )
     return
 
   # Look at the parameter input file for a given path and find a value. 
@@ -117,6 +122,13 @@ class tunaPlotter:
     else:
       return paths[0]
 
+  # Find the most recent run, including runs still in progress. 
+  def newPath(self):
+    root = '/export/scratch/users/mceachern/'
+    runs = [ d for d in os.listdir(root) if os.path.isdir(root + d) ]
+    # Sort by time of last modification, then return the last path. 
+    return max( (os.path.getmtime(d), d) for d in runs )[1]
+
   # ===========================================================================
   # ==================================================== LaTeX Helper Functions
   # ===========================================================================
@@ -127,10 +139,10 @@ class tunaPlotter:
   def texName(self, x):
     names = {
              # Spell out what each model means. 
-             1:self.texText('Active Dayside '),
-             2:self.texText('Quiet Dayside '),
-             3:self.texText('Active Nightside '),
-             4:self.texText('Quiet Nightside '),
+             1:self.texText('Active Day '),
+             2:self.texText('Quiet Day '),
+             3:self.texText('Active Night '),
+             4:self.texText('Quiet Night '),
              # Names for fields, axes, etc. 
              'alt':self.texText('Altitude'), 
              'Bx':'B_x', 
@@ -138,6 +150,9 @@ class tunaPlotter:
              'Bz':'B_z', 
              'Jz':'J_z', 
              'lat':self.texText('Latitude'), 
+             'logU':self.texText('Log_{10} Energy'),
+             't':self.texText('Time'), 
+             'U':self.texText('Energy'), 
              'X':'X', 
              'Z':'Z'
             }
@@ -164,12 +179,18 @@ class tunaPlotter:
              'By':'nT', 
              'Bz':'nT', 
              'deg':'^\\circ',
+             'E':'\\frac{mV}{m^2}',
+             'Ex':'\\frac{mV}{m^2}',
+             'Ey':'\\frac{mV}{m^2}',
+             'Ez':'\\frac{mV}{m^2}',
              'Jz':'\\frac{\\mu\\!J}{m^2}',
              'km':'km',
              'lat':'^\\circ',
+             'logU':'\\frac{GJ}{rad}',
              'nT':'nT',
              's':'s',
              't':'s',
+             'U':'\\frac{GJ}{rad}',
              'X':'R_E', 
              'Z':'R_E'
             }
@@ -191,22 +212,81 @@ class tunaPlotter:
   # individual plot methods clean. 
   def getArray(self, path, name):
     # Check if we're looking for something that corresponds to a data file...
-    if name in ('Bx', 'By', 'Bz', 'r', 'q', 't'):
+    if name in ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'JyDrive', 'q', 't'):
       phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
       return phase( readArray(path + name + '.dat') )
+    # A few quantities get printed out with scale factors. Un-scale them. 
+    # Radius in Mm (from RE). 
+    elif name=='r':
+      return self.RE*readArray(path + 'r.dat')
+    # Perpendicular electric constant, from units of eps0 to mF/m. 
+    elif name=='epsPerp' or name=='epsp':
+      return self.eps0*readArray(path + 'epsPerp.dat')
     # Altitude in km. Note that we read r in RE and we store RE in Mm. 
     elif name=='alt':
-      return 1000*self.RE*(self.getArray(path, 'r') - 1)
+      return 1000*(self.getArray(path, 'r') - self.RE)
+    # Driving electric field in mV/m. 
+    elif name=='EyDrive':
+      return self.getArray(path, 'JyDrive')/self.getArray(path, 'epsPerp')
+    # Jacobian determinant, used for integrating. 
+    elif name=='jac':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      # Cosine of the invariant latitude. 
+      cosq0 = np.sqrt( 1 - self.RI*np.sin(q)**2/(r*self.RE) )
+      # Crunch out the Jacobian, in Mm^3. 
+      return (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
     # Latitude in degrees, from colatitude in radians. 
     elif name=='lat':
       return 90 - self.getArray(path, 'q')*180/np.pi
-    # Or if it's a compound quantity that we will need to crunch out. 
+    # Field-indexing dipole coordinate. 
+    elif name=='u1':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      return -self.RI/(r*self.RE) * np.sin(q)**2
+    # Dipole coordinate to index along a field line. 
+    elif name=='u3':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      # Cosine of the invariant latitude. 
+      cosq0 = np.sqrt( 1 - self.RI*np.sin(q)**2/r )
+      return self.RI**2/(r*self.RE)**2 * np.cos(q)/cosq0
+    # Sometimes we don't actually need the array, such as when we're grabbing
+    # the y axis for a line plot... so the axis will be set by line values. 
+    elif name in ('logU', 'U'):
+      return None
+    # Toroidal component of the electromagnetic energy. 
+    elif name in ('UBpol', 'UBtor', 'UEpol', 'UEtor', 'Upol', 'Utor'):
+      # The volume differential comes from the dipole coordinates and the
+      # determinant of the Jacobian matrix. 
+      u1, u3 = self.getArray(path, 'u1'), self.getArray(path, 'u3')
+      du1 = ( np.roll(u1, shift=1, axis=0) - np.roll(u1, shift=-1, axis=0) )/2
+      du1[0, :], du1[-1, :] = 0, 0
+      du3 = ( np.roll(u3, shift=1, axis=1) - np.roll(u3, shift=-1, axis=1) )/2
+      du3[:, 0], du3[:, -1] = 0, 0
+      dV = np.abs( du1*du3*self.getArray(path, 'jac') )
+      # Perpendicular dielectric constant. 
+      epsp = self.getArray(path, 'epsPerp')
+      # Grab the toroidal/poloidal fields. 
+      ename, bname = ('Ey', 'Bx') if 'pol' in name else ('Ex', 'By')
+      E, B = self.getArray(path, ename), self.getArray(path, bname)
+      # Sometimes we only want to consider the energy in one field. 
+      if 'E' in name:
+        B = B*0
+      if 'B' in name:
+        E = E*0
+      # Compute the energy density and weigh it by the volume differential. 
+      dU = np.empty(E.shape)
+      for i in range( dU.shape[-1] ):
+        dU[:, :, i] = (epsp*E[:, :, i]**2 + B[:, :, i]**2/self.mu0)*dV
+      # Sum over the spatial dimensions to get energy density over time. Newer
+      # versions of Numpy can do a multi-axis sum... 
+      return np.sum( np.sum(dU, 1), 0)
+    # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return r*np.sin(q)
+      return r*np.sin(q)/self.RE
+    # GSE Z in RE. 
     elif name=='Z':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return r*np.cos(q)
+      return r*np.cos(q)/self.RE
     # Keep an eye out for typos. 
     else:
       print 'ERROR: Not sure how to get ' + name
@@ -233,6 +313,28 @@ class tunaPlotter:
       # Allow the altitude maximum to be overwritten to zoom in. 
       ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
+
+    # The first time output is at 1s, but we want to start the axis at zero. 
+    if xaxis=='t':
+      coords['xlims'] = (0, np.max( coords['x'] ) )
+
+    # Dipole plots need outlines drawn on them. 
+    if xaxis=='X' and yaxis=='Z':
+      coords['outline'] = True
+
+    # If we're looking at the log of the energy, we need a bottom limit. 
+    if yaxis=='logU':
+      coords['ylims'] = (1 if lim is None else lim, None)
+
+    # If we're looking at electromagnetic energy on the y axis, we want a log
+    # scale, and we also need a minimum. 
+    if yaxis=='U':
+      coords['ylog'] = True
+      coords['ylims'] = (10 if lim is None else lim, None)
+
+    # For line plots, the y axis is specified by the data. 
+    if coords['y'] is None:
+      del coords['y']
 
     return coords
 
@@ -267,28 +369,13 @@ class tunaPlotter:
 
     PW.setParams(title=self.texName('Bz') + self.texTime(20) + self.texUnit('nT') )
 
-
     return PW.render()
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
 
   # ===========================================================================
   # ============================================================= Plot Assembly
   # ===========================================================================
 
-  def plotB(self, path='/export/scratch/users/mceachern/parallel_test'):
+  def plotB(self, path='/export/scratch/users/mceachern/parallel_test/'):
 
     # Starting at the given path, find all directories with data. 
     self.setPaths(path)
@@ -326,7 +413,68 @@ class tunaPlotter:
 
     return PW.render()
 
-  '''
+  # ===========================================================================
+  # ============================================================= Plot Assembly
+  # ===========================================================================
+
+  def plotC(self, path='/export/scratch/users/mceachern/tuna_20160122_144418/'):
+    self.setPaths(path)
+    # Just grab whatever with current driving. 
+    path = self.getPath(bdrive=0)
+    PW = plotWindow(colorbar=True)
+    PW.setParams( **self.getCoords(path, 'X', 'Z') )
+    PW.setContour( self.getArray(path, 'EyDrive') )
+    PW.setParams(title=self.texText('Maximum Driving Electric Field') + self.texUnit('E') )
+    return PW.render()
+
+  # ===========================================================================
+  # ============================================================= Plot Assembly
+  # ===========================================================================
+
+  def plotD(self, path='/export/scratch/users/mceachern/parallel_test/'):
+    # Starting at the given path, find all directories with data. 
+    self.setPaths(path)
+
+    azms = (1, 8, 64)
+
+    models = (1, 3)
+
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texName(model) for model in models ]
+    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
+#    PW.setParams(rowLabels=rowLabels, colLabels=colLabels, rowlabellabel='m')
+
+    # Loop through the rows and columns. 
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+
+        # Find the path that matches the parameters we want for this cell. 
+        path = self.getPath(inertia=1, azm=azm, model=model)
+
+        t = self.getArray(path, 't')
+#        Utor = np.log10( self.getArray(path, 'Utor') )
+#        Upol = np.log10( self.getArray(path, 'Upol') )
+
+
+
+        for name, color in ( ('UBpol', 'b--'), ('UBtor', 'r--'), ('UEpol', 'b:'), ('UEtor', 'r:'), ('Upol', 'b'), ('Utor', 'r') ):
+          U = np.log10( self.getArray(path, name) )
+          PW[row, col].setLine(t, U, color)
+
+        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
+#        PW[row, col].setLine(t, Utor, 'r')
+#        PW[row, col].setLine(t, Upol, 'b')
+
+    PW.setParams(title=self.texText('Poloidal (Blue) and Toroidal (Red)') )
+
+    return PW.render()
+#    return PW.render('energy.pdf')
+
+
+
+'''
   # Either display the plot or save it as an image. 
   def render(self, PW, name='plot.png'):
     # All of the data that the plot needs has been deposited in the plot window
@@ -342,6 +490,10 @@ class tunaPlotter:
       return PW.render()
 '''
 
+
+
+
+
 # #############################################################################
 # ########################################################## Plot Window Object
 # #############################################################################
@@ -353,12 +505,14 @@ class tunaPlotter:
 class plotWindow:
 
   # We keep a color axis for the color bar, a title axis, an array of header
-  # axes for column labels, an array of side axes for row labels, and a footer
-  # axis just in case. Data axes are stored by the individual Plot Cells. 
+  # axes for column labels, an array of side axes for row labels, a side header
+  # axis to label the row labels, and a footer axis just in case. Data axes are
+  # stored by the individual Plot Cells. 
   cax = None
   fax = None
   hax = None
   sax = None
+  shax = None
   tax = None
   # The Plot Window also holds an array of Plot Cells, one for each data axis. 
   cells = None
@@ -431,9 +585,13 @@ class plotWindow:
       xpos = sideMargin + col*(cellWidth + cellPadding)
       self.hax[col] = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
                                          xpos:xpos + cellWidth] )
+    # Side header axis, for the row label header. 
+    self.shax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
+                                   :sideMargin - 3*cellPadding] )
     # The title, header, and side axes are for spacing text, not showing data.
     # The axes themselves need to be hidden. 
     self.tax.axis('off')
+    self.shax.axis('off')
     [ x.axis('off') for x in self.sax ]
     [ x.axis('off') for x in self.hax ]
     # If we're supposed to have a color bar, space out a narrow axis for it
@@ -467,6 +625,9 @@ class plotWindow:
       elif key=='rowlabels':
         for row, label in enumerate(val):
           self.sax[row].text(s='$' + label + '$', **targs)
+      # Sometimes, we may want to label the row labels. 
+      elif key=='rowlabellabel':
+        self.shax.text(s='$' + val + '$', **targs)
       # Accept a string as the window supertitle. 
       elif key=='title':
         self.tax.text(s='$' + val + '$', fontsize=20, **targs)
@@ -489,6 +650,14 @@ class plotWindow:
   # instead be accessed as array entries. 
   def __getitem__(self, index):
     return self.cells[index]
+
+  # If the window gets passed a contour, just send it along to each cell. 
+  def setContour(self, *args, **kargs):
+    return [ cell.setContour(*args, **kargs) for cell in self.cells.flatten() ]
+
+  # If the window gets passed a line, just send it along to each cell. 
+  def setLine(self, *args, **kargs):
+    return [ cell.setLine(*args, **kargs) for cell in self.cells.flatten() ]
 
   # ---------------------------------------------------------------------------
   # ---------------------------------------------------------- Get Cell Extrema
@@ -532,16 +701,20 @@ class plotWindow:
       cell.setParams( xlabel='', xticklabels=() )
     for cell in self.cells[:, 1:].flatten():
       cell.setParams( ylabel='', yticklabels=() )
-    # Use the most extreme x and y values, rounded to integers, to set the plot
-    # domain. This should work for both line and contour plots. 
+    # Use the most extreme x and y values to set the plot domain. 
     self.setParams( xlims=( np.floor( self.xmin() ), np.ceil( self.xmax() ) ),
                     ylims=( np.floor( self.ymin() ), np.ceil( self.ymax() ) ) )
     # Use the most extreme contour value among all plots to set the color bar. 
     colors = plotColors(zmax=self.zmax(), cax=self.cax, colorbar=self.colorbar)
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
 
-    return plt.show()
-#    return plt.savefig('/home/user1/mceachern/Desktop/plots/test.pdf')
+    # If given a filename, save the image. 
+    if filename is not None:
+      print 'Saving ' + filename
+      return plt.savefig(filename)
+    # Otherwise, display it. 
+    else:
+      return plt.show()
 
 '''
     # If given a filename, save the plot window as an image. 
@@ -573,7 +746,10 @@ class plotCell:
   lines = None
   # If we manually set the axis limits, we want to ignore the automatically-set
   # limits that come down the line later. 
-  xlims, ylims = None, None
+  xlims, ylims = (None, None), (None, None)
+  # Keep track if we're supposed to be tracing the outline of our domain, such
+  # as if the data is dipole-shaped. 
+  outline = False
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------- Initialize Cell
@@ -592,8 +768,11 @@ class plotCell:
     for key, val in kargs.items():
       # Keys are caps insensitive. 
       key = key.lower()
+      # Draw an outline around the plot contents. 
+      if key=='outline':
+        self.outline = val
       # Horizontal axis coordinate. 
-      if key=='x':
+      elif key=='x':
         self.x = val
       # Label the horizontal axis. 
       elif key=='xlabel':
@@ -602,9 +781,11 @@ class plotCell:
       elif key.startswith('xlim'):
         # If the limits are set manually, we want to ignore the automatic
         # limits that come down the line later. 
-        if self.xlims is None:
-          self.xlims = val
-          self.ax.set_xlim(val)
+        self.xlims = ( val[0] if self.xlims[0] is None else self.xlims[0], 
+                       val[1] if self.xlims[1] is None else self.xlims[1] )
+      # Set log horizontal scale. 
+      elif key=='xlog' and val is True:
+        self.ax.set_xscale('log')
       # Set the horizontal axis tick labels. 
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
@@ -618,10 +799,12 @@ class plotCell:
       elif key.startswith('ylim'):
         # If the limits are set manually, we want to ignore the automatic
         # limits that come down the line later. 
-        if self.ylims is None:
-          self.ylims = val
-          self.ax.set_ylim(val)
-      # Set the horizontal axis tick labels. 
+        self.ylims = ( val[0] if self.ylims[0] is None else self.ylims[0], 
+                       val[1] if self.ylims[1] is None else self.ylims[1] )
+      # Set log vertical scale. 
+      elif key=='ylog' and val is True:
+        self.ax.set_yscale('log')
+      # Set the vertical axis tick labels. 
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
       # Report any unfamiliar parameters. 
@@ -663,14 +846,18 @@ class plotCell:
   # plots). To manage that, the Plot Window asks each cell for its extrema. 
 
   def xmax(self):
-    lmax = None if self.lines is None else max( l[0][0] for l in self.lines )
     amax = None if self.x is None else np.max(self.x)
-    return max(lmax, amax)
+    if self.lines is None:
+      return amax
+    else:
+      return max( amax, max( max( args[0] ) for args, kargs in self.lines ) )
 
   def ymax(self):
-    lmax = None if self.lines is None else max( l[0][1] for l in self.lines )
     amax = None if self.y is None else np.max(self.y)
-    return max(lmax, amax)
+    if self.lines is None:
+      return amax
+    else:
+      return max( amax, max( max( args[1] ) for args, kargs in self.lines ) )
 
   def zmax(self):
     return None if self.z is None else np.max(self.z)
@@ -678,14 +865,20 @@ class plotCell:
   # Minima are tricky, since None counts as smaller than any number. 
 
   def xmin(self):
-    lmin = None if self.lines is None else min( l[0][0] for l in self.lines )
     amin = None if self.x is None else np.min(self.x)
-    return min(amin, lmin) if None not in (amin, lmin) else max(amin, lmin)
+    if self.lines is None:
+      return amin
+    else:
+      lmin = min( min( args[0] ) for args, kargs in self.lines )
+      return lmin if amin is None else min(amin, lmin)
 
   def ymin(self):
-    lmin = None if self.lines is None else min( l[0][1] for l in self.lines )
     amin = None if self.y is None else np.min(self.y)
-    return min(amin, lmin) if None not in (amin, lmin) else max(amin, lmin)
+    if self.lines is None:
+      return amin
+    else:
+      lmin = min( min( args[1] ) for args, kargs in self.lines )
+      return lmin if amin is None else min(amin, lmin)
 
   def zmin(self):
     return None if self.z is None else np.min(self.z)
@@ -701,15 +894,39 @@ class plotCell:
       # the contour call to overwrite them. 
       kargs = dict( colors.items() + self.kargs.items() )
       self.ax.contourf(self.x, self.y, self.z, **kargs)
+    # Optionally, draw the outline of the data. 
+    if self.outline:
+      [ self.setLine(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
+      [ self.setLine(self.x[:, k], self.y[:, k], 'k') for k in (0, -1) ]
     # Draw any lines. 
     if self.lines is not None:
-      [ self.ax.plot(x, y, *args, **kargs) for x, y, args, kargs in self.lines ]
+      [ self.ax.plot(*args, **kargs) for args, kargs in self.lines ]
+    # Set axis limits. 
+    self.ax.set_xlim(self.xlims)
+    self.ax.set_ylim(self.ylims)
 
-    '''
+#    # Try to keep the axis ticks under control. 
+#    ymin, ymax = self.ylims
+#    if 2 <= (ymax - ymin) < 5:
+#      ticks = range(int(ymin), int(ymax)+1)
+#      print self.ax.get_yticklabels()
+#      if self.ax.get_yticklabels():
+#        labels = [ '$' + str(tick) + '$' for tick in ticks ]
+#      else:
+#        labels = []
+#      self.ax.set_yticks(ticks)
+#      self.ax.set_yticklabels(labels)
+
     # These subplots can get cramped. Let's reduce the number of ticks. 
-    self.ax.xaxis.set_major_locator( plt.MaxNLocator(3) )
-    self.ax.yaxis.set_major_locator( plt.MaxNLocator(3) )
-    '''
+    self.ax.xaxis.set_major_locator( plt.MaxNLocator(3, integer=True) )
+    self.ax.yaxis.set_major_locator( plt.MaxNLocator(4, integer=True) )
+
+    self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+    self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
+
+    self.ax.yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
+    self.ax.yaxis.get_majorticklabels()[-1].set_verticalalignment('top')
+
     return
 
 # #############################################################################
@@ -990,6 +1207,10 @@ def readArray(filename):
   # We ultimately want to use the Python data format, pickles. 
   name = filename[ :filename.rfind('.') ]
   datname, outname, pklname = name + '.dat', name + '.out', name + '.pkl'
+
+  # Allow epsp.dat, but rename to epsPerp.dat. 
+  if os.path.exists( datname.replace('epsPerp', 'epsp') ):
+    outname = outname.replace('epsPerp.out', 'epsp.dat')
 
   # Allow jz.out, but rename to Jz.dat (change in capitalization). 
   outname = outname.replace('Jz', 'jz')

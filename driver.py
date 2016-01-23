@@ -23,23 +23,16 @@ from time import localtime as lt, time
 # #############################################################################
 
 # If we want to give this run a custom directory name, put that here. 
-runDirName = 'inertial_length'
+runDirName = 'tuna'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = { 
-#              'jdrive':[1e-4], 
-              'bdrive':[10], 
-              'dtout':[0.1],
-              'tmax':[0],
-              'azm':[16],
-#              'lmin':[5],
-#              'lmax':[7],
-              'n1':[150],
-              'n3':[400],
-              'model':[1],
-              'inertia':[1],
-#              'azm':[1, 2, 4, 8, 16, 32, 64, 128],
-#              'fdrive':[0.015]
+              'jdrive':[1e-4], 
+#              'bdrive':[10], 
+              'tmax':[300],
+              'azm':[1, 4, 16, 64],
+              'model':[1, 2, 3, 4],
+              'fdrive':[0.007, 0.016, 0.025]
          }
 
 # #############################################################################

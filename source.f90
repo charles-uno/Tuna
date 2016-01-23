@@ -423,7 +423,8 @@ module loop
       ! -----------------------------------------------------------------------
 
       !$omp single
-      B3(n1, 0:n3:2) = B3(n1, 0:n3:2) + B3drive(0:n3:2)*driveScale
+!      B3(n1, 0:n3:2) = B3(n1, 0:n3:2) + B3drive(0:n3:2)*driveScale
+      B3(n1, 0:n3:2) = B3drive(0:n3:2)*driveScale
       !$omp end single
 
       ! -----------------------------------------------------------------------
@@ -766,8 +767,8 @@ module io
   double precision function defaultParam(varname)
     character(len=*), intent(in) :: varname
     ! Geometric parameters.
-    if (varname .eq. 'n1'  ) defaultParam = 128        ! Number of field lines.
-    if (varname .eq. 'n3'  ) defaultParam = 320        ! Grid points per line. 
+    if (varname .eq. 'n1'  ) defaultParam = 150        ! Number of field lines.
+    if (varname .eq. 'n3'  ) defaultParam = 350        ! Grid points per line. 
     if (varname .eq. 'lmin') defaultParam = 2          ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
     if (varname .eq. 'sfac') defaultParam = 1.025      ! Geometric spacing factor along the outermost field line. 
