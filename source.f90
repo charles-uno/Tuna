@@ -779,6 +779,7 @@ module io
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
+    if (varname .eq. 'fudge' ) defaultParam = 0.1      ! Fudge factor for stability. 
     ! Parallel physics handling parameters. 
     if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0.
     if (varname .eq. 'inertia'  ) defaultParam = 1.    ! Include electron inertial effects. 
@@ -799,9 +800,9 @@ module io
     if (varname .eq. 'fdrive'   ) defaultParam = 0.015 ! Frequency (in Hz). 
     if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet duration (in s). 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude (in degrees). 
-    if (varname .eq. 'dlatdrive') defaultParam = 10.   ! Spread in latitude (in degrees). 
+    if (varname .eq. 'dlatdrive') defaultParam = 7.    ! Spread in latitude (in degrees). 
     if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! Radius (in RE). 
-    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in radius (in RE). 
+    if (varname .eq. 'dldrive'  ) defaultParam = 0.3   ! Spread in radius (in RE). 
     ! Integrated atmospheric conductivities.
     if (varname .eq. 'sig0atm') defaultParam = -1     ! Integrated sigma_0 for north atmosphere. 
     if (varname .eq. 'sighatm') defaultParam = -1     ! If < 0, value is integrated from profile. 
@@ -1696,7 +1697,9 @@ module ionos
     ! (speed of light) zone crossing time, and the plasma frequency. Let's compute the grid spacing
     ! everywhere. 
     call writeParam('Min Boris-Adjusted 1/wp', minval(1/wp), 's')
-    dtInertial = readParam('cour')*minval(1/wp)
+    ! The inertial effects are particularly sensitive to the size of the time step. We use a fudge
+    ! factor (in addition to the Courant condition) to ensure stability. 
+    dtInertial = readParam('cour')*readParam('fudge')*minval(1/wp)
     call writeParam('Inertial dt', dtInertial, 's')
     ! The zone crossing time of the compressional mode constrains our time step. 
     oodtx = maxval(c/dx)
@@ -2139,6 +2142,18 @@ module fields
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
               exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
+
+    ! As a precaution against instability, we zero the tail of the driving distributions. These
+    ! little numbers can make trouble in the corners. 
+
+    B3drive(:10) = 0
+    B3drive(n3-10:) = 0
+
+    j2drive(:10, :) = 0
+    j2drive(n1-10:, :) = 0
+    j2drive(:, :10) = 0
+    j2drive(:, n3-10:) = 0
+
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()

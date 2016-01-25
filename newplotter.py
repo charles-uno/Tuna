@@ -51,6 +51,35 @@ from os.path import basename
 from sys import argv, stdout
 from time import localtime as lt, time
 
+'''
+def read(filename):
+  with open(filename, 'r') as fileobj:
+    return fileobj.readlines()
+
+def col(x, width=15):
+  if isinstance(x, float):
+    return format(x, '.1f')[:width-1].ljust(width)
+  else:
+    return str(x)[:width-1].ljust(width)
+
+path='/export/scratch/users/mceachern/january23/'
+
+print 'all in microseconds'
+
+print col('run') + col('inertial dt') + col('alfven dt') + col('compression dt') + col('dt')+ col('inertia dt/dt')
+
+for x in sorted( os.listdir(path) ):
+  if os.path.isdir(path + x) and 'tuna.out' in os.listdir(path + x):
+    output = read(path + x + '/tuna.out')
+    idt = 1e6*float( output[15].split('=')[-1].strip(' \ns') )
+    adt = 1e6*float( output[23].split('=')[-1].strip(' \ns') )
+    cdt = 1e6*float( output[19].split('=')[-1].strip(' \ns') )
+    dt = 1e6*float( output[24].split('=')[-1].strip(' \ns') )
+    print col(x) + col(idt) + col(adt) + col(cdt) + col(dt) + col(idt/dt)
+
+exit()
+'''
+
 # #############################################################################
 # ######################################################################## Main
 # #############################################################################
@@ -59,7 +88,7 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plotD()
+  return TP.plotA()
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -137,6 +166,10 @@ class tunaPlotter:
     return '\\mathrm{' + x.replace(' ', ' \\; ') + '}'
 
   def texName(self, x):
+    # Log quantities don't need their own entries. 
+    if str(x).startswith('log'):
+      return self.texText('Log_{10} ') + self.texName( x[3:].strip() )
+    # Dictionary of strings we might need. 
     names = {
              # Spell out what each model means. 
              1:self.texText('Active Day '),
@@ -148,9 +181,10 @@ class tunaPlotter:
              'Bx':'B_x', 
              'By':'B_y', 
              'Bz':'B_z', 
+             'C':'\\cos\\theta / \\cos\\theta_0', 
              'Jz':'J_z', 
+             'L':'L = \\frac{r}{\\sin^2 \\theta}', 
              'lat':self.texText('Latitude'), 
-             'logU':self.texText('Log_{10} Energy'),
              't':self.texText('Time'), 
              'U':self.texText('Energy'), 
              'X':'X', 
@@ -185,6 +219,7 @@ class tunaPlotter:
              'Ez':'\\frac{mV}{m^2}',
              'Jz':'\\frac{\\mu\\!J}{m^2}',
              'km':'km',
+             'L':'R_E',
              'lat':'^\\circ',
              'logU':'\\frac{GJ}{rad}',
              'nT':'nT',
@@ -225,60 +260,102 @@ class tunaPlotter:
     # Altitude in km. Note that we read r in RE and we store RE in Mm. 
     elif name=='alt':
       return 1000*(self.getArray(path, 'r') - self.RE)
+    # Normalied latitude. 
+    elif name=='C':
+      cosq = np.cos( self.getArray(path, 'q') )
+      cosq0 = cosq[:, 0]
+      return cosq/cosq0[:, None]
     # Driving electric field in mV/m. 
     elif name=='EyDrive':
       return self.getArray(path, 'JyDrive')/self.getArray(path, 'epsPerp')
-    # Jacobian determinant, used for integrating. 
-    elif name=='jac':
+    # McIlwain parameter. 
+    elif name=='L':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      # Cosine of the invariant latitude. 
-      cosq0 = np.sqrt( 1 - self.RI*np.sin(q)**2/(r*self.RE) )
-      # Crunch out the Jacobian, in Mm^3. 
-      return (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
+      return r / ( self.RE * np.sin(q)**2 )
     # Latitude in degrees, from colatitude in radians. 
     elif name=='lat':
       return 90 - self.getArray(path, 'q')*180/np.pi
-    # Field-indexing dipole coordinate. 
-    elif name=='u1':
+    # Differential volume for the grid, based on dipole coordinates and the
+    # Jacobian determinant. 
+    elif name=='dV':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return -self.RI/(r*self.RE) * np.sin(q)**2
-    # Dipole coordinate to index along a field line. 
-    elif name=='u3':
-      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      # Cosine of the invariant latitude. 
+      # Invariant colatitude. 
       cosq0 = np.sqrt( 1 - self.RI*np.sin(q)**2/r )
-      return self.RI**2/(r*self.RE)**2 * np.cos(q)/cosq0
-    # Sometimes we don't actually need the array, such as when we're grabbing
-    # the y axis for a line plot... so the axis will be set by line values. 
-    elif name in ('logU', 'U'):
-      return None
-    # Toroidal component of the electromagnetic energy. 
-    elif name in ('UBpol', 'UBtor', 'UEpol', 'UEtor', 'Upol', 'Utor'):
-      # The volume differential comes from the dipole coordinates and the
-      # determinant of the Jacobian matrix. 
-      u1, u3 = self.getArray(path, 'u1'), self.getArray(path, 'u3')
+      # Dipole coordinates. 
+      u1 = -self.RI/(r*self.RE) * np.sin(q)**2
+      u3 = self.RI**2/(r*self.RE)**2 * np.cos(q)/cosq0
+      # Dipole differentials. Rolling messes up the edges, so we zero them. 
       du1 = ( np.roll(u1, shift=1, axis=0) - np.roll(u1, shift=-1, axis=0) )/2
       du1[0, :], du1[-1, :] = 0, 0
       du3 = ( np.roll(u3, shift=1, axis=1) - np.roll(u3, shift=-1, axis=1) )/2
       du3[:, 0], du3[:, -1] = 0, 0
-      dV = np.abs( du1*du3*self.getArray(path, 'jac') )
-      # Perpendicular dielectric constant. 
-      epsp = self.getArray(path, 'epsPerp')
-      # Grab the toroidal/poloidal fields. 
-      ename, bname = ('Ey', 'Bx') if 'pol' in name else ('Ex', 'By')
-      E, B = self.getArray(path, ename), self.getArray(path, bname)
-      # Sometimes we only want to consider the energy in one field. 
-      if 'E' in name:
-        B = B*0
-      if 'B' in name:
-        E = E*0
-      # Compute the energy density and weigh it by the volume differential. 
-      dU = np.empty(E.shape)
-      for i in range( dU.shape[-1] ):
-        dU[:, :, i] = (epsp*E[:, :, i]**2 + B[:, :, i]**2/self.mu0)*dV
-      # Sum over the spatial dimensions to get energy density over time. Newer
-      # versions of Numpy can do a multi-axis sum... 
-      return np.sum( np.sum(dU, 1), 0)
+      # Jacobian determinant. 
+      jac = (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
+      # The Jacobian may be negative. Make sure we return a positive volume. 
+      return np.abs( du1*du3*jac )
+    # Sometimes we don't actually need the array, such as when we're grabbing
+    # the y axis for a line plot... so the axis will be set by line values. 
+    elif name in ('logU', 'U'):
+      return None
+
+    # Poloidal magnetic field contribution to the energy density. 
+    elif name=='uBx':
+      return self.getArray(path, 'Bx')**2 / self.mu0
+
+    # Toroidal magnetic field contribution to the energy density. 
+    elif name=='uBy':
+      return self.getArray(path, 'By')**2 / self.mu0
+
+    # Toroidal electric field contribution to the energy density. 
+    elif name=='uEx':
+      E, epsPerp = self.getArray(path, 'Ex'), self.getArray(path, 'epsPerp')
+      return epsPerp[:, :, None]*E[:, :, :]**2
+      
+    # Poloidal electric field contribution to the energy density. 
+    elif name=='uEy':
+      E, epsPerp = self.getArray(path, 'Ey'), self.getArray(path, 'epsPerp')
+      return epsPerp[:, :, None]*E[:, :, :]**2
+
+    # Integrated poloidal energy. 
+    elif name=='Upol':
+      uB, uE = self.getArray(path, 'uBx'), self.getArray(path, 'uEy')
+      dV = self.getArray(path, 'dV')
+      return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
+
+    # Integrated toroidal energy. 
+    elif name=='Utor':
+      uB, uE = self.getArray(path, 'uBy'), self.getArray(path, 'uEx')
+      dV = self.getArray(path, 'dV')
+      return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
+
+#    # Toroidal component of the electromagnetic energy. 
+#    elif name in ('UBpol', 'UBtor', 'UEpol', 'UEtor', 'Upol', 'Utor'):
+#      # The volume differential comes from the dipole coordinates and the
+#      # determinant of the Jacobian matrix. 
+#      u1, u3 = self.getArray(path, 'u1'), self.getArray(path, 'u3')
+#      du1 = ( np.roll(u1, shift=1, axis=0) - np.roll(u1, shift=-1, axis=0) )/2
+#      du1[0, :], du1[-1, :] = 0, 0
+#      du3 = ( np.roll(u3, shift=1, axis=1) - np.roll(u3, shift=-1, axis=1) )/2
+#      du3[:, 0], du3[:, -1] = 0, 0
+#      dV = np.abs( du1*du3*self.getArray(path, 'jac') )
+#      # Perpendicular dielectric constant. 
+#      epsp = self.getArray(path, 'epsPerp')
+#      # Grab the toroidal/poloidal fields. 
+#      ename, bname = ('Ey', 'Bx') if 'pol' in name else ('Ex', 'By')
+#      E, B = self.getArray(path, ename), self.getArray(path, bname)
+#      # Sometimes we only want to consider the energy in one field. 
+#      if 'E' in name:
+#        B = B*0
+#      if 'B' in name:
+#        E = E*0
+#      # Compute the energy density and weigh it by the volume differential. 
+#      dU = np.empty(E.shape)
+#      for i in range( dU.shape[-1] ):
+#        dU[:, :, i] = (epsp*E[:, :, i]**2 + B[:, :, i]**2/self.mu0)*dV
+#      # Sum over the spatial dimensions to get energy density over time. Newer
+#      # versions of Numpy can do a multi-axis sum... 
+#      return np.sum( np.sum(dU, 1), 0)
+
     # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -342,32 +419,26 @@ class tunaPlotter:
   # ============================================================= Plot Assembly
   # ===========================================================================
 
-  def plotA(self, path='/export/scratch/users/mceachern/inertial_length_20160120_171344/'):
+#  def plotA(self, path='/export/scratch/users/mceachern/january22/T031/'):
+  def plotA(self, path='/export/scratch/users/mceachern/tuna_20160125_141025/'):
 
     self.setPaths(path)
 
-    n3s = (450, 500)
+    PW = plotWindow(nrows=3, ncols=2, colorbar='lin')
 
-    inertias = (1, -1)
+    path = self.getPath()
 
-    PW = plotWindow(nrows=len(n3s), ncols=len(inertias), colorbar='sym')
+#    rows = ('x', 'y', 'z')
+#    cols = ('B', 'E')
 
-    # Create row and column labels. 
-    rowLabels = [ self.texText('Inertia'), self.texText('No Inertia') ]
-    colLabels = [ 'n3 = ' + str(n3) for n3 in n3s ]
+    rows = ('yDrive',)
+    cols = ('E',)
 
-    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
-
-    step = 200
-
-    for row, inertia in enumerate( inertias[:1] ):
-      for col, n3 in enumerate(n3s):
-
-        path = self.getPath(n3=n3, inertia=inertia)
-        PW[row, col].setParams( **self.getCoords(path, 'lat', 'alt', lim=500) )
-        PW[row, col].setContour( self.getArray(path, 'Bz')[:, :, -1] )
-
-    PW.setParams(title=self.texName('Bz') + self.texTime(20) + self.texUnit('nT') )
+    for row, xyz in enumerate(rows):
+      for col, BE in enumerate(cols):
+        PW[row, col].setParams( **self.getCoords(path, 'X', 'Z') )
+        PW[row, col].setContour( self.getArray(path, BE + xyz) )
+#        PW[row, col].setContour( self.getArray(path, BE + xyz)[:, :, -3] )
 
     return PW.render()
 
@@ -431,13 +502,15 @@ class tunaPlotter:
   # ============================================================= Plot Assembly
   # ===========================================================================
 
-  def plotD(self, path='/export/scratch/users/mceachern/parallel_test/'):
+  def plotD(self, path='/export/scratch/users/mceachern/january22/'):
     # Starting at the given path, find all directories with data. 
     self.setPaths(path)
 
-    azms = (1, 8, 64)
+    azms = (1, 4, 16, 64)
 
     models = (1, 3)
+
+    fdrive = 0.016
 
     PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
 
@@ -451,21 +524,19 @@ class tunaPlotter:
       for col, model in enumerate(models):
 
         # Find the path that matches the parameters we want for this cell. 
-        path = self.getPath(inertia=1, azm=azm, model=model)
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
 
         t = self.getArray(path, 't')
-#        Utor = np.log10( self.getArray(path, 'Utor') )
-#        Upol = np.log10( self.getArray(path, 'Upol') )
+        Utor = np.log10( self.getArray(path, 'Utor') )
+        Upol = np.log10( self.getArray(path, 'Upol') )
 
-
-
-        for name, color in ( ('UBpol', 'b--'), ('UBtor', 'r--'), ('UEpol', 'b:'), ('UEtor', 'r:'), ('Upol', 'b'), ('Utor', 'r') ):
-          U = np.log10( self.getArray(path, name) )
-          PW[row, col].setLine(t, U, color)
+#        for name, color in ( ('UBpol', 'b--'), ('UBtor', 'r--'), ('UEpol', 'b:'), ('UEtor', 'r:'), ('Upol', 'b'), ('Utor', 'r') ):
+#          U = np.log10( self.getArray(path, name) )
+#          PW[row, col].setLine(t, U, color)
 
         PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
-#        PW[row, col].setLine(t, Utor, 'r')
-#        PW[row, col].setLine(t, Upol, 'b')
+        PW[row, col].setLine(t, Utor, 'r')
+        PW[row, col].setLine(t, Upol, 'b')
 
     PW.setParams(title=self.texText('Poloidal (Blue) and Toroidal (Red)') )
 
@@ -701,13 +772,16 @@ class plotWindow:
       cell.setParams( xlabel='', xticklabels=() )
     for cell in self.cells[:, 1:].flatten():
       cell.setParams( ylabel='', yticklabels=() )
-    # Use the most extreme x and y values to set the plot domain. 
-    self.setParams( xlims=( np.floor( self.xmin() ), np.ceil( self.xmax() ) ),
-                    ylims=( np.floor( self.ymin() ), np.ceil( self.ymax() ) ) )
+    # Use the most extreme x and y values to set the plot domain. Snap to
+    # integers, but don't round based on tiny bits of numerical noise. 
+    xmin = np.floor( float( format(self.xmin(), '.4e') ) )
+    xmax = np.ceil( float( format(self.xmax(), '.4e') ) )
+    ymin = np.floor( float( format(self.ymin(), '.4e') ) )
+    ymax = np.ceil( float( format(self.ymax(), '.4e') ) )
+    self.setParams( xlims=(xmin, xmax), ylims=(ymin, ymax) )
     # Use the most extreme contour value among all plots to set the color bar. 
     colors = plotColors(zmax=self.zmax(), cax=self.cax, colorbar=self.colorbar)
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
-
     # If given a filename, save the image. 
     if filename is not None:
       print 'Saving ' + filename
@@ -947,8 +1021,7 @@ class plotColors(dict):
     if not zmax or not cax or not colorbar:
       return dict.__init__(self, {})
     # Store the data scale so that it can be hard-wired into our normalization
-    # functions. We don't want to pass vmax all over the place. 
-    self.zmax = zmax
+    # functions. 
     self.colorbar = colorbar
     self.ncolors = ncolors
     self.nticks = ncolors - 1
@@ -957,13 +1030,13 @@ class plotColors(dict):
     temp = {}
     # Determine location of contour color levels and color bar ticks. 
     if self.colorbar=='log':
-      temp['ticks'], temp['levels'] = self.logTicksLevels()
+      temp['ticks'], temp['levels'] = self.logTicksLevels(zmax)
       temp['norm'] = LogNorm()
     elif self.colorbar=='sym':
-      temp['ticks'], temp['levels'] = self.symTicksLevels()
+      temp['ticks'], temp['levels'] = self.symTicksLevels(zmax)
       temp['norm'] = Normalize()
     else:
-      temp['ticks'], temp['levels'] = self.linTicksLevels()
+      temp['ticks'], temp['levels'] = self.linTicksLevels(zmax)
       temp['norm'] = Normalize()
     # Rework the color map to match the normalization of our ticks and levels. 
     temp['cmap'] = self.getCmap()
@@ -976,14 +1049,18 @@ class plotColors(dict):
   # ----------------------------------- Tick Locations and Contour Color Levels
   # ---------------------------------------------------------------------------
 
-  def linTicksLevels(self):
+  def linTicksLevels(self, zmax):
+    self.zmax = zmax
     ticks = np.linspace( -self.zmax, self.zmax, self.nticks)
     levels = np.linspace(-self.zmax, self.zmax, self.ncolors)
     # Make sure that the middle tick is exactly zero. 
     ticks[ len(ticks)/2 ] = 0.
     return ticks, levels
 
-  def logTicksLevels(self):
+  def logTicksLevels(self, zmax):
+
+    self.zmax = zmax
+
     # One tick at each order of magnitude. 
     power = int( np.floor( np.log10(self.zmax) ) )
     self.zmin = self.zmax/10**self.nticks
@@ -992,18 +1069,20 @@ class plotColors(dict):
     levels = np.logspace(logMin, logMax, self.ncolors)
     return ticks, levels
 
-  def symTicksLevels(self):
+  def symTicksLevels(self, zmax):
+    # Ticks are located at powers of ten. Color levels are centered on ticks. 
+    power = np.ceil( np.log10( zmax/np.sqrt(10.) ) )
+    self.zmax = np.sqrt(10.)*10**power
     # A tick at zero, then one per order of magnitude. 
     norders = (self.nticks - 1)/2
-    power = int( np.floor( np.log10(self.zmax) ) )
-    posTicks = [ 10**(power - i) for i in range(norders) ]
-    # For uniform tick spacing, the log cutoff needs to be a factor of ten
-    # smaller than the lowest positive tick. 
-    self.zmin = min(posTicks)/10.
-    ticks = sorted( posTicks + [0] + [ -t for t in posTicks ] )
-    # We figure out color levels by spacing them evenly on the unit interval,
-    # then mapping the unit interval to the symlog scale. 
-    levels = [ self.symNorm(x) for x in np.linspace(0, 1, self.ncolors) ]
+    pticks = [ 10**(power - i) for i in range(norders) ]
+    plevels = [ np.sqrt(10.)*10**(power - i) for i in range(norders + 1) ]
+    # For uniform tick spacing, the log cutoff is a factor of 10 below the
+    # lowest positive tick. That is, it's where the next tick would be, if we
+    # had one more tick. 
+    self.zmin = min(pticks)/10.
+    ticks = sorted( pticks + [0] + [ -tick for tick in pticks ] )
+    levels = sorted( plevels + [ -level for level in plevels ] )
     return ticks, levels
 
   # ---------------------------------------------------------------------------
@@ -1145,12 +1224,13 @@ class plotColors(dict):
     # Zero is always zero. 
     if x==0:
       return '$0$'
-    # If our numbers are around order unity, show floats to two significant
-    # digits. Otherwise, use scientific notation. 
+    # If our numbers are around order unity, the top tick should show two
+    # significant figures, and the rest should match that decimal place. 
     elif 1e-3<self.zmax<1e3:
-      digs = int( format(abs(x), '.1e').split('e')[0].replace('.', '') )
-      power = int( format(abs(x), '.1e').split('e')[1] ) - 1
-      return '$' + ( '-' if x<0 else '+' ) + str(digs*10**power) + '$'
+      power = int( format(self.zmax, '.1e').split('e')[-1] )
+      digs = max(0, 1 - power)
+      sign = '' if x<0 else '+'
+      return '$' + sign + format(x, '.' + str(digs) + 'f') + '$'
     else:
       # Cast the number in scientific notation. 
       s = format(x, '.1e').replace('e', ' \\cdot 10^{') + '}'
