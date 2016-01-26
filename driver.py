@@ -26,14 +26,14 @@ from time import localtime as lt, time
 runDirName = 'tuna'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
-parameters = { 
-              'jdrive':[1e-4], 
+parameters = {
+              'jdrive':[4e-4], 
               'bdrive':[10], 
-              'tmax':[100],
-              'azm':[64],
+              'tmax':[30],
+              'azm':[4, 64],
 #              'azm':[1, 4, 16, 64],
 #              'model':[1, 2, 3, 4],
-              'model':[3],
+              'model':[1, 3],
               'fdrive':[0.016]
          }
 

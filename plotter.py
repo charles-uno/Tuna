@@ -483,8 +483,13 @@ class tunaPlotter:
   # ---------------------------------------------------------------------------
 
   def plotLazy(self, step=-1):
+
+
     # We will plot the real and imaginary components for each field. 
     fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
+
+    fields = ('By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
+
     # Each run gets two rows: one real and one imaginary. 
     PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
     # Keep track of the runs we're comparing -- particularly their time stamps. 
@@ -492,12 +497,14 @@ class tunaPlotter:
     # Scroll through the runs. 
     for runNum, path in enumerate(self.paths):
 
-
       # Match each run's name up with its time stamp. 
-      timeStamp = format(self.getArray(path + 't.dat')[step], '.2f') + 's'
+      t = self.getArray(path + 't.dat')
+      if t.size==0:
+        timeStamp = '? s'
+      else:
+        timeStamp = format(self.getArray(path + 't.dat')[step], '.2f') + 's'
       shortPath = path.split('/')[-2].split('_')[0]
       titles.append('\\mathrm{' + shortPath + '\; at \;' + timeStamp + '}' ) 
-
 
       # Handle the coordinate grid and axis labels. 
       PW.setParam( nColors=12, **self.getCoords(path) )
@@ -511,7 +518,14 @@ class tunaPlotter:
                   ')}' )
         PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
         # Grab the data. 
-        zComp = self.getArray(path + name + '.out')[:, :, step]
+
+        print 'data shape: '
+        print self.getArray(path + name + '.dat').shape
+
+        zComp = self.getArray(path + name + '.dat')[:, :, step]
+
+
+
         # Plot real and imaginary components. 
         for ReIm in ('R', 'I'):
           # Figure out which row this plot actually belongs on. 
@@ -2669,7 +2683,6 @@ def readArray(filename, indent=''):
 
   # Rename epsPerp.out to epsp.dat (change in capitalization). 
   outname = outname.replace('epsp', 'epsPerp')
-
 
   # If we're looking at an out postfix, move it to dat. 
   if os.path.isfile(outname) and not os.path.exists(datname):
