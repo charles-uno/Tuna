@@ -518,14 +518,7 @@ class tunaPlotter:
                   ')}' )
         PW[col].setParam(colLabel = name[0] + '_' + name[1] + units)
         # Grab the data. 
-
-        print 'data shape: '
-        print self.getArray(path + name + '.dat').shape
-
         zComp = self.getArray(path + name + '.dat')[:, :, step]
-
-
-
         # Plot real and imaginary components. 
         for ReIm in ('R', 'I'):
           # Figure out which row this plot actually belongs on. 

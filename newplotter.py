@@ -88,7 +88,7 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plotA()
+  return TP.plotE()
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -139,8 +139,8 @@ class tunaPlotter:
   def getPath(self, **kargs):
     # Start with all the paths we have, then weed out any that don't match. 
     paths = self.paths
-    for key in kargs:
-      paths = [ p for p in paths if self.getParam(p, key)==kargs[key] ]
+    for key, val in kargs.items():
+      paths = [ p for p in paths if self.getParam(p, key)==val ]
     # If there's anything other than exactly one match, something is wrong. 
     if len(paths)<1:
       print 'ERROR: No matching path found for ', kargs
@@ -163,7 +163,7 @@ class tunaPlotter:
   # ===========================================================================
 
   def texText(self, x):
-    return '\\mathrm{' + x.replace(' ', ' \\; ') + '}'
+    return '\\mathrm{' + x.replace(' ', '\\;') + '}'
 
   def texName(self, x):
     # Log quantities don't need their own entries. 
@@ -172,20 +172,36 @@ class tunaPlotter:
     # Dictionary of strings we might need. 
     names = {
              # Spell out what each model means. 
-             1:self.texText('Active Day '),
-             2:self.texText('Quiet Day '),
-             3:self.texText('Active Night '),
-             4:self.texText('Quiet Night '),
+             1:self.texText('Active Day'),
+             2:self.texText('Quiet Day'),
+             3:self.texText('Active Night'),
+             4:self.texText('Quiet Night'),
              # Names for fields, axes, etc. 
              'alt':self.texText('Altitude'), 
+             'Bf':'B_\\phi', 
+             'BfE':'B_\\phi' + self.texText(' at R_E'), 
+             'BfI':'B_\\phi' + self.texText(' at R_I'), 
+             'Bq':'B_\\theta', 
+             'BqE':'B_\\theta' + self.texText(' at R_E'), 
+             'BqI':'B_\\theta' + self.texText(' at R_I'), 
              'Bx':'B_x', 
              'By':'B_y', 
              'Bz':'B_z', 
              'C':'\\cos\\theta / \\cos\\theta_0', 
              'Jz':'J_z', 
              'L':'L = \\frac{r}{\\sin^2 \\theta}', 
+             'L0':'L = \\frac{r}{\\sin^2 \\theta}', 
              'lat':self.texText('Latitude'), 
+             'lat0':self.texText('Latitude'), 
+             'RE':self.texText('R_E'), 
+             'RI':self.texText('R_I'), 
+             'S':self.texText('Poynting Flux'),
+             'Spol':'\\frac{-1}{\\mu_0}E_yB_x^*',
+             'Stor':'\\frac{1}{\\mu_0}E_xB_y^*',
              't':self.texText('Time'), 
+             'u':self.texText('Energy Density'), 
+             'upol':self.texText('Poloidal Energy Density'), 
+             'utor':self.texText('Toroidal Energy Density'), 
              'U':self.texText('Energy'), 
              'X':'X', 
              'Z':'Z'
@@ -193,9 +209,9 @@ class tunaPlotter:
     return '?' if x not in names else names[x]
 
   def texReIm(self, x):
-    if x in ('Ex', 'By', 'Ez', 'Jz'):
+    if x in ('Ex', 'By', 'Ez', 'Jz', 'BqE', 'BqI'):
       return ' \\mathbb{I}\\mathrm{m}\\;\\; '
-    elif x in ('Bx', 'Ey', 'Bz'):
+    elif x in ('Bx', 'Ey', 'Bz', 'BfE', 'BfI'):
       return ' \\mathbb{R}\\mathrm{e}\\;\\; '
     else:
       return ''
@@ -209,22 +225,33 @@ class tunaPlotter:
     units = {
              'alt':'km',
              'B':'nT',
+             'Bf':'nT', 
+             'Bq':'nT', 
              'Bx':'nT', 
              'By':'nT', 
              'Bz':'nT', 
              'deg':'^\\circ',
-             'E':'\\frac{mV}{m^2}',
-             'Ex':'\\frac{mV}{m^2}',
-             'Ey':'\\frac{mV}{m^2}',
-             'Ez':'\\frac{mV}{m^2}',
+             'E':'\\frac{mV}{m}',
+             'Ex':'\\frac{mV}{m}',
+             'Ey':'\\frac{mV}{m}',
+             'Ez':'\\frac{mV}{m}',
              'Jz':'\\frac{\\mu\\!J}{m^2}',
              'km':'km',
              'L':'R_E',
+             'L0':'R_E',
              'lat':'^\\circ',
+             'lat0':'^\\circ',
              'logU':'\\frac{GJ}{rad}',
+             'mHz':'mHz',
              'nT':'nT',
              's':'s',
+             'S':'\\frac{mW}{m^2}',
+             'Stor':'\\frac{mW}{m^2}',
+             'Spol':'\\frac{mW}{m^2}',
              't':'s',
+             'u':'\\frac{nJ}{m^3}',
+             'upol':'\\frac{nJ}{m^3}',
+             'utor':'\\frac{nJ}{m^3}',
              'U':'\\frac{GJ}{rad}',
              'X':'R_E', 
              'Z':'R_E'
@@ -247,7 +274,8 @@ class tunaPlotter:
   # individual plot methods clean. 
   def getArray(self, path, name):
     # Check if we're looking for something that corresponds to a data file...
-    if name in ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'JyDrive', 'q', 't'):
+    if name in ('BfE', 'BfI', 'BqE', 'BqI', 'Bx', 'By', 'Bz', 'Ex', 'Ey', 
+                'Ez', 'JyDrive', 'q', 't'):
       phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
       return phase( readArray(path + name + '.dat') )
     # A few quantities get printed out with scale factors. Un-scale them. 
@@ -272,9 +300,15 @@ class tunaPlotter:
     elif name=='L':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       return r / ( self.RE * np.sin(q)**2 )
+    # McIlwain parameter as a 1D array. 
+    elif name=='L0':
+      return self.getArray(path, 'L')[:, 0]
     # Latitude in degrees, from colatitude in radians. 
     elif name=='lat':
       return 90 - self.getArray(path, 'q')*180/np.pi
+    # Latitude only along the ionospheric boundary. 
+    elif name=='lat0':
+      return self.getArray(path, 'lat')[:, 0]
     # Differential volume for the grid, based on dipole coordinates and the
     # Jacobian determinant. 
     elif name=='dV':
@@ -293,69 +327,46 @@ class tunaPlotter:
       jac = (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
       # The Jacobian may be negative. Make sure we return a positive volume. 
       return np.abs( du1*du3*jac )
+    # Toroidal Poynting flux. 
+    elif name=='Stor':
+      return self.getArray(path, 'Ex')*self.getArray(path, 'By')/self.mu0
+    # Poloidal Poynting flux. 
+    elif name=='Spol':
+      return -self.getArray(path, 'Ey')*self.getArray(path, 'Bx')/self.mu0
     # Sometimes we don't actually need the array, such as when we're grabbing
     # the y axis for a line plot... so the axis will be set by line values. 
     elif name in ('logU', 'U'):
       return None
-
     # Poloidal magnetic field contribution to the energy density. 
     elif name=='uBx':
       return self.getArray(path, 'Bx')**2 / self.mu0
-
     # Toroidal magnetic field contribution to the energy density. 
     elif name=='uBy':
       return self.getArray(path, 'By')**2 / self.mu0
-
     # Toroidal electric field contribution to the energy density. 
     elif name=='uEx':
       E, epsPerp = self.getArray(path, 'Ex'), self.getArray(path, 'epsPerp')
       return epsPerp[:, :, None]*E[:, :, :]**2
-      
     # Poloidal electric field contribution to the energy density. 
     elif name=='uEy':
       E, epsPerp = self.getArray(path, 'Ey'), self.getArray(path, 'epsPerp')
       return epsPerp[:, :, None]*E[:, :, :]**2
-
+    # Poloidal energy density. 
+    elif name=='upol':
+      return self.getArray(path, 'uEy') + self.getArray(path, 'uBx')
+    # Toroidal energy density. 
+    elif name=='utor':
+      return self.getArray(path, 'uEx') + self.getArray(path, 'uBy')
     # Integrated poloidal energy. 
     elif name=='Upol':
       uB, uE = self.getArray(path, 'uBx'), self.getArray(path, 'uEy')
       dV = self.getArray(path, 'dV')
       return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
-
     # Integrated toroidal energy. 
     elif name=='Utor':
       uB, uE = self.getArray(path, 'uBy'), self.getArray(path, 'uEx')
       dV = self.getArray(path, 'dV')
       return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
-
-#    # Toroidal component of the electromagnetic energy. 
-#    elif name in ('UBpol', 'UBtor', 'UEpol', 'UEtor', 'Upol', 'Utor'):
-#      # The volume differential comes from the dipole coordinates and the
-#      # determinant of the Jacobian matrix. 
-#      u1, u3 = self.getArray(path, 'u1'), self.getArray(path, 'u3')
-#      du1 = ( np.roll(u1, shift=1, axis=0) - np.roll(u1, shift=-1, axis=0) )/2
-#      du1[0, :], du1[-1, :] = 0, 0
-#      du3 = ( np.roll(u3, shift=1, axis=1) - np.roll(u3, shift=-1, axis=1) )/2
-#      du3[:, 0], du3[:, -1] = 0, 0
-#      dV = np.abs( du1*du3*self.getArray(path, 'jac') )
-#      # Perpendicular dielectric constant. 
-#      epsp = self.getArray(path, 'epsPerp')
-#      # Grab the toroidal/poloidal fields. 
-#      ename, bname = ('Ey', 'Bx') if 'pol' in name else ('Ex', 'By')
-#      E, B = self.getArray(path, ename), self.getArray(path, bname)
-#      # Sometimes we only want to consider the energy in one field. 
-#      if 'E' in name:
-#        B = B*0
-#      if 'B' in name:
-#        E = E*0
-#      # Compute the energy density and weigh it by the volume differential. 
-#      dU = np.empty(E.shape)
-#      for i in range( dU.shape[-1] ):
-#        dU[:, :, i] = (epsp*E[:, :, i]**2 + B[:, :, i]**2/self.mu0)*dV
-#      # Sum over the spatial dimensions to get energy density over time. Newer
-#      # versions of Numpy can do a multi-axis sum... 
-#      return np.sum( np.sum(dU, 1), 0)
-
     # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -378,7 +389,6 @@ class tunaPlotter:
   def getCoords(self, path, xaxis='X', yaxis='Z', lim=None):
     coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
              'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
-
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
     # in on the ionosphere. 
     if xaxis=='lat' and yaxis=='alt':
@@ -390,63 +400,223 @@ class tunaPlotter:
       # Allow the altitude maximum to be overwritten to zoom in. 
       ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
-
     # The first time output is at 1s, but we want to start the axis at zero. 
     if xaxis=='t':
       coords['xlims'] = (0, np.max( coords['x'] ) )
-
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
       coords['outline'] = True
-
     # If we're looking at the log of the energy, we need a bottom limit. 
     if yaxis=='logU':
       coords['ylims'] = (1 if lim is None else lim, None)
-
     # If we're looking at electromagnetic energy on the y axis, we want a log
     # scale, and we also need a minimum. 
     if yaxis=='U':
       coords['ylog'] = True
       coords['ylims'] = (10 if lim is None else lim, None)
-
     # For line plots, the y axis is specified by the data. 
     if coords['y'] is None:
       del coords['y']
-
     return coords
 
   # ===========================================================================
-  # ============================================================= Plot Assembly
+  # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
   # ===========================================================================
 
-#  def plotA(self, path='/export/scratch/users/mceachern/january22/T031/'):
-  def plotA(self, path='/export/scratch/users/mceachern/tuna_20160125_141025/'):
-
+  def plotA(self, path='/export/scratch/users/mceachern/january23/'):
     self.setPaths(path)
+    azms = (1, 4, 16, 64)
+    models = (1, 2)
+    fdrive = 0.007
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texName(model) for model in models ]
+    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+        t = self.getArray(path, 't')
+        Utor = np.log10( self.getArray(path, 'Utor') )
+        Upol = np.log10( self.getArray(path, 'Upol') )
+        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
+        PW[row, col].setLine(t, Utor, 'r')
+        PW[row, col].setLine(t, Upol, 'b')
+    # Any parameters constant across the cells go in the title. 
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    title = self.texText( 'Poloidal (Blue) and Toroidal (Red) Energy from ' +
+                          freq + ' ' + drive )
+    PW.setParams(title=title)
+    # Show the plot or save it as an image. 
+    return PW.render()
+#    return PW.render('energy.pdf')
 
-    PW = plotWindow(nrows=3, ncols=2, colorbar='lin')
+  # ===========================================================================
+  # ==================================================== Snapshot of All Fields
+  # ===========================================================================
 
-    path = self.getPath()
-
-#    rows = ('x', 'y', 'z')
-#    cols = ('B', 'E')
-
-    rows = ('yDrive',)
-    cols = ('E',)
-
+  def plotB(self, path='/export/scratch/users/mceachern/january23/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+    fdrive = 0.007
+    azm = 16
+    model = 1
+    step = -1
+    # Rows and columns to be populated. 
+    rows = ('x', 'y', 'z')
+    cols = ('B', 'E')
+    # Create window. Find data. 
+    PW = plotWindow(nrows=len(rows), ncols=len(cols), colorbar='sym')
+    path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+    # Iterate through rows and columns. 
     for row, xyz in enumerate(rows):
       for col, BE in enumerate(cols):
         PW[row, col].setParams( **self.getCoords(path, 'X', 'Z') )
-        PW[row, col].setContour( self.getArray(path, BE + xyz) )
-#        PW[row, col].setContour( self.getArray(path, BE + xyz)[:, :, -3] )
-
+        PW[row, col].setContour( self.getArray(path, BE + xyz)[:, :, step] )
+    # Assemble labels and title. 
+    rowLabels = [ r for r in rows ]
+    colLabels = ( self.texText('Magnetic Field') + self.texUnit('B'),
+                  self.texText('Electric Field') + self.texUnit('E') )
+    t = self.getArray(path, 't')
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    title = self.texText( self.texName(model) + ' After ' +
+                          format(t[step], '.0f') + 's of ' + freq + ' ' +
+                          drive )
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+    # Show the plot or save it as an image. 
     return PW.render()
+
+  # ===========================================================================
+  # ====================================== Contours of Ground Signature vs Time
+  # ===========================================================================
+
+  def plotC(self, path='/export/scratch/users/mceachern/january22/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+    model = 1
+    fdrive = 0.007
+    # Rows and columns to be populated. 
+    azms = (1, 4, 16, 64)
+    fields = ('BqE', 'BfE')
+    # Create the window. 
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='sym')
+    # Iterate through rows and columns. 
+    for row, azm in enumerate(azms):
+      # Find the data. We just do the northern hemisphere. 
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+      for col, field in enumerate(fields):
+        PW[row, col].setParams( **self.getCoords(path, 't', 'lat0') )
+        PW[row, col].setContour( self.getArray(path, field)[:, 0, :] )
+    # Assemble labels and title. 
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texName(field) for field in fields ]
+    title = self.texName(model) + self.texText(' Ground Magnetic Fields ' +
+            'with ' + freq + ' ' + drive )
+    PW.setParams(rowLabels=rowLabels, colLabels=colLabels, title=title)
+    # Show the plot or save it as an image. 
+    return PW.render()
+
+  # ===========================================================================
+  # =============================================== Poynting Flux RMS over Time
+  # ===========================================================================
+
+  def plotD(self, path='/export/scratch/users/mceachern/january22/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+    fdrive = 0.016
+    model = 2
+    # Rows and columns to be populated. 
+    azms = (1, 4, 16, 64)
+    fields = ('Stor', 'Spol')
+    # Create window. Find data. 
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='sym')
+    # Iterate through rows and columns. 
+    for row, azm in enumerate(azms):
+      # Find the data. 
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+      for col, field in enumerate(fields):
+        PW[row, col].setParams( **self.getCoords(path, 'X', 'Z') )
+        PW[row, col].setContour( np.std(self.getArray(path, field), axis=-1) )
+    # Assemble labels and title. 
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texLabel(field) for field in fields ]
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    title = self.texText( self.texName(model) + ' RMS Poynting Flux with ' + freq + ' ' +
+                          drive )
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+    # Show the plot or save it as an image. 
+    return PW.render()
+
+  # ===========================================================================
+  # ================================ Energy Density, Binned by L-Shell, vs Time
+  # ===========================================================================
+
+  def plotE(self, path='/export/scratch/users/mceachern/january22/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+    fdrive = 0.016
+    model = 2
+    # Rows and columns to be populated. 
+    azms = (1, 4, 16, 64)
+    fields = ('utor', 'upol')
+    # Create window. Find data. 
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='log')
+    # Iterate through rows and columns. 
+    for row, azm in enumerate(azms):
+      # Find the data. 
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+      for col, field in enumerate(fields):
+        PW[row, col].setParams( **self.getCoords(path, 't', 'L0') )
+        u = self.getArray(path, field)
+        dV = self.getArray(path, 'dV')[:, :, None]
+        dU = u*dV
+        UofL = np.sum(dU, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL = np.sum(dV, axis=1)
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+        uofL = UofL/VofL
+        PW[row, col].setContour(uofL)
+    # Assemble labels and title. 
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texLabel(field) for field in fields ]
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    title = self.texText( self.texName(model) + ' Mean Energy Density with ' + freq + ' ' +
+                          drive )
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+    # Show the plot or save it as an image. 
+    return PW.render()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ===========================================================================
   # ============================================================= Plot Assembly
   # ===========================================================================
 
-  def plotB(self, path='/export/scratch/users/mceachern/parallel_test/'):
+  def plotZ(self, path='/export/scratch/users/mceachern/parallel_test/'):
 
     # Starting at the given path, find all directories with data. 
     self.setPaths(path)
@@ -483,67 +653,6 @@ class tunaPlotter:
                        self.texTime( t[step] ) + self.texUnit('nT') )
 
     return PW.render()
-
-  # ===========================================================================
-  # ============================================================= Plot Assembly
-  # ===========================================================================
-
-  def plotC(self, path='/export/scratch/users/mceachern/tuna_20160122_144418/'):
-    self.setPaths(path)
-    # Just grab whatever with current driving. 
-    path = self.getPath(bdrive=0)
-    PW = plotWindow(colorbar=True)
-    PW.setParams( **self.getCoords(path, 'X', 'Z') )
-    PW.setContour( self.getArray(path, 'EyDrive') )
-    PW.setParams(title=self.texText('Maximum Driving Electric Field') + self.texUnit('E') )
-    return PW.render()
-
-  # ===========================================================================
-  # ============================================================= Plot Assembly
-  # ===========================================================================
-
-  def plotD(self, path='/export/scratch/users/mceachern/january22/'):
-    # Starting at the given path, find all directories with data. 
-    self.setPaths(path)
-
-    azms = (1, 4, 16, 64)
-
-    models = (1, 3)
-
-    fdrive = 0.016
-
-    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-    colLabels = [ self.texName(model) for model in models ]
-    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
-#    PW.setParams(rowLabels=rowLabels, colLabels=colLabels, rowlabellabel='m')
-
-    # Loop through the rows and columns. 
-    for row, azm in enumerate(azms):
-      for col, model in enumerate(models):
-
-        # Find the path that matches the parameters we want for this cell. 
-        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
-
-        t = self.getArray(path, 't')
-        Utor = np.log10( self.getArray(path, 'Utor') )
-        Upol = np.log10( self.getArray(path, 'Upol') )
-
-#        for name, color in ( ('UBpol', 'b--'), ('UBtor', 'r--'), ('UEpol', 'b:'), ('UEtor', 'r:'), ('Upol', 'b'), ('Utor', 'r') ):
-#          U = np.log10( self.getArray(path, name) )
-#          PW[row, col].setLine(t, U, color)
-
-        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
-        PW[row, col].setLine(t, Utor, 'r')
-        PW[row, col].setLine(t, Upol, 'b')
-
-    PW.setParams(title=self.texText('Poloidal (Blue) and Toroidal (Red)') )
-
-    return PW.render()
-#    return PW.render('energy.pdf')
-
-
 
 '''
   # Either display the plot or save it as an image. 
@@ -701,7 +810,7 @@ class plotWindow:
         self.shax.text(s='$' + val + '$', **targs)
       # Accept a string as the window supertitle. 
       elif key=='title':
-        self.tax.text(s='$' + val + '$', fontsize=20, **targs)
+        self.tax.text(s='$' + val + '$', fontsize=14, **targs)
       # Only the bottom x axes get labels. 
       elif key=='xlabel':
         [ cell.setParams(xlabel=val) for cell in self.cells[-1, :] ]
@@ -1191,7 +1300,7 @@ class plotColors(dict):
       ColorbarBase(cax, boundaries=colorParams['levels'],
                    ticks=colorParams['ticks'], norm=colorParams['norm'],
                    cmap=colorParams['cmap'])
-      ax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
+      cax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
       return
     elif self.colorbar=='sym':
       norm, mron, fmt = self.symNorm, self.symMron, self.symFormatter
