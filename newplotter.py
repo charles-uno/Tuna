@@ -88,7 +88,7 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plotE()
+  return TP.plotF()
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -591,14 +591,76 @@ class tunaPlotter:
     # Show the plot or save it as an image. 
     return PW.render()
 
+  # ===========================================================================
+  # ========================================= Ionospheric Conductivity Profiles
+  # ===========================================================================
+
+  def plotF(self):
+
+    PW = plotWindow(nrows=2, ncols=2, colorbar=None)
+
+    filename = './models/ionpar1.dat'
+    with open(filename, 'r') as fileobj:
+      lines = fileobj.readlines()
+    ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
+
+    # Altitude in km. Conductivities in mS/m. 
+    alt = ionos[:, 0]
+    sig0 = 1e6/( self.mu0*ionos[:, 4] ) + 1e-20
+    sigH = 4*np.pi*self.eps0*ionos[:, 3] + 1e-20
+    sigP = 4*np.pi*self.eps0*ionos[:, 2] + 1e-20
+
+    PW[0, 0].setLine(sigP, alt, 'r')
+    PW[0, 0].setLine(sigH, alt, 'b')
+    PW[0, 0].setParams(xlabel='alt')
+
+
+    return PW.render()
+
+
+
+    path = self.getPaths(azm=1, fdrive=0.007, model=1)
+
+    PW[row, col].setParams( **self.getCoords(path, 'sigma', 'alt') )
+
+    PW[row, col].setLine(sigma, alt)
 
 
 
 
-
-
-
-
+    # Parameters to be held constant. 
+    fdrive = 0.016
+    model = 2
+    # Rows and columns to be populated. 
+    azms = (1, 4, 16, 64)
+    fields = ('utor', 'upol')
+    # Create window. Find data. 
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='log')
+    # Iterate through rows and columns. 
+    for row, azm in enumerate(azms):
+      # Find the data. 
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+      for col, field in enumerate(fields):
+        PW[row, col].setParams( **self.getCoords(path, 't', 'L0') )
+        u = self.getArray(path, field)
+        dV = self.getArray(path, 'dV')[:, :, None]
+        dU = u*dV
+        UofL = np.sum(dU, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL = np.sum(dV, axis=1)
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+        uofL = UofL/VofL
+        PW[row, col].setContour(uofL)
+    # Assemble labels and title. 
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texLabel(field) for field in fields ]
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+    title = self.texText( self.texName(model) + ' Mean Energy Density with ' + freq + ' ' +
+                          drive )
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+    # Show the plot or save it as an image. 
+    return PW.render()
 
 
 
