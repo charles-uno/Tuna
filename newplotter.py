@@ -195,6 +195,7 @@ class tunaPlotter:
              'lat0':self.texText('Latitude'), 
              'RE':self.texText('R_E'), 
              'RI':self.texText('R_I'), 
+             'sigma':self.texText('Conductivity'),
              'S':self.texText('Poynting Flux'),
              'Spol':'\\frac{-1}{\\mu_0}E_yB_x^*',
              'Stor':'\\frac{1}{\\mu_0}E_xB_y^*',
@@ -222,6 +223,10 @@ class tunaPlotter:
     return self.texText(' at ' + strx + 's')
 
   def texUnit(self, x):
+    # Log quantities don't need their own entries. 
+    if str(x).startswith('log'):
+      return self.texUnit( x[3:].strip() )
+    # Dictionary of units we might care about. 
     units = {
              'alt':'km',
              'B':'nT',
@@ -245,6 +250,7 @@ class tunaPlotter:
              'mHz':'mHz',
              'nT':'nT',
              's':'s',
+             'sigma':'\\frac{mS}{m}',
              'S':'\\frac{mW}{m^2}',
              'Stor':'\\frac{mW}{m^2}',
              'Spol':'\\frac{mW}{m^2}',
@@ -596,81 +602,47 @@ class tunaPlotter:
   # ===========================================================================
 
   def plotF(self):
-
+    # Create the window. 
     PW = plotWindow(nrows=2, ncols=2, colorbar=None)
-
-    filename = './models/ionpar1.dat'
-    with open(filename, 'r') as fileobj:
-      lines = fileobj.readlines()
-    ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
-
-    # Altitude in km. Conductivities in mS/m. 
-    alt = ionos[:, 0]
-    sig0 = 1e6/( self.mu0*ionos[:, 4] ) + 1e-20
-    sigH = 4*np.pi*self.eps0*ionos[:, 3] + 1e-20
-    sigP = 4*np.pi*self.eps0*ionos[:, 2] + 1e-20
-
-    PW[0, 0].setLine(sigP, alt, 'r')
-    PW[0, 0].setLine(sigH, alt, 'b')
-    PW[0, 0].setParams(xlabel='alt')
-
-
+    # For this plot, we don't actually need the 2D arrays that Tuna spat out.
+    # We can just read in the profiles directly. 
+    for i in range(4):
+      filename = './models/ionpar' + str(i+1) + '.dat'
+      with open(filename, 'r') as fileobj:
+        lines = fileobj.readlines()
+      ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
+      # Chop off the altitudes at 100km and 10000km. 
+      bottom = np.argmin(ionos[:, 0]<100)
+      if np.max( ionos[:, 0] )>1e4:
+        top = np.argmax(ionos[:, 0]>1e4)
+      else:
+        top = len( ionos[:, 0] )
+      # Log altitude, rather than altitude on a log scale. 
+      logalt = np.log10( ionos[bottom:top, 0] )
+      # We have to worry about zero and negative values for the perpendicular
+      # conductivity. Clip at the minimum positive value. 
+      sigP = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 2] )
+      sigH = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 3] )
+      minP = np.min( sigP[ np.nonzero(sigP) ] )
+      minH = np.min( sigP[ np.nonzero(sigH) ] )
+      # Plot log conductivity instead of conductivity on a log scale. 
+      logsig0 = np.log10( 1e6/( self.mu0*ionos[bottom:top, 4] ) )
+      logsigH = np.log10( np.clip(sigH, minH, np.inf) )
+      logsigP = np.log10( np.clip(sigP, minP, np.inf) )
+      # Add the lines to the plot. 
+      PW[i].setLine(logsigP, logalt, 'r')
+      PW[i].setLine(logsigH, logalt, 'b')
+      PW[i].setLine(logsig0, logalt, 'g')
+    # Set the labels and title. 
+    colLabels = [ self.texText('Active'), self.texText('Quiet') ]
+    rowLabels = [ self.texText('Day'), self.texText('Night') ]
+    title = self.texText('Pedersen (Blue), Hall (Red), and Parallel (Green) ' +
+                         'Conductivities')
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, nxticks=5, 
+                 xlabel=self.texLabel('logsigma'), 
+                 ylabel=self.texLabel('logalt'), title=title)
+    # Show or save the plot. 
     return PW.render()
-
-
-
-    path = self.getPaths(azm=1, fdrive=0.007, model=1)
-
-    PW[row, col].setParams( **self.getCoords(path, 'sigma', 'alt') )
-
-    PW[row, col].setLine(sigma, alt)
-
-
-
-
-    # Parameters to be held constant. 
-    fdrive = 0.016
-    model = 2
-    # Rows and columns to be populated. 
-    azms = (1, 4, 16, 64)
-    fields = ('utor', 'upol')
-    # Create window. Find data. 
-    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='log')
-    # Iterate through rows and columns. 
-    for row, azm in enumerate(azms):
-      # Find the data. 
-      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
-      for col, field in enumerate(fields):
-        PW[row, col].setParams( **self.getCoords(path, 't', 'L0') )
-        u = self.getArray(path, field)
-        dV = self.getArray(path, 'dV')[:, :, None]
-        dU = u*dV
-        UofL = np.sum(dU, axis=1)
-        # Careful... dV is 0 at the edges. 
-        VofL = np.sum(dV, axis=1)
-        VofL[0], VofL[-1] = VofL[1], VofL[-2]
-        uofL = UofL/VofL
-        PW[row, col].setContour(uofL)
-    # Assemble labels and title. 
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-    colLabels = [ self.texLabel(field) for field in fields ]
-    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
-    freq = format(1e3*fdrive, '.0f') + 'mHz'
-    title = self.texText( self.texName(model) + ' Mean Energy Density with ' + freq + ' ' +
-                          drive )
-    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
-    # Show the plot or save it as an image. 
-    return PW.render()
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -891,7 +863,10 @@ class plotWindow:
   # The Plot Window doesn't actually handle any data. Individual cells should
   # instead be accessed as array entries. 
   def __getitem__(self, index):
-    return self.cells[index]
+    if isinstance(index, int):
+      return self.cells.flatten()[index]
+    else:
+      return self.cells[index]
 
   # If the window gets passed a contour, just send it along to each cell. 
   def setContour(self, *args, **kargs):
@@ -992,9 +967,13 @@ class plotCell:
   # If we manually set the axis limits, we want to ignore the automatically-set
   # limits that come down the line later. 
   xlims, ylims = (None, None), (None, None)
+  # If we're on a log scale, we need different rules for placing ticks. 
+  xlog, ylog = False, False
   # Keep track if we're supposed to be tracing the outline of our domain, such
   # as if the data is dipole-shaped. 
   outline = False
+  # Cells can be small. Let's try to keep the number of ticks under control.
+  nxticks, nyticks = 3, 4
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------- Initialize Cell
@@ -1013,8 +992,13 @@ class plotCell:
     for key, val in kargs.items():
       # Keys are caps insensitive. 
       key = key.lower()
+      # Sometimes we have to finagle with the number of ticks. 
+      if key=='nxticks':
+        self.nxticks = val
+      elif key=='nyticks':
+        self.nyticks = val
       # Draw an outline around the plot contents. 
-      if key=='outline':
+      elif key=='outline':
         self.outline = val
       # Horizontal axis coordinate. 
       elif key=='x':
@@ -1163,8 +1147,14 @@ class plotCell:
 #      self.ax.set_yticklabels(labels)
 
     # These subplots can get cramped. Let's reduce the number of ticks. 
-    self.ax.xaxis.set_major_locator( plt.MaxNLocator(3, integer=True) )
-    self.ax.yaxis.set_major_locator( plt.MaxNLocator(4, integer=True) )
+
+    if not self.xlog:
+      self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
+                                                       integer=True) )
+
+    if not self.ylog:
+      self.ax.yaxis.set_major_locator( plt.MaxNLocator(self.nyticks, 
+                                                       integer=True) )
 
     self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
     self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
