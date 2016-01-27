@@ -791,8 +791,10 @@ module io
     if (varname .eq. 'lps'  ) defaultParam = 1.0857    ! Scale L of plasmasphere.  
     if (varname .eq. 'lpp'  ) defaultParam = 4         ! L value of plasmapause. 
     if (varname .eq. 'dlpp' ) defaultParam = 0.1       ! Thickness (in L) of plasmapause. 
-    if (varname .eq. 'sighfac' ) defaultParam = 1.     ! To turn off Hall conductivity for debugging. 
-    if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! To turn off Pedersen conductivity for debugging. 
+    ! Debugging factors. 
+    if (varname .eq. 'iwfac' ) defaultParam = 1.       ! To turn off interpolation. 
+    if (varname .eq. 'sighfac' ) defaultParam = 1.     ! To turn off Hall conductivity. 
+    if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! To turn off Pedersen conductivity. 
     ! Drive parameters.
     if (varname .eq. 'idrive'   ) defaultParam = 1     ! Waveform index. 
     if (varname .eq. 'bdrive'   ) defaultParam = 0.    ! Strength of driving B field (in nT). 
@@ -1174,8 +1176,8 @@ module geometry
     ! Allocate arrays for linearized interpolation weights. 
     allocate( i1w(0:n1,0:1), i3w(0:n3,0:1) ) 
     ! Interpolation isn't as well-behaved as differentiation at the boundary. 
-    i1w = iw( usup1_() )
-    i3w = iw( usup3_() )
+    i1w = iw( usup1_() )*readParam('iwfac')
+    i3w = iw( usup3_() )*readParam('iwfac')
   end subroutine iwSetup
 
   ! ----------------------------------------------------------------------------------------------
