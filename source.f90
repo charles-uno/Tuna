@@ -862,9 +862,9 @@ module io
     if (varname .eq. 'fdrive'   ) defaultParam = 0.015 ! Frequency (in Hz). 
     if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet duration (in s). 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude (in degrees). 
-    if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude (in degrees). 
-    if (varname .eq. 'rdrive'   ) defaultParam = 4.5   ! Radius (in RE). 
-    if (varname .eq. 'drdrive'  ) defaultParam = 0.5   ! Spread in radius (in RE). 
+    if (varname .eq. 'dlatdrive') defaultParam = 10.   ! Spread in latitude (in degrees). 
+    if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! Radius (in RE). 
+    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in radius (in RE). 
     ! Integrated atmospheric conductivities.
     if (varname .eq. 'sig0atm') defaultParam = -1     ! Integrated sigma_0 for north atmosphere. 
     if (varname .eq. 'sighatm') defaultParam = -1     ! If < 0, value is integrated from profile. 
@@ -2208,7 +2208,7 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine driveSetup()
-    double precision                       :: qdrive, dqdrive, rdrive, drdrive, Bdrive, jdrive
+    double precision                       :: qdrive, dqdrive, Ldrive, dLdrive, Bdrive, jdrive
     double precision, dimension(0:n1,0:n3) :: scratch
     integer                                :: i
     ! Grab driving parameters: waveform index, frequency, characteristic timescale. 
@@ -2219,8 +2219,8 @@ module fields
     qdrive = (pi/180)*( 90 - readParam('latdrive') )
     dqdrive = (pi/180)*readParam('dlatdrive')
     ! Current driving also needs to be delivered at a radial distance. 
-    rdrive = readParam('rdrive')
-    drdrive = readParam('drdrive')
+    Ldrive = readParam('ldrive')
+    dLdrive = readParam('dldrive')
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
@@ -2230,17 +2230,17 @@ module fields
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-              exp( -0.5*( (L() - rdrive)/drdrive )**2 )/( h2()*gsup22() )
-
-
-    ! As a precaution against instability, we zero the tail of the driving distributions. These
-    ! little numbers can make trouble in the corners. 
+              exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
+    ! As a precaution against instabilities forming in the corners, we chops off the tails of the
+    ! compressional driving close to the ionosphere. 
     B3drive(:20) = 0
     B3drive(n3-20:) = 0
-    j2drive(:20, :) = 0
-    ! Zeroing far-out field lines is not necessary. 
-    j2drive(:, :20) = 0
-    j2drive(:, n3-20:) = 0
+
+
+!    j2drive(:20, :) = 0
+!    ! Zeroing far-out field lines is not necessary. 
+!    j2drive(:, :20) = 0
+!    j2drive(:, n3-20:) = 0
 
 
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
