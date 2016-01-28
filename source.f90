@@ -1966,7 +1966,7 @@ module coefficients
     E1_E3 =  ( gsup13()/gsup11() )*expe*cose - ( gsup13()/gsup11() )*E3_E3
     E1_JFsup1 = ( dt*vA()**2 / J() )*( 1/gsup11() )   *cosf*expf - ( gsup13()/gsup11() )*E3_JFsup1
     E1_JFsup2 = ( dt*vA()**2 / J() )*( gg12/gsup11() )*sinf*expf
-    E1_JFsup3 =                                                   -( gsup13()/gsup11() )*E3_JFsup1
+    E1_JFsup3 =                                                   -( gsup13()/gsup11() )*E3_JFsup3
     E1_j2drive = (dt/epsPerp)*gg21*sinf*expf
     E1_j3 =                                                       -( gsup13()/gsup11() )*E3_j3
     ! E2 coefficients. 
@@ -2760,14 +2760,6 @@ program tuna
 !  write(*,*) 'E1_F2 = ', E1_JFsup2(0, 0)
 !  write(*,*) 'E1_F3 = ', E1_JFsup3(0, 0)
 !  write(*,*) 'E1_j3 = ', E1_j3(0, 0)
-
-
-
-
-
-
-
-
 
   call peekCoefficients(0.*RE, 0.1*RE)
 !  stop
