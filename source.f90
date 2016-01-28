@@ -66,14 +66,6 @@ module loop
   ! Electric and magnetic fields in the bulk of the simulation. Also 
   ! field-aligned current. 
   double complex, dimension(:,:), allocatable   :: B1, B2, B3, E1, E2, E3, j3
-
-  ! Since E3 and j3 depend on each other (and are defined on the same parities)
-  ! it's convenient to update them with the help of a temporary variable. 
-
-
-  double complex                                :: j3temp
-
-
   ! Curl components of the bulk electric and magnetic fields. The J concedes
   ! that these are actually off by a factor of the Jacobian, which gets bundled
   ! with the coefficients. 
@@ -206,13 +198,18 @@ module loop
   ! With a Dirichlet boundary condition, we specify the value of the function
   ! at the edge. We choose to have the fields go to zero. 
 
+  ! Alternatively, we can try specifying that the second derivative goes to
+  ! zero. That's probably... similar? 
+
   double complex function d1D(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
     integer, intent(in)                           :: i, k
     if (i .eq. 0) then
       d1D = d1w(0, 1)*field(1, k)
+!      d1D = d1w(0, 0)*field(1, k) + d1w(0, 1)*field(3, k)
     else if (i .eq. n1) then
       d1D = d1w(n1, 0)*field(n1-1, k)
+!      d1D = d1w(n1, 0)*field(n1-3, k) + d1w(n1, 1)*field(n1-1, k)
     else
       d1D = d1w(i, 0)*field(i-1, k) + d1w(i, 1)*field(i+1, k)
     end if
@@ -223,8 +220,10 @@ module loop
     integer, intent(in)                           :: i, k
     if (k .eq. 0) then
       d3D = d3w(0, 1)*field(i, 1)
+!      d3D = d3w(0, 0)*field(i, 1) + d3w(0, 1)*field(i, 3)
     else if (k .eq. n3) then
       d3D = d3w(n3, 0)*field(i, n3-1)
+!      d3D = d3w(n3, 0)*field(i, n3-3) + d3w(n3, 1)*field(i, n3-1)
     else
       d3D = d3w(k, 0)*field(i, k-1) + d3w(k, 1)*field(i, k+1)
     end if
@@ -268,13 +267,18 @@ module loop
   ! With a Dirichlet boundary condition, we specify the value of the function 
   ! at the edge. We choose to have the fields go to zero. 
 
+  ! Alternatively, we can try specifying that the second derivative goes to
+  ! zero. That's probably... similar? 
+
   double complex function i1D(field, i, k)
     double complex, intent(in), dimension(0:, 0:) :: field
     integer, intent(in)                           :: i, k
     if (i .eq. 0) then
       i1D = 0
+!      i1D = i1w(0, 0)*field(1, k) + i1w(0, 1)*field(3, k)
     else if (i .eq. n1) then
       i1D = 0
+!      i1D = i1w(n1, 0)*field(n1-3, k) + i1w(n1, 1)*field(n1-1, k)
     else
       i1D = i1w(i, 0)*field(i-1, k) + i1w(i, 1)*field(i+1, k)
     end if
@@ -285,8 +289,10 @@ module loop
     integer, intent(in)                           :: i, k
     if (k .eq. 0) then
       i3D = 0
+!      i3D = i3w(0, 0)*field(i, 1) + i3w(0, 1)*field(i, 3)
     else if (k .eq. n3) then
       i3D = 0
+!      i3D = i3w(n3, 0)*field(i, n3-3) + i3w(n3, 1)*field(i, n3-1)
     else
       i3D = i3w(k, 0)*field(i, k-1) + i3w(k, 1)*field(i, k+1)
     end if
@@ -435,6 +441,24 @@ module loop
       !$omp end single
 
       ! -----------------------------------------------------------------------
+      ! ------------------------------------------------------------- Advance j
+      ! -----------------------------------------------------------------------
+
+      ! Like the magnetic field components, the current is offset from the
+      ! electric field by half a time step. That means we want to update the
+      ! current, then update the electric fields based on the new current
+      ! values, just like we do with the magnetic fields. 
+
+      ! Advance j3 on odd i, odd k. 
+      !$omp do
+      do k=1,n3,2
+        do i=1,n1,2
+          j3(i, k) = j3_j3(i, k)*j3(i, k) + j3_E3(i, k)*E3(i, k)
+        end do
+      end do
+      !$omp end do
+
+      ! -----------------------------------------------------------------------
       ! ------------------------------------------------------------- Compute F
       ! -----------------------------------------------------------------------
 
@@ -464,16 +488,14 @@ module loop
       !$omp end do
 
       ! -----------------------------------------------------------------------
-      ! ------------------------------------------------------- Advance E and j
+      ! ------------------------------------------------------------- Advance E
       ! -----------------------------------------------------------------------
 
-      ! There's a lot of interdependence between electric field components (and
-      ! the parallel current). Some of that is avoided through interpolation. 
-      ! E1 and E2 are defined at different parities, so we can interpolate each
-      ! to the other's locations, then update them in whichever order we want
-      ! (since the updates won't overwrite the off-parity interpolated values).
-      ! The tricky ones are E3 and j3, which depend on each other, and which
-      ! are defined on the same parities. 
+      ! There's a lot of interdependence between electric field components --
+      ! E1 and E2 both depend on each other, for instance. Luckily, they are
+      ! all defined on different parities. As long as we do all of our
+      ! interpolation first, we're safe. When we update E1, we'll still have
+      ! old values of E1 on off-parity points, which is what we need for E2. 
 
       ! Interpolate E1 and JFsup1 to odd i, even k (for E2). Interpolate JFsup1
       ! to odd i, odd k (for E3). 
@@ -545,17 +567,13 @@ module loop
         end do
       end do
       !$omp end do
-      ! Advance E3 and j3 on odd i, odd k. Note j3temp: we grab the old value
-      ! of j3, then update j3, then advance E3 using the old value of j3. Using
-      ! the new one instead can cause instability.  
+      ! Advance E3 on odd i, odd k. 
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
-          j3temp = j3(i, k)
-          j3(i, k) = j3_j3(i, k)*j3temp + j3_E3(i, k)*E3(i, k)
           E3(i, k) =                        E3_JFsup1(i, k)*JFsup1(i, k) +    &
                      E3_E3(i, k)*E3(i, k) + E3_JFsup3(i, k)*JFsup3(i, k) +    &
-                     E3_j3(i, k)*j3temp
+                     E3_j3(i, k)*j3(i, k)
         end do
       end do
       !$omp end do
