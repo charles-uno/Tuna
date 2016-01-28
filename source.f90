@@ -96,8 +96,10 @@ module loop
                                                      E3_E3, E3_j3, E3_JFsup1, &
                                                      E3_JFsup3, j3_j3, j3_E3
   ! For computing the scalar magnetic potential. 
-  double precision, dimension(:,:,:), allocatable :: PsiE_B1, PsiE_B3,        &
-                                                     PsiI_B1, PsiI_B3
+  double precision, dimension(:,:,:), allocatable :: PsiI_B1, PsiI_B3
+  ! We also get ground signatures and harmonic weights. 
+  double precision, dimension(:,:), allocatable   :: alpha_Br, PsiE_Br
+  double complex, dimension(:, :), allocatable    :: alpha
   ! For computing edge electric field values from the scalar magnetic potential. 
   double precision, dimension(:,:), allocatable   :: E1_B1I, E1_B2I, E2_B1I,  &
                                                      E2_B2I
@@ -342,7 +344,7 @@ module loop
     use omp_lib
     double precision :: tLoop, driveScale
     integer          :: h, i, ip, k
-    !$omp parallel private(h, i, ip, k, j3temp)
+    !$omp parallel private(h, i, ip, k)
     tLoop = 0
     do while (tloop < dtOut)
 
@@ -438,6 +440,28 @@ module loop
 
       !$omp single
       B3(n1, 0:n3:2) = B3drive(0:n3:2)*driveScale
+      !$omp end single
+
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------- Apply Boundary Conditions to B
+      ! -----------------------------------------------------------------------
+
+      ! Magnetic fields use Neumann boundary conditions: the derivative is zero
+      ! at the boundary. We set this explicitly on the inner and outer
+      ! boundaries. Ionospheric boundaries are handled using Psi. 
+
+      ! B1 is defined at odd i, so it isn't explicitly valued at the edge. 
+
+      ! B2 is defined on even i, odd k. 
+      !$omp single
+      B2(0, 1:n3:2) = B2(2, 1:n3:2)
+      B2(n1, 1:n3:2) = B2(n1-2, 1:n3:2)
+      !$omp end single
+
+      ! B3 is defined on even i, even k. We don't touch the outer boundary,
+      ! since that's where driving is delivered. 
+      !$omp single
+      B3(0, 0:n3:2) = B3(2, 0:n3:2)
       !$omp end single
 
       ! -----------------------------------------------------------------------
@@ -681,6 +705,24 @@ module loop
       !$omp end do
 
       ! -----------------------------------------------------------------------
+      ! ---------------------------------------- Apply Boundary Conditions to E
+      ! -----------------------------------------------------------------------
+
+      ! Electric fields use Dirichlet boundary conditions: they go to zero at
+      ! the boundary. We set this explicitly on the inner and outer boundaries.
+      ! Ionospheric boundaries are handled using Psi. 
+
+      ! E1 is defined on even i, even k. 
+      !$omp single
+      E1(0, 0:n3:2) = E1(2, 0:n3:2)
+      E1(n1, 0:n3:2) = E1(n1-2, 0:n3:2)
+      !$omp end single
+
+      ! E2 is defined on odd i, so we don't have to worry about it. 
+
+      ! E3 is defined on odd i, so we don't have to worry about it. 
+
+      ! -----------------------------------------------------------------------
       ! ------------------------------------------------------ End of Time Loop
       ! -----------------------------------------------------------------------
 
@@ -851,28 +893,40 @@ module io
   ! ========================================================================== Write Complex Array
   ! ==============================================================================================
 
-  subroutine writeComplexArray(filename, arr, onlyheader, onlydata, nt)
+  subroutine writeComplexArray(filename, arr, onlyheader, onlydata, noskip, nt)
     character(len=*), intent(in)   :: filename
     double complex, dimension(:,:) :: arr
-    logical, intent(in), optional  :: onlyheader, onlydata
+    logical, intent(in), optional  :: onlyheader, onlydata, noskip
     integer, intent(in), optional  :: nt
+    integer                        :: nx, nz, stride
+    ! By default, we print out every other grid point in each dimension to reduce data size. 
+    if ( .not. present(noskip) ) then
+      nx = 1 + size(arr, 1)/2
+      nz = 1 + size(arr, 2)/2
+      stride = 2
+    ! If requested, we can print out the entire array instead. 
+    else
+      nx = size(arr, 1)
+      nz = size(arr, 2)
+      stride = 1
+    end if
     open(unit=99, file=filename, action='write', access='append')
     ! Unless asked not to, print out the header. 
     if ( .not. present(onlydata) ) then
       ! Dimensions of the (sliced) 2d array, including time steps, if applicable. 
       if (present(nt)) then
-        write(99,*) 1 + size(arr, 1)/2, 1 + size(arr, 2)/2, nt
+        write(99,*) nx, nz, nt
       else
-        write(99,*) 1 + size(arr, 1)/2, 1 + size(arr, 2)/2
+        write(99,*) nx, nz
       end if
     end if
     ! Unless asked not to, print the array. 
     if (.not. present(onlyheader)) then
-      ! Only even rows and columns are printed, unless there are exactly two columns. 
+      ! If there are exactly two columns, always print them both. 
       if (size(arr, 2) .eq. 2) then
-        write(99,*) arr(::2, :)
+        write(99,*) arr(::stride, :)
       else
-        write(99,*) arr(::2, ::2)
+        write(99,*) arr(::stride, ::stride)
       end if
     end if
   end subroutine writeComplexArray
@@ -882,11 +936,11 @@ module io
   ! ==============================================================================================
 
   subroutine writeRealArray(filename, arr, onlyheader, onlydata, noskip, nt)
-    character(len=*), intent(in)  :: filename
+    character(len=*), intent(in)     :: filename
     double precision, dimension(:,:) :: arr
-    logical, intent(in), optional :: onlyheader, onlydata, noskip
-    integer, intent(in), optional :: nt
-    integer                       :: nx, nz, stride
+    logical, intent(in), optional    :: onlyheader, onlydata, noskip
+    integer, intent(in), optional    :: nt
+    integer                          :: nx, nz, stride
     ! By default, we print out every other grid point in each dimension to reduce data size. 
     if ( .not. present(noskip) ) then
       nx = 1 + size(arr, 1)/2
@@ -1946,8 +2000,6 @@ module coefficients
     cosf = cos(  0.5 * sigh * dt / epsPerp )
     expe = exp(       -sigp * dt / epsPerp )
     expf = exp( -0.5 * sigp * dt / epsPerp )
-    gg12  = sqrt( gsup11() / gsup22() )
-    gg21  = sqrt( gsup22() / gsup11() )
     ! B1 coefficients.
     B1_JCsup1 = -g11()*dt/J()
     B1_JCsup3 = -g13()*dt/J()
@@ -1979,21 +2031,23 @@ module coefficients
     ! E1 coefficients. Note that some E1 coefficients are defined in terms of E3 coefficients. 
     ! This is because we have an equation for updating Esup1, and an equation for updating E3, and
     ! we have to match those together to get our expressions for updating E1. 
-    E1_E1 =                        cose*expe
-    E1_E2 =                   gg21*sine*expe
-    E1_E3 =  ( gsup13()/gsup11() )*expe*cose - ( gsup13()/gsup11() )*E3_E3
-    E1_JFsup1 = ( dt*vA()**2 / J() )*( 1/gsup11() )   *cosf*expf - ( gsup13()/gsup11() )*E3_JFsup1
-    E1_JFsup2 = ( dt*vA()**2 / J() )*( gg12/gsup11() )*sinf*expf
-    E1_JFsup3 =                                                   -( gsup13()/gsup11() )*E3_JFsup3
-    E1_j2drive = (dt/epsPerp)*gg21*sinf*expf
-    E1_j3 =                                                       -( gsup13()/gsup11() )*E3_j3
+    E1_E1 =                                   cose*expe
+    E1_E2 =       sqrt( gsup22() / gsup11() )*sine*expe
+    E1_E3 =           ( gsup13() / gsup11() )*expe*cose                                          &
+                    - ( gsup13() / gsup11() )*E3_E3
+    E1_JFsup1 =       1/( J()*gsup11() )     *cosf*expf*dt*vA()**2                               &
+                    - ( gsup13() / gsup11() )*E3_JFsup1
+    E1_JFsup2 =   sqrt( 1 / g33() )          *sinf*expf*dt*vA()**2
+    E1_JFsup3 =      -( gsup13() / gsup11() )*E3_JFsup3
+    E1_j2drive =  sqrt( gsup22() / gsup11() )*sinf*expf*dt/epsPerp
+    E1_j3 =          -( gsup13() / gsup11() )*E3_j3
     ! E2 coefficients. 
-    E2_E1 = -( gsup11()/gsup22() )*gg21*sine*expe
-    E2_E2 =                             cose*expe
-    E2_E3 = -( gsup13()/gsup22() )*gg21*expe*sine
-    E2_JFsup1 = -( 1/gsup22() )*gg21*( dt*vA()**2 / J() )*sinf*expf
-    E2_JFsup2 =  ( 1/gsup22() )     *( dt*vA()**2 / J() )*cosf*expf
-    E2_j2drive =         dt * cosf * expf / epsPerp
+    E2_E1 =      -sqrt( gsup11() / gsup22() )*sine*expe
+    E2_E2 =                                   cose*expe
+    E2_E3 = -gsup13() / sqrt( gsup11()*gsup22() )*expe*sine
+    E2_JFsup1 =  -sqrt( 1 / g33() )          *sinf*expf*dt*vA()**2
+    E2_JFsup2 =       1/( J()*gsup22() )     *cosf*expf*dt*vA()**2
+    E2_j2drive =                              cosf*expf*dt/epsPerp
   end subroutine bulkCoefficientSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -2006,7 +2060,7 @@ module coefficients
     double precision, dimension(0:n1)      :: npo, tnpo, nuface, nufaci
     double precision, dimension(0:n1,0:n3) :: scratch
     double precision, dimension(0:n1, 0:1) :: Br_B1, Br_B3
-    double complex, dimension(0:n1, 0:n1)  :: PsiE_Br, PsiI_Br
+    double complex, dimension(0:n1, 0:n1)  :: PsiI_Br
     double precision, dimension(0:n1, 0:1) :: cosa, sina, intSig11, intSig12, intSig21,          &
                                               intSig22, intSigzz
     ! For legibility, coefficients for Psi are assembled in two steps. First, we compute the
@@ -2028,11 +2082,25 @@ module coefficients
         PsiI_Br(i, ip) = sum( Y(i, :)*Yinv(:, ip)*nufaci(:) )
       end do
     end do
-    ! Now it all gets mashed together. 
+    ! We want to be able to output the harmonic weights, alpha_nu. They are used as:
+    ! Psi = Sum_nu alpha_nu Y_nu ( r^nu + nu/(nu+1) RE^(2nu+1) r^(-nu-1) )
+    ! This comes from the definition of Psi in terms of harmonics:
+    ! Psi = Sum_nu Y_nu (  alpha_nu r^nu + beta_nu r^(-nu-1) )
+    ! Combined with the fact that Br = dPsi/dr is zero at RE. 
+    allocate( alpha(0:nModes-1, 0:1), alpha_Br(0:nModes-1, 0:n1) )
+    ! The form for alpha_Br comes from working out the expression for Psi in terms of Br, just
+    ! like we worked it out for PsI_Br. Here, though, we only have to do half the work, since we
+    ! stop at the harmonic weights (instead of summing them up again to get Psi). 
+    do i=0,n1
+      alpha_Br(:, i) = Yinv(i, 0:nModes-1)                                                       &
+                     / ( nu(0:nModes-1)*RI**(nu(0:nModes-1)-1)                                   &
+                         *(1 - (RE/RI)**tnpo(0:nModes-1) ) )
+    end do
+    ! Note that we don't have to worry about the second step for alpha or PsiE. We don't compute
+    ! those during runtime -- only when we output fields -- so we can rely on the (relatively
+    ! slow) Br() helper function. 
       do i=0,n1
         do ip=0,n1
-          PsiE_B1(i, ip, hh) = PsiE_Br(i, ip)*Br_B1(ip, hh)
-          PsiE_B3(i, ip, hh) = PsiE_Br(i, ip)*Br_B3(ip, hh)
           PsiI_B1(i, ip, hh) = PsiI_Br(i, ip)*Br_B1(ip, hh)
           PsiI_B3(i, ip, hh) = PsiI_Br(i, ip)*Br_B3(ip, hh)
         end do
@@ -2070,8 +2138,7 @@ module coefficients
               E3_JFsup3(0:n1, 0:n3), j3_j3(0:n1, 0:n3), j3_E3(0:n1, 0:n3) )
 
   allocate( E1_B1I(0:n1, 0:1), E1_B2I(0:n1, 0:1), E2_B1I(0:n1, 0:1), E2_B2I(0:n1, 0:1),          &
-            PsiE_B1(0:n1, 0:n1, 0:1), PsiE_B3(0:n1, 0:n1, 0:1), PsiI_B1(0:n1, 0:n1, 0:1),        &
-            PsiI_B3(0:n1, 0:n1, 0:1) )
+            PsiE_Br(0:n1, 0:n1), PsiI_B1(0:n1, 0:n1, 0:1), PsiI_B3(0:n1, 0:n1, 0:1) )
 
     call bulkCoefficientSetup()
     call edgeCoefficientSetup()
@@ -2132,6 +2199,8 @@ module fields
     call writeComplexArray('BqE.dat', Bq(RE), onlyheader=.true., nt=nt)
     call writeComplexArray('BqI.dat', Bq(RI), onlyheader=.true., nt=nt)
     call writeComplexArray('Br.dat', Br(), onlyheader=.true., nt=nt)
+    ! Harmonic weights. One per harmonic, per hemisphere, per time step. 
+    call writeComplexArray('eweights.dat', alpha, onlyheader=.true., noskip=.true., nt=nt)
   end subroutine writeFieldHeaders
 
   ! ----------------------------------------------------------------------------------------------
@@ -2317,11 +2386,14 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine computeGroundFields()
-    integer :: h, i, ip, k
-    ! Compute the scalar magnetic potential at RE. 
+    integer                              :: h, i, k, m
+    double complex, dimension(0:n1, 0:2) :: BrTemp
+    ! Grab the radial magnetic field at RI. 
+    BrTemp = Br()
+    ! Compute the scalar magnetic potential at RE from BR at RI. 
     do i=0,n1
       do h=0,1
-        PsiE(i, h) = sum( PsiE_B1(i, :, h)*B1(i, h*n3) + PsiE_B3(i, :, h)*B3(i, h*n3) )
+        PsiE(i, h) = sum( PsiE_Br(i, :)*BrTemp(:, h) )
       end do
     end do
     ! Take derivatives of PsiE to get B1 and B2 at RE. 
@@ -2329,6 +2401,12 @@ module fields
       do h=0,1
         B1E(i, h) = d1D(PsiE, i, h)
         B2E(i, h) = d2(PsiE, i, h)
+      end do
+    end do
+    ! Let's also compute the weights of the eigenvectors (hamonics). 
+    do m=0,nModes-1
+      do h=0,1
+        alpha(m, h) = sum( alpha_Br(m, :)*BrTemp(:, h) )
       end do
     end do
   end subroutine computeGroundFields
@@ -2366,6 +2444,8 @@ module fields
     call writeComplexArray('BqE.dat', Bq(RE), onlydata=.true.)
     call writeComplexArray('BqI.dat', Bq(RI), onlydata=.true.)
     call writeComplexArray('Br.dat', Br(), onlydata=.true.)
+    ! Harmonic weights. One per harmonic, per hemisphere, per time step. 
+    call writeComplexArray('eweights.dat', alpha, onlydata=.true., noskip=.true.)
   end subroutine writeFields
 
   ! ==============================================================================================
