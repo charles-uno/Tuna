@@ -31,6 +31,7 @@ parameters = {
 #              'bdrive':[10], 
               'tmax':[50],
               'azm':[16],
+              'fudge':[0.1],
 #              'azm':[1, 4, 16, 64],
 #              'model':[1, 2, 3, 4],
               'model':[3],

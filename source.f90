@@ -2761,7 +2761,7 @@ program tuna
 !  write(*,*) 'E1_F3 = ', E1_JFsup3(0, 0)
 !  write(*,*) 'E1_j3 = ', E1_j3(0, 0)
 
-  call peekCoefficients(0.*RE, 0.1*RE)
+!  call peekCoefficients(0.*RE, 0.1*RE)
 !  stop
 
 !  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi
