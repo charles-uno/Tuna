@@ -66,6 +66,14 @@ module loop
   ! Electric and magnetic fields in the bulk of the simulation. Also 
   ! field-aligned current. 
   double complex, dimension(:,:), allocatable   :: B1, B2, B3, E1, E2, E3, j3
+
+  ! Since E3 and j3 depend on each other (and are defined on the same parities)
+  ! it's convenient to update them with the help of a temporary variable. 
+
+
+  double complex                                :: j3temp
+
+
   ! Curl components of the bulk electric and magnetic fields. The J concedes
   ! that these are actually off by a factor of the Jacobian, which gets bundled
   ! with the coefficients. 
@@ -328,7 +336,7 @@ module loop
     use omp_lib
     double precision :: tLoop, driveScale
     integer          :: h, i, ip, k
-    !$omp parallel private(h, i, ip, k)
+    !$omp parallel private(h, i, ip, k, j3temp)
     tLoop = 0
     do while (tloop < dtOut)
 
@@ -423,7 +431,6 @@ module loop
       ! -----------------------------------------------------------------------
 
       !$omp single
-!      B3(n1, 0:n3:2) = B3(n1, 0:n3:2) + B3drive(0:n3:2)*driveScale
       B3(n1, 0:n3:2) = B3drive(0:n3:2)*driveScale
       !$omp end single
 
@@ -457,27 +464,17 @@ module loop
       !$omp end do
 
       ! -----------------------------------------------------------------------
-      ! ------------------------------------------------------------- Advance j
+      ! ------------------------------------------------------- Advance E and j
       ! -----------------------------------------------------------------------
 
-      ! Advance j3 on odd i, odd k. 
-      !$omp do
-      do k=1,n3,2
-        do i=1,n1,2
-          j3(i, k) = j3_j3(i, k)*j3(i, k) + j3_E3(i, k)*E3(i, k)
-        end do
-      end do
-      !$omp end do
+      ! There's a lot of interdependence between electric field components (and
+      ! the parallel current). Some of that is avoided through interpolation. 
+      ! E1 and E2 are defined at different parities, so we can interpolate each
+      ! to the other's locations, then update them in whichever order we want
+      ! (since the updates won't overwrite the off-parity interpolated values).
+      ! The tricky ones are E3 and j3, which depend on each other, and which
+      ! are defined on the same parities. 
 
-      ! -----------------------------------------------------------------------
-      ! ------------------------------------------------------------- Advance E
-      ! -----------------------------------------------------------------------
-
-      ! Electric field components all depend on each other -- none can be
-      ! updated until they have all been interpolated. Luckily, we don't have
-      ! to worry too much about old and new values. E1 and E2 depend on the
-      ! last time step's E3 values, for example, which is exactly what they'll
-      ! see, regardless of what order the fields are updated in. 
       ! Interpolate E1 and JFsup1 to odd i, even k (for E2). Interpolate JFsup1
       ! to odd i, odd k (for E3). 
       !$omp do
@@ -506,7 +503,6 @@ module loop
       !$omp end do
       ! Interpolate E3, JFsup3, and j3 to even i, even k (for E1). Along the
       ! way, interpolate E3 at odd i, even k (for E2). 
-
       !$omp do
       do k=0,n3,2
         do i=1,n1,2
@@ -529,10 +525,9 @@ module loop
       !$omp do
       do k=0,n3,2
         do i=0,n1,2
-          ! Note that E3 depends on tons of different things. This is because 
+          ! Note that E1 depends on tons of different things. This is because 
           ! there are contributions from both Esup1 (in the xhat direction) and
-          ! E3 (in the zhat direction). We keep track of E1 because that's what
-          ! we need to take derivatives of.  
+          ! E3 (in the zhat direction). 
           E1(i, k) = E1_E1(i, k)*E1(i, k) + E1_JFsup1(i, k)*JFsup1(i, k) +    &
                      E1_E2(i, k)*E2(i, k) + E1_JFsup2(i, k)*JFsup2(i, k) +    &
                      E1_E3(i, k)*E3(i, k) + E1_JFsup3(i, k)*JFsup3(i, k) +    &
@@ -550,13 +545,17 @@ module loop
         end do
       end do
       !$omp end do
-      ! Advance E3 on odd i, odd k. 
+      ! Advance E3 and j3 on odd i, odd k. Note j3temp: we grab the old value
+      ! of j3, then update j3, then advance E3 using the old value of j3. Using
+      ! the new one instead can cause instability.  
       !$omp do
       do k=1,n3,2
         do i=1,n1,2
+          j3temp = j3(i, k)
+          j3(i, k) = j3_j3(i, k)*j3temp + j3_E3(i, k)*E3(i, k)
           E3(i, k) =                        E3_JFsup1(i, k)*JFsup1(i, k) +    &
                      E3_E3(i, k)*E3(i, k) + E3_JFsup3(i, k)*JFsup3(i, k) +    &
-                     E3_j3(i, k)*j3(i, k)
+                     E3_j3(i, k)*j3temp
         end do
       end do
       !$omp end do
@@ -792,7 +791,8 @@ module io
     if (varname .eq. 'lpp'  ) defaultParam = 4         ! L value of plasmapause. 
     if (varname .eq. 'dlpp' ) defaultParam = 0.1       ! Thickness (in L) of plasmapause. 
     ! Debugging factors. 
-    if (varname .eq. 'iwfac' ) defaultParam = 1.       ! To turn off interpolation. 
+    if (varname .eq. 'i1fac' ) defaultParam = 1.       ! To turn off interpolation across field lines. 
+    if (varname .eq. 'i3fac' ) defaultParam = 1.       ! To turn off interpolation along field lines. 
     if (varname .eq. 'sighfac' ) defaultParam = 1.     ! To turn off Hall conductivity. 
     if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! To turn off Pedersen conductivity. 
     ! Drive parameters.
@@ -1176,8 +1176,8 @@ module geometry
     ! Allocate arrays for linearized interpolation weights. 
     allocate( i1w(0:n1,0:1), i3w(0:n3,0:1) ) 
     ! Interpolation isn't as well-behaved as differentiation at the boundary. 
-    i1w = iw( usup1_() )*readParam('iwfac')
-    i3w = iw( usup3_() )*readParam('iwfac')
+    i1w = iw( usup1_() )*readParam('i1fac')
+    i3w = iw( usup3_() )*readParam('i3fac')
   end subroutine iwSetup
 
   ! ----------------------------------------------------------------------------------------------
@@ -2662,7 +2662,8 @@ module debug
     i = ik(0)
     k = ik(1)
     ! Include the peek location in the printout. 
-    write(*,'(a, f5.2, a, f5.2, a)') 'Peeking at X, Z = ', X/RE, ', ', Z/RE, ' RE: '
+    write(*,'(a, f5.2, a, f5.2, a)') 'Peeking at X, Z = ', r(i, k)*sin( q(i, k) )/RE, ', ',      &
+                                     r(i, k)*cos( q(i, k) )/RE, ': '
     write(*,'(a)') 'Directions are messy, but everything is scaled to a normal basis. '
     arr1 = E1_E1*sqrt( g11()/g11() )
     arr2 = E1_E2*sqrt( g22()/g11() )
@@ -2747,7 +2748,28 @@ program tuna
 
 
 
-!  call peekCoefficients(0.83*RE, 0.58*RE)
+
+
+  ! Let's look at coefficients related to E1 at the equatorial corner. That's (i, k) = (0, 0). 
+
+!  write(*,*) 'Looking at coefficients at r = ', r(0, 0), ', q = ', q(0, 0)
+!  write(*,*) 'E1_E1 = ', E1_E1(0, 0)
+!  write(*,*) 'E1_E2 = ', E1_E2(0, 0)
+!  write(*,*) 'E1_E3 = ', E1_E3(0, 0)
+!  write(*,*) 'E1_F1 = ', E1_JFsup1(0, 0)
+!  write(*,*) 'E1_F2 = ', E1_JFsup2(0, 0)
+!  write(*,*) 'E1_F3 = ', E1_JFsup3(0, 0)
+!  write(*,*) 'E1_j3 = ', E1_j3(0, 0)
+
+
+
+
+
+
+
+
+
+  call peekCoefficients(0.*RE, 0.1*RE)
 !  stop
 
 !  E1_E1 = sqrt( n()*qe**2 / (me*epsPara) ) / 2*pi

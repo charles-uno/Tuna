@@ -88,7 +88,28 @@ def main():
 
   TP = tunaPlotter()
 
-  return TP.plotF()
+  if 'energy' in argv:
+    TP.plotA()
+
+  if 'snapshot' in argv or 'lazy' in argv:
+    TP.plotB()
+
+  if 'ground' in argv:
+    TP.plotC()
+
+  if 'rms' in argv:
+    TP.plotD()
+
+  if 'u' in argv or 'shells' in argv:
+    TP.plotE()
+
+  if 'sigma' in argv or 'conductivity' in argv:
+    TP.plotF()
+
+  if 'power' in argv:
+    TP.plotG()
+
+  return
 
 # #############################################################################
 # ######################################################### Tuna Plotter Object
@@ -107,6 +128,8 @@ class tunaPlotter:
   me = 9.10938e-28 # g
   RE = 6.378388 # Mm
   RI = 6.478388 # Mm
+  # Remember the last few arrays we've read in to avoid duplicating our work. 
+  arrays = None
 
   # ===========================================================================
   # ============================================================= Path Handling
@@ -240,6 +263,7 @@ class tunaPlotter:
              'Ex':'\\frac{mV}{m}',
              'Ey':'\\frac{mV}{m}',
              'Ez':'\\frac{mV}{m}',
+             'JE':'\\frac{nW}{m^3}',
              'Jz':'\\frac{\\mu\\!J}{m^2}',
              'km':'km',
              'L':'R_E',
@@ -274,6 +298,15 @@ class tunaPlotter:
   # =============================================================== Data Access
   # ===========================================================================
 
+  # This wrapper on readArray remembers the last few files we've read in, in
+  # case we need them again. 
+  def readArray(self, filename):
+    if self.arrays is None or len(self.arrays)>20:
+      self.arrays = {}
+    if filename not in self.arrays:
+      self.arrays[filename] = readArray(filename)
+    return self.arrays[filename]
+
   # All arrays come in through here. It knows which fields are predominantly
   # imaginary (well, it knows how to look it up), and it knows how to combine
   # fields to get energy density, Poynting flux, etc. This is how we keep the
@@ -281,7 +314,7 @@ class tunaPlotter:
   def getArray(self, path, name):
     # Check if we're looking for something that corresponds to a data file...
     if name in ('BfE', 'BfI', 'BqE', 'BqI', 'Bx', 'By', 'Bz', 'Ex', 'Ey', 
-                'Ez', 'JyDrive', 'q', 't'):
+                'Ez', 'JyDrive', 'Jz', 'q', 't'):
       phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
       return phase( readArray(path + name + '.dat') )
     # A few quantities get printed out with scale factors. Un-scale them. 
@@ -291,6 +324,11 @@ class tunaPlotter:
     # Perpendicular electric constant, from units of eps0 to mF/m. 
     elif name=='epsPerp' or name=='epsp':
       return self.eps0*readArray(path + 'epsPerp.dat')
+
+    # Conductivities. Printed in S/m but we want mS/m. 
+    elif name in ('sigH', 'sigP', 'sig0'):
+      return 1e-3*readArray(path + name + '.dat')
+
     # Altitude in km. Note that we read r in RE and we store RE in Mm. 
     elif name=='alt':
       return 1000*(self.getArray(path, 'r') - self.RE)
@@ -302,6 +340,17 @@ class tunaPlotter:
     # Driving electric field in mV/m. 
     elif name=='EyDrive':
       return self.getArray(path, 'JyDrive')/self.getArray(path, 'epsPerp')
+
+    # Perpendicular currents, computed from electric fields and conductivity. 
+    elif name=='Jx':
+      Ex, Ey = self.getArray(path, 'Ex'), self.getArray(path, 'Ey')
+      sigP, sigH = self.getArray(path, 'sigP'), self.getArray(path, 'sigH')
+      return sigP[:, :, None]*Ex - sigH[:, :, None]*Ey
+    elif name=='Jy':
+      Ex, Ey = self.getArray(path, 'Ex'), self.getArray(path, 'Ey')
+      sigP, sigH = self.getArray(path, 'sigP'), self.getArray(path, 'sigH')
+      return sigH[:, :, None]*Ex + sigP[:, :, None]*Ey
+
     # McIlwain parameter. 
     elif name=='L':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -333,6 +382,21 @@ class tunaPlotter:
       jac = (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
       # The Jacobian may be negative. Make sure we return a positive volume. 
       return np.abs( du1*du3*jac )
+    # Perpendicular grid spacing. This is cheating a little bit, since the
+    # coordinates aren't orthogonal, but should give a decent estimate.  
+    elif name=='dx0':
+      return self.RI*self.d( self.getArray(path, 'q')[:, 0] )
+    # Azimuthal effective grid spacing for taking derivatives. This assumes an
+    # azimuthal mode number of 1, and scales linearly. 
+    elif name=='dy0':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      return r[:, 0]*np.sin( q[:, 0] )
+    # Field line length right along the ionospheric boundary. 
+    elif name=='dz0':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      dr = r[:, 1] - r[:, 0]
+      rdq = 0.5*( r[:, 1] + r[:, 0] )*( q[:, 1] - q[:, 0] )
+      return np.sqrt( dr**2 + rdq**2 )
     # Toroidal Poynting flux. 
     elif name=='Stor':
       return self.getArray(path, 'Ex')*self.getArray(path, 'By')/self.mu0
@@ -345,18 +409,18 @@ class tunaPlotter:
       return None
     # Poloidal magnetic field contribution to the energy density. 
     elif name=='uBx':
-      return self.getArray(path, 'Bx')**2 / self.mu0
+      return 0.5*self.getArray(path, 'Bx')**2 / self.mu0
     # Toroidal magnetic field contribution to the energy density. 
     elif name=='uBy':
-      return self.getArray(path, 'By')**2 / self.mu0
+      return 0.5*self.getArray(path, 'By')**2 / self.mu0
     # Toroidal electric field contribution to the energy density. 
     elif name=='uEx':
       E, epsPerp = self.getArray(path, 'Ex'), self.getArray(path, 'epsPerp')
-      return epsPerp[:, :, None]*E[:, :, :]**2
+      return 0.5*epsPerp[:, :, None]*E[:, :, :]**2
     # Poloidal electric field contribution to the energy density. 
     elif name=='uEy':
       E, epsPerp = self.getArray(path, 'Ey'), self.getArray(path, 'epsPerp')
-      return epsPerp[:, :, None]*E[:, :, :]**2
+      return 0.5*epsPerp[:, :, None]*E[:, :, :]**2
     # Poloidal energy density. 
     elif name=='upol':
       return self.getArray(path, 'uEy') + self.getArray(path, 'uBx')
@@ -385,6 +449,18 @@ class tunaPlotter:
     else:
       print 'ERROR: Not sure how to get ' + name
       exit()
+
+  # ===========================================================================
+  # ============================================================ Data Finagling
+  # ===========================================================================
+
+  # Helper for when we need to take a derivative. This gets the difference
+  # between adjacent values (which we then have to scale by dx, etc). 
+  def d(self, arr, axis=0):
+    darr = ( np.roll(arr, shift=1, axis=axis) - 
+             np.roll(arr, shift=-1, axis=axis) )/2
+    darr[0], darr[-1] = darr[1], darr[-2]
+    return darr
 
   # ===========================================================================
   # ====================================================== Coordinate Shorthand
@@ -551,8 +627,8 @@ class tunaPlotter:
     colLabels = [ self.texLabel(field) for field in fields ]
     drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
     freq = format(1e3*fdrive, '.0f') + 'mHz'
-    title = self.texText( self.texName(model) + ' RMS Poynting Flux with ' + freq + ' ' +
-                          drive )
+    title = self.texText( self.texName(model) + ' RMS Poynting Flux with ' +
+                          freq + ' ' + drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
     return PW.render()
@@ -591,8 +667,8 @@ class tunaPlotter:
     colLabels = [ self.texLabel(field) for field in fields ]
     drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
     freq = format(1e3*fdrive, '.0f') + 'mHz'
-    title = self.texText( self.texName(model) + ' Mean Energy Density with ' + freq + ' ' +
-                          drive )
+    title = self.texText( self.texName(model) + ' Mean Energy Density with ' +
+                          freq + ' ' + drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
     return PW.render()
@@ -643,6 +719,80 @@ class tunaPlotter:
                  ylabel=self.texLabel('logalt'), title=title)
     # Show or save the plot. 
     return PW.render()
+
+  # ===========================================================================
+  # ============================== Power Density from J dot E and Poynting Flux
+  # ===========================================================================
+
+  def plotG(self, path='/export/scratch/users/mceachern/january22/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+    model = 1
+    fdrive = 0.007
+    azms = (1, 4, 16, 64)
+
+    # Leave out JzEz. It's tiny. 
+
+    PW = plotWindow(nrows=len(azms), ncols=3, colorbar='sym')
+
+    for row, azm in enumerate(azms):
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+
+      JEx = self.getArray(path, 'Jx')*self.getArray(path, 'Ex')
+      JEy = self.getArray(path, 'Jy')*self.getArray(path, 'Ey')
+      JEz = self.getArray(path, 'Jz')*self.getArray(path, 'Ez')
+
+      Stor = self.getArray(path, 'Stor')
+      Spol = self.getArray(path, 'Spol')
+
+      dx = self.getArray(path, 'dx0')[:, None]
+      dy = azm*self.getArray(path, 'dy0')[:, None]
+      dz = self.getArray(path, 'dz0')[:, None]
+
+      dxStor = self.d( Stor[:, 0, :] )/dx
+      dxSpol = self.d( Spol[:, 0, :] )/dx
+
+      dyStor = Stor[:, 0, :]/dy
+      dySpol = Spol[:, 0, :]/dy
+
+      dzStor = ( Stor[:, 1, :] - Stor[:, 0, :] )/dz
+      dzSpol = ( Spol[:, 1, :] - Spol[:, 0, :] )/dz
+
+      PW[row, 0].setParams( **self.getCoords(path, 't', 'lat0') )
+      PW[row, 1].setParams( **self.getCoords(path, 't', 'lat0') )
+      PW[row, 2].setParams( **self.getCoords(path, 't', 'lat0') )
+#      PW[row, 3].setParams( **self.getCoords(path, 't', 'lat0') )
+
+      PW[row, 0].setContour(dxStor + dyStor + dzStor)
+      PW[row, 1].setContour(dxSpol + dySpol + dzSpol)
+      PW[row, 2].setContour(JEx[:, 0, :] + JEy[:, 0, :])
+#      PW[row, 3].setContour(JEz[:, 0, :])
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = ( '\\nabla \\cdot' + self.texName('Stor'), 
+                  '\\nabla \\cdot' + self.texName('Spol'), 
+                  '\\underline{J}_\\bot \\cdot \\underline{E}_\\bot',
+#                  'J_\\parallel E_\parallel' 
+                 )
+
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+
+    title = self.texText( self.texName(model) + ' Power Density at R_I with ' + freq + ' ' + drive ) + self.texUnit('JE')
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    return PW.render()
+
+
+
+
+
+
+
+
+
+
 
 
 

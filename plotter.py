@@ -484,11 +484,8 @@ class tunaPlotter:
 
   def plotLazy(self, step=-1):
 
-
     # We will plot the real and imaginary components for each field. 
     fields = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
-
-    fields = ('By', 'Bz', 'Ex', 'Ey', 'Ez', 'Jz')
 
     # Each run gets two rows: one real and one imaginary. 
     PW = plotWindow(len(fields), 2*len(self.paths), colorbar='sym', yPad=1)
