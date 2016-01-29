@@ -1603,41 +1603,42 @@ module geometry
 
 end module geometry
 
-! ################################################################################################
-! ############################################################################ Ionospheric Profile
-! ################################################################################################
+! #############################################################################
+! ######################################################### Ionospheric Profile
+! #############################################################################
 
-! The ionos module is a wrapper around the io module (which we might say is itself a wrapper
-! around Fortran's read() and write() functions). It allows for convenient access to the input
-! files describing ionospheric conductivity, etc. Values are mapped onto our grid spacing, as well
-! as scaled to our unit conventions. 
+! The ionos module is a wrapper around the io module (which we might say is
+! itself a wrapped around Fortran's read() and write() functions). It allows
+! for convenient access to the input files describing ionospheric conductivity,
+! etc. Values are mapped onto our grid spacing, as well as scaled to our units. 
 
 module ionos
   use geometry
   use io
   implicit none
 
-  ! ==============================================================================================
-  ! =========================================================================== Parameter Profiles
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================== Parameter Profiles
+  ! ===========================================================================
 
-  ! Parallel, Hall, and Pedersen conductivity in mS/m, electric constants in mF/m. 
-  double precision, allocatable, dimension(:,:) :: sig0, sigH, sigP, epsPerp
-  ! We use epsPara to apply the Boris approximation. We lower the speed of light in the 
-  ! field-aligned direction (without affecting the perpendicular Alfven speed). 
+  ! Parallel, Hall, and Pedersen conductivity in mS/m. 
+  double precision, allocatable, dimension(:,:) :: sig0, sigH, sigP
+  ! Electric constants in mF/m. We use epsPara to apply the Boris
+  ! approximation to the parallel electric constant. 
   double precision                              :: epsPara
+  double precision, allocatable, dimension(:,:) :: epsPerp
   ! Integrated atmospheric conductivities in kS. 
   double precision                              :: intSig0, intSigH, intSigP
 
   contains
 
-  ! ==============================================================================================
-  ! ============================================================================= Ionosphere Setup
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ========================================================== Ionosphere Setup
+  ! ===========================================================================
 
-  ! ----------------------------------------------------------------------------------------------
-  ! --------------------------------------------------------------------------- File Access Helper
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! -------------------------------------------------------- File Access Helper
+  ! ---------------------------------------------------------------------------
 
   function getIonos(varname)
     double precision, allocatable, dimension(:) :: getIonos
@@ -1665,30 +1666,30 @@ module ionos
     end select
   end function getIonos
 
-  ! ----------------------------------------------------------------------------------------------
-  ! --------------------------------------------------------- Integrate Atmospheric Conductivities
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! -------------------------------------- Integrate Atmospheric Conductivities
+  ! ---------------------------------------------------------------------------
 
   double precision function integrate(f, x, xmin, xmax)
     double precision, dimension(0:), intent(in) :: f, x
     double precision, intent(in)                :: xmin, xmax
     integer                                     :: i
     integrate = 0.
-    ! For simplicity, we assume that f = ( f(i) + f(i+1) )/2 from x(i) to x(i+1). The functions we
-    ! integrate are well-resolved, so this shouldn't be a problem. 
+    ! For simplicity, we assume f = ( f(i) + f(i+1) )/2 from x(i) to x(i+1).
     do i=0,size(x)-2
       if (x(i) .le. xmin) cycle
       if (x(i) .ge. xmax) return
-      integrate = integrate + ( min( xmax, x(i+1) ) - max( xmin, x(i) ) )*( f(i) + f(i+1) )/2
+      integrate = integrate + ( min( xmax, x(i+1) ) - max( xmin, x(i) ) )     &
+                              *( f(i) + f(i+1) )/2
     end do
   end function integrate
 
   subroutine atmSetup()
-    ! Integrated atmospheric conductivities are given in S (or Mho). Convert them to kS. 
+    ! Convert integrated atmospheric conductivities from Mho to kS. 
     intSig0 = 0.001*readParam('sig0atm')
     intSigH = 0.001*readParam('sighatm')
     intSigP = 0.001*readParam('sigpatm')
-    ! If negative values are given, integrate the conductivity profiles over the atmosphere.  
+    ! If negative values are given, integrate the values ourselves. 
     if ( intSig0 .le. 0 ) intSig0 = integrate(getIonos('sig0'), getIonos('r'), RE, RI )
     if ( intSigH .le. 0 ) intSigH = integrate(getIonos('sigH'), getIonos('r'), RE, RI )
     if ( intSigP .le. 0 ) intSigP = integrate(getIonos('sigP'), getIonos('r'), RE, RI )
