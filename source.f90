@@ -880,9 +880,9 @@ module io
                                                        ! duration, s. 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude, degrees. 
     if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude. 
-    if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! L shell for driving
+    if (varname .eq. 'rdrive'   ) defaultParam = 4.5   ! L shell for driving
                                                        ! current. 
-    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in L shell. 
+    if (varname .eq. 'drdrive'  ) defaultParam = 0.5   ! Spread in L shell. 
     ! Integrated atmospheric conductivities. Negative means automatic. 
     if (varname .eq. 'sig0atm') defaultParam = -1      ! Parallel. 
     if (varname .eq. 'sighatm') defaultParam = -1      ! Hall. 
@@ -2243,7 +2243,7 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine driveSetup()
-    double precision                       :: qdrive, dqdrive, Ldrive, dLdrive, Bdrive, jdrive
+    double precision                       :: qdrive, dqdrive, rdrive, drdrive, Bdrive, jdrive
     double precision, dimension(0:n1,0:n3) :: scratch
     integer                                :: i
     ! Grab driving parameters: waveform index, frequency, characteristic timescale. 
@@ -2254,8 +2254,8 @@ module fields
     qdrive = (pi/180)*( 90 - readParam('latdrive') )
     dqdrive = (pi/180)*readParam('dlatdrive')
     ! Current driving also needs to be delivered at a radial distance. 
-    Ldrive = readParam('ldrive')
-    dLdrive = readParam('dldrive')
+    rdrive = readParam('rdrive')
+    drdrive = readParam('drdrive')
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
@@ -2265,14 +2265,10 @@ module fields
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-              exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
-    ! As a precaution against instabilities forming in the corners, we chops off the tails of the
-    ! driving distributions close to the ionosphere. 
-    B3drive(:20) = 0
-    B3drive(n3-20:) = 0
-    j2drive(:, :20) = 0
-    j2drive(:, n3-20:) = 0
-    j2drive(:20, 0) = 0
+              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
+    ! As a precaution against instabilities, we don't drive inside the ionosphere. 
+    where (sigH(n1, :) .gt. 0. .or. sigP(n1, :) .gt. 0.) B3drive = 0.
+    where (sigH .gt. 0. .or. sigP .gt. 0.) j2drive = 0.
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
