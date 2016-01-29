@@ -879,7 +879,7 @@ module io
     if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet
                                                        ! duration, s. 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude, degrees. 
-    if (varname .eq. 'dlatdrive') defaultParam = 10.   ! Spread in latitude. 
+    if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude. 
     if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! L shell for driving
                                                        ! current. 
     if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in L shell. 
@@ -2267,9 +2267,12 @@ module fields
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
               exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
     ! As a precaution against instabilities forming in the corners, we chops off the tails of the
-    ! compressional driving close to the ionosphere. 
+    ! driving distributions close to the ionosphere. 
     B3drive(:20) = 0
     B3drive(n3-20:) = 0
+    j2drive(:, :20) = 0
+    j2drive(:, n3-20:) = 0
+    j2drive(:20, 0) = 0
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
