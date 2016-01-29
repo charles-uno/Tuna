@@ -109,6 +109,12 @@ def main():
   if 'power' in argv:
     TP.plotG()
 
+  if 'drive' in argv or 'driving' in argv:
+    TP.plotH()
+
+  if 'compare' in argv:
+    TP.plotI()
+
   return
 
 # #############################################################################
@@ -784,10 +790,78 @@ class tunaPlotter:
 
     return PW.render()
 
+  # ===========================================================================
+  # ==================================================== Driving Electric Field
+  # ===========================================================================
+
+  def plotH(self, path='/export/scratch/users/mceachern/tuna_20160128_172321/'):
+    self.setPaths(path)
+    path = self.getPath()
+    PW = plotWindow(nrows=1, ncols=1, colorbar='sym')
+    PW.setParams( title=self.texText('Driving Electric Field') +
+                        self.texUnit('E') )
+    PW.setParams( **self.getCoords(path) )
+    PW.setContour( self.getArray(path, 'EyDrive') )
+    return PW.render()
 
 
 
 
+
+
+
+
+  # ===========================================================================
+  # ================================ Comparison of Electric and Magnetic Fields
+  # ===========================================================================
+
+  def plotI(self, path='/export/scratch/users/mceachern/january22/'):
+    self.setPaths(path)
+    # Parameters to be held constant. 
+
+    model = 2
+
+    azms = (1, 4, 16, 64)
+    fdrives = (0.007, 0.016)
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
+
+    for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+
+        t = self.getArray(path, 't')
+
+        uB = self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
+        uE = self.getArray(path, 'uEx') + self.getArray(path, 'uEy')
+        dV = self.getArray(path, 'dV')[:, :, None]
+
+        UB = np.sum( np.sum(uB*dV, axis=1), axis=0)
+        UE = np.sum( np.sum(uE*dV, axis=1), axis=0)
+
+        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
+
+        PW[row, col].setLine(t, np.log10(UB), 'r')
+        PW[row, col].setLine(t, np.log10(UE), 'b')
+
+        meanUB = np.mean(UB)
+        meanUE = np.mean(UE)
+
+        PW[row, col].setLine(t, np.log10(meanUB)*np.ones(t.shape), 'r:')
+        PW[row, col].setLine(t, np.log10(meanUE)*np.ones(t.shape), 'b:')
+
+#        print 'azm = ', azm, ' and fdrive = ', 1e3*fdrive, 'mHz: '
+#        print '\tMean UB = ', np.mean(UB)
+#        print '\tMean UE = ', np.mean(UE)
+
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + drive) for f in fdrives ]
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    title = self.texName(model) + self.texText(' Electric (Blue) and Magnetic (Red) Energy')
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+
+    return PW.render()
 
 
 

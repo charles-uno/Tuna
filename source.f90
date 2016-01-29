@@ -830,7 +830,9 @@ module io
     if (varname .eq. 'n3'  ) defaultParam = 350        ! Grid points per line. 
     if (varname .eq. 'lmin') defaultParam = 2          ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
-    if (varname .eq. 'sfac') defaultParam = 1.025      ! Geometric spacing factor along the outermost field line. 
+    if (varname .eq. 'sfac') defaultParam = 1.025      ! Geometric spacing
+                                                       ! factor along outermost
+                                                       ! field line. 
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
     if (varname .eq. 'azm' ) defaultParam = 0          ! Azimuthal modenumber. 
     if (varname .eq. 'modes'  ) defaultParam = 0.25    ! Harmonics to keep. 
@@ -838,50 +840,67 @@ module io
     if (varname .eq. 'tmax'  ) defaultParam = 10.      ! Simulation time, s. 
     if (varname .eq. 'dtout' ) defaultParam = 1.       ! Output period, s. 
     if (varname .eq. 'cour'  ) defaultParam = 0.1      ! Courant condition. 
-    if (varname .eq. 'fudge' ) defaultParam = 0.2      ! Fudge factor for stability. 
     ! Parallel physics handling parameters. 
     if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0.
-    if (varname .eq. 'inertia'  ) defaultParam = 1.    ! Include electron inertial effects. 
+                                                       ! Negative is automatic.
+    if (varname .eq. 'inertia'  ) defaultParam = 1.    ! Positive includes
+                                                       ! electron inertia. 
+    if (varname .eq. 'fudge' ) defaultParam = 0.2      ! Factor to stabilize
+                                                       ! plasma oscillations. 
     ! Physical parameter profiles.
     if (varname .eq. 'model') defaultParam = 1         ! Ionospheric profile. 
-    if (varname .eq. 'naz'  ) defaultParam = 10        ! Density at auroral base, 1/cm^3. 
-    if (varname .eq. 'haz'  ) defaultParam = 1         ! Scale height (in RE) of auroral density. 
-    if (varname .eq. 'nps'  ) defaultParam = 1e4       ! Number density at plasmasphere base. 
-    if (varname .eq. 'lps'  ) defaultParam = 1.0857    ! Scale L of plasmasphere.  
-    if (varname .eq. 'lpp'  ) defaultParam = 4         ! L value of plasmapause. 
-    if (varname .eq. 'dlpp' ) defaultParam = 0.1       ! Thickness (in L) of plasmapause. 
-    ! Debugging factors. 
-    if (varname .eq. 'i1fac' ) defaultParam = 1.       ! To turn off interpolation across field lines. 
-    if (varname .eq. 'i3fac' ) defaultParam = 1.       ! To turn off interpolation along field lines. 
-    if (varname .eq. 'sighfac' ) defaultParam = 1.     ! To turn off Hall conductivity. 
-    if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! To turn off Pedersen conductivity. 
+                                                       ! 1 is active dayside. 
+                                                       ! 2 is quiet dayside. 
+                                                       ! 3 is active nightside. 
+                                                       ! 4 is quiet nightside. 
+    if (varname .eq. 'naz'  ) defaultParam = 10        ! Density at auroral
+                                                       ! base, cm^-3. 
+    if (varname .eq. 'haz'  ) defaultParam = 1         ! Scale height (in RE)
+                                                       ! of auroral density. 
+    if (varname .eq. 'nps'  ) defaultParam = 1e4       ! Number density, cm^-3,
+                                                       ! at plasmasphere base. 
+    if (varname .eq. 'lps'  ) defaultParam = 1.0857    ! Plasmasphere scale L.
+    if (varname .eq. 'lpp'  ) defaultParam = 4         ! Plasmapause location, 
+                                                       ! RE at equator. 
+    if (varname .eq. 'dlpp' ) defaultParam = 0.1       ! Plasmapause thickness,  
+                                                       ! RE at equator. 
+    ! Debugging factors, set to 0 to turn things off. 
+    if (varname .eq. 'i1fac' ) defaultParam = 1.       ! Interpolation in i. 
+    if (varname .eq. 'i3fac' ) defaultParam = 1.       ! Interpolation in k. 
+    if (varname .eq. 'sighfac' ) defaultParam = 1.     ! Hall conductivity. 
+    if (varname .eq. 'sigpfac' ) defaultParam = 1.     ! Pedersen conductivity.
     ! Drive parameters.
     if (varname .eq. 'idrive'   ) defaultParam = 1     ! Waveform index. 
-    if (varname .eq. 'bdrive'   ) defaultParam = 0.    ! Strength of driving B field (in nT). 
-    if (varname .eq. 'jdrive'   ) defaultParam = 0.    ! Strength of driving current (in uA/m^2). 
-    if (varname .eq. 'fdrive'   ) defaultParam = 0.015 ! Frequency (in Hz). 
-    if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet duration (in s). 
-    if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude (in degrees). 
-    if (varname .eq. 'dlatdrive') defaultParam = 10.   ! Spread in latitude (in degrees). 
-    if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! Radius (in RE). 
-    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in radius (in RE). 
-    ! Integrated atmospheric conductivities.
-    if (varname .eq. 'sig0atm') defaultParam = -1     ! Integrated sigma_0 for north atmosphere. 
-    if (varname .eq. 'sighatm') defaultParam = -1     ! If < 0, value is integrated from profile. 
-    if (varname .eq. 'sigpatm') defaultParam = -1
+    if (varname .eq. 'bdrive'   ) defaultParam = 0.    ! Strength of driving B
+                                                       ! field, nT. 
+    if (varname .eq. 'jdrive'   ) defaultParam = 0.    ! Strength of driving
+                                                       ! current, uA/m^2. 
+    if (varname .eq. 'fdrive'   ) defaultParam = 0.015 ! Frequency, Hz. 
+    if (varname .eq. 'tdrive'   ) defaultParam = 60.   ! Ramp/wave packet
+                                                       ! duration, s. 
+    if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude, degrees. 
+    if (varname .eq. 'dlatdrive') defaultParam = 10.   ! Spread in latitude. 
+    if (varname .eq. 'ldrive'   ) defaultParam = 4.5   ! L shell for driving
+                                                       ! current. 
+    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in L shell. 
+    ! Integrated atmospheric conductivities. Negative means automatic. 
+    if (varname .eq. 'sig0atm') defaultParam = -1      ! Parallel. 
+    if (varname .eq. 'sighatm') defaultParam = -1      ! Hall. 
+    if (varname .eq. 'sigpatm') defaultParam = -1      ! Pedersen
   end function defaultParam
 
-  ! ==============================================================================================
-  ! ======================================================================== Write Parameter Value
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ===================================================== Write Parameter Value
+  ! ===========================================================================
 
-  ! While most of the output is in the form of arrays (in DAT files), we also want to be able to
-  ! report snapshots of the parameter scales we're working with. These just go to stdout. 
+  ! While most of the output is in the form of arrays (in DAT files), we also
+  ! want to be able to report snapshots of the parameter scales we're working
+  ! with. These just go to stdout. 
   subroutine writeParam(key, val, units)
     character(len=*), intent(in)           :: key
     double precision, intent(in)           :: val
     character(len=*), intent(in), optional :: units
-    ! Output is lined up nicely in columns. If units are given, they're printed. 
+    ! Output is lined up nicely in columns, optionally with units.  
     if ( present(units) ) then
       write(*, '(a30, a, es10.2, 2a)') key, ' = ', val, ' ', units
     else
@@ -889,9 +908,9 @@ module io
     end if
   end subroutine writeParam
 
-  ! ==============================================================================================
-  ! ========================================================================== Write Complex Array
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================= Write Complex Array
+  ! ===========================================================================
 
   subroutine writeComplexArray(filename, arr, onlyheader, onlydata, noskip, nt)
     character(len=*), intent(in)   :: filename
@@ -899,7 +918,7 @@ module io
     logical, intent(in), optional  :: onlyheader, onlydata, noskip
     integer, intent(in), optional  :: nt
     integer                        :: nx, nz, stride
-    ! By default, we print out every other grid point in each dimension to reduce data size. 
+    ! By default, we print out every other grid point to reduce data size. 
     if ( .not. present(noskip) ) then
       nx = 1 + size(arr, 1)/2
       nz = 1 + size(arr, 2)/2
@@ -913,7 +932,7 @@ module io
     open(unit=99, file=filename, action='write', access='append')
     ! Unless asked not to, print out the header. 
     if ( .not. present(onlydata) ) then
-      ! Dimensions of the (sliced) 2d array, including time steps, if applicable. 
+      ! Dimensions of the (sliced) 2d array, optionally including time steps. 
       if (present(nt)) then
         write(99,*) nx, nz, nt
       else
@@ -931,9 +950,9 @@ module io
     end if
   end subroutine writeComplexArray
 
-  ! ==============================================================================================
-  ! ============================================================================= Write Real Array
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ========================================================== Write Real Array
+  ! ===========================================================================
 
   subroutine writeRealArray(filename, arr, onlyheader, onlydata, noskip, nt)
     character(len=*), intent(in)     :: filename
@@ -941,7 +960,7 @@ module io
     logical, intent(in), optional    :: onlyheader, onlydata, noskip
     integer, intent(in), optional    :: nt
     integer                          :: nx, nz, stride
-    ! By default, we print out every other grid point in each dimension to reduce data size. 
+    ! By default, we print out every other grid point to reduce data size. 
     if ( .not. present(noskip) ) then
       nx = 1 + size(arr, 1)/2
       nz = 1 + size(arr, 2)/2
@@ -955,7 +974,7 @@ module io
     open(unit=99, file=filename, action='write', access='append')
     ! Unless asked not to, print out the header. 
     if ( .not. present(onlydata) ) then
-      ! Dimensions of the (sliced) 2d array, including time steps, if applicable. 
+      ! Dimensions of the (sliced) 2d array, optionally including time steps. 
       if (present(nt)) then
         write(99,*) nx, nz, nt
       else
@@ -973,15 +992,16 @@ module io
     end if
   end subroutine writeRealArray
 
-  ! ==============================================================================================
-  ! =========================================================================== Write Real Columns
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ======================================================== Write Real Columns
+  ! ===========================================================================
 
-  ! Up to ten columns are written. If integers are given, they are cast as doubles. 
+  ! Writes up to ten columns. If integers are given, they are cast as doubles. 
   subroutine writeRealColumns(filename, c0, c1, c2, c3, c4, c5, c6, c7, c8, c9)
     character(len=*), intent(in)                          :: filename
     double precision, dimension(0:), intent(in)           :: c0
-    double precision, dimension(0:), intent(in), optional :: c1, c2, c3, c4, c5, c6, c7, c8, c9
+    double precision, dimension(0:), intent(in), optional :: c1, c2, c3, c4,  &
+                                                             c5, c6, c7, c8, c9
     integer                                               :: line, nLines
     open(unit=99, file=filename, action='write', access='append')
     ! Print the number of lines. 
@@ -1004,9 +1024,9 @@ module io
     close(99)
   end subroutine writeRealColumns
 
-  ! ==============================================================================================
-  ! ============================================================================= Write an Integer
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ========================================================== Write an Integer
+  ! ===========================================================================
 
   subroutine writeInteger(filename, val)
     character(len=*), intent(in) :: filename
@@ -1016,9 +1036,9 @@ module io
     close(99)
   end subroutine writeInteger
 
-  ! ==============================================================================================
-  ! ================================================================================= Write a Real
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================================================== Write a Real
+  ! ===========================================================================
 
   subroutine writeReal(filename, val)
     character(len=*), intent(in) :: filename
@@ -1028,57 +1048,61 @@ module io
     close(99)
   end subroutine writeReal
 
-  ! ==============================================================================================
-  ! ============================================================================= End of IO Module
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ========================================================== End of IO Module
+  ! ===========================================================================
 
 end module io
 
-! ################################################################################################
-! ####################################################################################### Geometry
-! ################################################################################################
+! #############################################################################
+! #################################################################### Geometry
+! #############################################################################
 
-! The geometry module keeps track of the grid. That includes grid positions, of course, as well as
-! nonorthogonal coordinate, differentiation and interpolation weight setup, and mapping between
-! covariant, contravariant, and physical bases. The solution to Laplace's equation in the
-! ionospheric shell is also handled by the geometry module. 
+! The geometry module keeps track of the grid. That includes grid positions, of
+! course, as well as nonorthogonal coordinate, differentiation and
+! interpolation weight setup, and mapping between covariant, contravariant, and
+! physical bases. The solution to Laplace's equation in the ionospheric shell
+! is also handled by the geometry module. 
 
 module geometry
   use io
   use loop
   implicit none
 
-  ! ==============================================================================================
-  ! ================================================================================= Grid Spacing
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================================================== Grid Spacing
+  ! ===========================================================================
 
-  ! Spherical coordinates r and theta. Note that the nonorthogonal coordinates usup1 and usup3 are
-  ! not actually stored as arrays; they are computed on the fly using the functions below. This 
-  ! saves on memory, and doesn't significantly affect run time since the functions are not invoked
-  ! during the main loop. The same is the case for metric tensor components, the Jacobian, etc. 
+  ! Spherical coordinates r and theta. Note that the nonorthogonal coordinates
+  ! usup1 and usup3 are not actually stored as arrays; they are computed on the
+  ! fly using the functions below. This saves on memory, and doesn't
+  ! significantly affect run time since the functions are not invoked during
+  ! the main loop. The same is the case for metric tensor components, etc. 
   double precision, allocatable, dimension(:,:) :: r, q
 
-  ! ==============================================================================================
-  ! ================================================ Numerical Harmonics for the Atmospheric Shell
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================= Numerical Harmonics for the Atmospheric Shell
+  ! ===========================================================================
 
-  ! The eigenvectors Y are analogous to spherical harmonics (and look a lot like them, too). They
-  ! are computed based on the grid spacing and derivative formulation. 
+  ! The eigenvectors Y are analogous to spherical harmonics (and look a lot
+  ! like them, too). They are computed based on the grid spacing and
+  ! derivative formulation. 
   double precision, allocatable, dimension(:,:) :: Y, Yinv
   ! Each Y has a corresponding eigenvalue, nu. 
   double precision, allocatable, dimension(:)   :: nu
-  ! We can choose to get rid of high-order harmonics, which may exhibit unstably-large gradients. 
+  ! We can choose to get rid of high-order harmonics, which may exhibit
+  ! unstably-large gradients. 
   integer                                       :: nModes
 
   contains
 
-  ! ==============================================================================================
-  ! =============================================================================== Geometry Setup
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ============================================================ Geometry Setup
+  ! ===========================================================================
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------------------- Establish Grid Size and Indexing
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------------ Establish Grid Size and Indexing
+  ! ---------------------------------------------------------------------------
 
   subroutine indexSetup()
     ! Get the grid size from the parameters file. 
@@ -1094,19 +1118,19 @@ module geometry
     zz = [0, 0]
   end subroutine indexSetup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ----------------------------------------------------------------------- Set Grid Along Equator
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ---------------------------------------------------- Set Grid Along Equator
+  ! ---------------------------------------------------------------------------
 
-  ! Field lines are spaced uniformly in usup1 space. This allows us to determine r and q at the
-  ! ionosphere and at the equator. Once those are set up, it'll be safe for other subroutines to
-  ! call the function usup1(). 
+  ! Field lines are spaced uniformly in usup1 space. This allows us to
+  ! determine r and q at the ionosphere and at the equator. Once those are set
+  ! up, it'll be safe for other subroutines to call the function usup1(). 
   subroutine usup1Setup()
     double precision :: usup1min, usup1max, usup1temp
     integer          :: i
     ! Grab ionosphere height in km, and turn it into ionospheric radius in Mm. 
     RI = RE + readParam('zi') / 1000.
-    ! Field lines are spaced evenly in usup1. This gives r and q at the ionosphere and equator. 
+    ! Field lines are spaced evenly in usup1. This the ionosphere and equator. 
     usup1min = -RI/( RE*readParam('lmin') )
     usup1max = -RI/( RE*readParam('lmax') )
     ! Allocate arrays for spatial coordinates. 
@@ -1120,36 +1144,40 @@ module geometry
     end do
   end subroutine usup1Setup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ---------------------------------------------------------- Set Grid Along Outermost Field Line
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! --------------------------------------- Set Grid Along Outermost Field Line
+  ! ---------------------------------------------------------------------------
 
-  ! This helper function computes the distance along the outermost field line from angle qI (theta
-  ! ionosphere) to qp (theta prime), by integrating ds = RE*L*sqrt(1 + 3*cosq^2) sinq dq. 
+  ! This helper function computes the distance along the outermost field line
+  ! from angle qI (theta ionosphere) to qp (theta prime), by integrating
+  ! ds = RE*L*sqrt(1 + 3*cosq^2) sinq dq. 
   double precision elemental function s(qp)
     double precision, intent(in) :: qp
     double precision             :: qI
-    ! Note that we can't have s depend explicitly on the q array, since s is used to figure out
-    ! q. Instead, we compute the colatitude based on L, which is already set. 
+    ! Note that we can't have s depend explicitly on the q array, since s is
+    ! used to figure out q. Instead, we compute the colatitude based on L,
+    ! which is already set. 
     qI = acos( sqrt( 1 - RI/r(n1, n3/2) ) )
-    s = ( sqrt(3.)*asinh( sqrt(3.)*cos(qI) ) + 3*cos(qI)*sqrt( 1+3*cos(qI)**2 )                  &
-        - sqrt(3.)*asinh( sqrt(3.)*cos(qp) ) - 3*cos(qp)*sqrt( 1+3*cos(qp)**2 ) )*r(n1, n3/2)/6
+    s = ( sqrt(3.)*asinh( sqrt(3.)*cos(qI) )                                  &
+        + 3*cos(qI)*sqrt( 1+3*cos(qI)**2 )                                    &
+        - sqrt(3.)*asinh( sqrt(3.)*cos(qp) )                                  &
+        - 3*cos(qp)*sqrt( 1+3*cos(qp)**2 ) )*r(n1, n3/2)/6
   end function s
 
-  ! Spacing in usup3 is determined by placing points along the outermost field line. 
+  ! Spacing in usup3 is determined along the outermost field line. 
   subroutine usup3Setup()
     double precision, dimension(0:n3)   :: qMin, qMax, sFinal, sTry
     double precision                    :: sFac
     integer                             :: k, m
-    ! Geometric factor by which grid spacing increases along the outermost field line. 
+    ! Factor by which grid spacing increases along the outermost field line. 
     sFac = readParam('sfac')
-    ! Spacing along the outermost line increases geometrically to the equator, then is reflected
-    ! to the southern hemisphere. The increase is set to semi-arbitrarily to 3%. 
+    ! Spacing along the outermost line increases geometrically to the equator,
+    ! then is reflected to the southern hemisphere. 
     do k=0,n3/2
       sFinal(k) = s( q(n1, n3/2) )*( 1 - sFac**k )/( 1 - sFac**(n3/2) )
       sFinal(n3 - k) = 2*s( q(n1, n3/2) ) - sFinal(k)
     end do
-    ! Placement is determined via bisection search. Fifty iterations is plenty. 
+    ! Placement is determined via bisection search. Fifty iterations is plenty.
     qMin = 0
     qMax = pi
     do m=0,50
@@ -1168,17 +1196,19 @@ module geometry
     r(n1, :) = -RI*sin( q(n1, :) )**2 / maxval( usup1() )
   end subroutine usup3Setup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ---------------------------------------------------------- Map from usup1 and usup3 to r and q
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! --------------------------------------- Map from usup1 and usup3 to r and q
+  ! ---------------------------------------------------------------------------
 
-  ! Points are placed on the remaining field lines in accordance with the usup1 values given by
-  ! the equatorial spacing, and the usup3 values given by the outermost field line. 
+  ! Points are placed on the remaining field lines in accordance with the usup1
+  ! values given by the equatorial spacing, and the usup3 values given by the
+  ! outermost field line. 
   subroutine rqSetup()
-    double precision, dimension(0:n1, 0:n3) :: qMin, qMax, usup1Final, usup3Final, usup3Try
+    double precision, dimension(0:n1, 0:n3) :: qMin, qMax, usup1Final,        &
+                                               usup3Final, usup3Try
     integer                                 :: m
-    ! There's no easy mapping from a position in usup1-usup3 space to a position in r-q space, 
-    ! so we again place points via bisection search. 
+    ! There's no easy mapping from a position in usup1-usup3 space to a
+    ! position in r-q space, so we again place points via bisection search. 
     usup1Final = usup1()
     usup3Final = usup3()
     qMin = 0
@@ -1199,32 +1229,32 @@ module geometry
     end do
   end subroutine rqSetup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! -------------------------------------------------------- Compute Linearized Derivative Weights
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------- Compute Linearized Derivative Weights
+  ! ---------------------------------------------------------------------------
 
   subroutine dwSetup()
     ! Allocate arrays for linearized differential weights. 
     allocate( d1w(0:n1,0:1), d3w(0:n3,0:1) ) 
     ! Weights are determined by the local rate of change of usup1. 
     d1w(:, 0) = -1/( eoshift(usup1_(), 1) - eoshift(usup1_(), -1) )
-    ! The derivative at i==0 is the same as the derivative at i==2, since both are based on the
-    ! two nearest odd grid points. 
+    ! The derivative at i==0 is the same as the derivative at i==2, since both
+    ! are based on the two nearest odd grid points. 
     d1w(0, 0) = d1w(2, 0)
     d1w(n1, 0) = d1w(n1-2, 0)
     d1w(:, 1) = -d1w(:, 0)
     ! Derivatives in the azimuthal direction are based on the modenumber. 
     azm = readParam('azm')
-    ! Derivatives with respect to usup3 are just like the ones with respect to usup1. 
+    ! Derivatives in usup3 are the same as those in usup1. 
     d3w(:, 0) = -1/( eoshift(usup3_(), 1) - eoshift(usup3_(), -1) )
     d3w(0, 0) = d3w(2, 0)
     d3w(n3, 0) = d3w(n3-2, 0)
     d3w(:, 1) = -d3w(:, 0)
   end subroutine dwSetup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ----------------------------------------------------- Compute Linearized Interpolation Weights
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ---------------------------------- Compute Linearized Interpolation Weights
+  ! ---------------------------------------------------------------------------
 
   function iw(usup)
     double precision, allocatable, dimension(:,:) :: iw
@@ -1252,9 +1282,9 @@ module geometry
     i3w = iw( usup3_() )*readParam('i3fac')
   end subroutine iwSetup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------- Solve for Harmonics in the Atmospheric Shell
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------ Solve for Harmonics in the Atmospheric Shell
+  ! ---------------------------------------------------------------------------
 
   function laplaceMatrix()
     complex, dimension(0:n1, 0:n1)    :: laplaceMatrix
@@ -1310,12 +1340,13 @@ module geometry
     integer                           :: info, inu, inup
     ! Allocate the arrays we'll use to hold our harmonics. 
     allocate( Y(0:n1, 0:n1), Yinv(0:n1, 0:n1), nu(0:n1) )
-    ! Grab the matrix of Laplace's equation and solve for its eigenvectors and eigenvalues. 
+    ! Grab the matrix of Laplace's equation and solve for its eigenvectors. 
     matrix = laplaceMatrix()
     call geev(matrix, evals, vr=evecs)
-    ! The eigenvalues are nu*(nu+1). Get nu, the values we actually care about. 
+    ! The eigenvalues are nu*(nu+1). Get nu, the values we actually care about.
     nu = real( 0.5*(sqrt(1 + 4*evals) - 1) )
-    ! The eigenvectors are our numerical harmonics. They should not have an imaginary component. 
+    ! The eigenvectors are our numerical harmonics. They should not have an
+    ! imaginary component. 
     Y = real(evecs)
     ! Sort harmonics by nu value. 
     do inu=0,n1
@@ -1336,9 +1367,10 @@ module geometry
     Yinv = Y
     call getrf(Yinv, ipiv, info)
     call getri(Yinv, ipiv, info)
-    ! High order harmonics exhibit very large gradients. We can leave them out if we're worried
-    ! about stability. The modes parameter can specify the number of modes to use (if greater than
-    ! 1) or the fraction of modes to use (if less than or equal to 1). 
+    ! High order harmonics exhibit very large gradients. We can leave them out
+    ! if we're worried about stability. The modes parameter can specify the
+    ! number of modes to use (if greater than 1) or the fraction of modes to
+    ! use (if less than or equal to 1). 
     if (readParam('modes') .gt. 1) then
       nModes = int( readParam('modes') )
     else
@@ -1348,9 +1380,9 @@ module geometry
     Yinv(nModes:n1, :) = 0
   end subroutine harmonicSetup
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ----------------------------------------------------------------------- Write Geometric Arrays
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ---------------------------------------------------- Write Geometric Arrays
+  ! ---------------------------------------------------------------------------
 
   subroutine writeGeometry()
     integer :: inu
@@ -1362,26 +1394,26 @@ module geometry
     call writeRealArray('evecs.dat', Yinv(0:nModes-1, :), noskip=.true.)
   end subroutine writeGeometry
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ---------------------------------------------------------------------------- Grid Setup Driver
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! --------------------------------------------------------- Grid Setup Driver
+  ! ---------------------------------------------------------------------------
 
-  ! Establish the placement of grid points. The grid is well-behaved in usup1-usup3 space, so we
-  ! start by establishing usup1 and usup3. From there, we compute each grid point's position in
-  ! spherical coordinates. To minimize memory use, only arrays used during the main loop are
-  ! stored; values used only during setup are computed on the fly. 
+  ! Establish the placement of grid points. The grid is well-behaved in
+  ! usup1-usup3 space, so we start by establishing usup1 and usup3. From there,
+  ! we compute each grid point's position in spherical coordinates. To minimize
+  ! memory use, only arrays used during the main loop are stored; values used
+  ! only during setup are computed on the fly. 
   subroutine geometrySetup()
     ! Determine grid size and allocate arrays. 
     call indexSetup()
-    ! Place grid points along the equator to determine spacing in usup1 space. 
+    ! Place grid points along the equator to determine usup1. 
     call usup1Setup()
-    ! Place grid points along the outermost field line to determine spacing in usup3 space. 
+    ! Place grid points along the outermost field line to determine usup3. 
     call usup3Setup()
-    ! Based on usup1 and usup3, determine r and q for all remaining grid points. 
+    ! Based on usup1 and usup3, determine r and q everywhere.
     call rqSetup()
-    ! Compute linearized differentiation weights with respect to usup1 and usup3. 
+    ! Compute linearized differentiation and interpolation weights. 
     call dwSetup()
-    ! Compute linearized interpolation weights with respect to usup1 and usup3. 
     call iwSetup()
     ! Solve for the harmonics in the atmospheric shell. 
     call harmonicSetup()
@@ -1392,13 +1424,13 @@ module geometry
     dtout = readParam('dtout')
   end subroutine geometrySetup
 
-  ! ================================================================================================
-  ! ============================================================================= Geometric "Arrays"
-  ! ================================================================================================
+  ! ===========================================================================
+  ! ======================================================== Geometric "Arrays"
+  ! ===========================================================================
 
-  ! ----------------------------------------------------------------------------------------------
-  ! --------------------------------------------------------------------------- McIlwain Parameter
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! -------------------------------------------------------- McIlwain Parameter
+  ! ---------------------------------------------------------------------------
 
   function L_()
     double precision, dimension(0:n1) :: L_
@@ -1410,18 +1442,18 @@ module geometry
     L = r/( RE*sin(q)**2 )
   end function L
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------------------------------- Invariant Colatitude
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------------------------ Invariant Colatitude
+  ! ---------------------------------------------------------------------------
 
   function q0()
     double precision, dimension(0:n1, 0:n3) :: q0
     q0 = spread( q(:, 0), 2, n3+1)
   end function q0
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------------------- Nonorthogonal Dipole Coordinates
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------------ Nonorthogonal Dipole Coordinates
+  ! ---------------------------------------------------------------------------
 
   function usup1_()
     double precision, dimension(0:n1) :: usup1_
@@ -1443,13 +1475,13 @@ module geometry
     usup3 = transpose( spread(usup3_(), 2, n1 + 1) )
   end function usup3
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------------------------ Covariant Metric Components
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ----------------------------------------------- Covariant Metric Components
+  ! ---------------------------------------------------------------------------
 
   function g11()
     double precision, dimension(0:n1, 0:n3) :: g11
-    g11 = ( (1 - RI/r)**2 + ( 0.5*( 1 + 3*cos( q0() )**2 )/tan(q) )**2 )*r**4                    &
+    g11 = ( (1 - RI/r)**2 + ( 0.5*( 1 + 3*cos( q0() )**2 )/tan(q) )**2 )*r**4 &
           / ( RI**2 * ( 1 + 3*cos(q)**2 )**2 * cos( q0() )**4 )
   end function g11
 
@@ -1473,9 +1505,9 @@ module geometry
     g33 = r**6 * cos( q0() )**2 / ( RI**4 * ( 1 + 3*cos(q)**2 ) )
   end function g33
 
-  ! ----------------------------------------------------------------------------------------------
-  ! -------------------------------------------------------------- Contravariant Metric Components
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------------- Contravariant Metric Components
+  ! ---------------------------------------------------------------------------
 
   function gsup11()
     double precision, dimension(0:n1, 0:n3) :: gsup11
@@ -1484,7 +1516,8 @@ module geometry
 
   function gsup13()
     double precision, dimension(0:n1, 0:n3) :: gsup13
-    gsup13 = -0.5*RI**3 * sin( q0() )**2 * cos(q)*( 1 + 3*cos(q)**2 )/( cos( q0() )**3 * r**5 )
+    gsup13 = -0.5*RI**3 * sin( q0() )**2 * cos(q)*( 1 + 3*cos(q)**2 )         &
+              /( cos( q0() )**3 * r**5 )
   end function gsup13
 
   function gsup22()
@@ -1494,27 +1527,28 @@ module geometry
 
   function gsup31()
     double precision, dimension(0:n1, 0:n3) :: gsup31
-    gsup31 = -0.5*RI**3 * sin( q0() )**2 * cos(q)*( 1 + 3*cos(q)**2 )/( cos( q0() )**3 * r**5 )
+    gsup31 = -0.5*RI**3 * sin( q0() )**2 * cos(q)*( 1 + 3*cos(q)**2 )         &
+             /( cos( q0() )**3 * r**5 )
   end function gsup31
 
   function gsup33()
     double precision, dimension(0:n1, 0:n3) :: gsup33
-    gsup33 = RI**4 * ( ( 0.5*cos(q)*( 1 + 3*cos( q0() )**2 ) )**2 + ( sin(q)*(1 - RI/r) )**2 )   &
-                     / ( r*cos( q0() ) )**6
+    gsup33 = RI**4 * ( ( 0.5*cos(q)*( 1 + 3*cos( q0() )**2 ) )**2             &
+                       + ( sin(q)*(1 - RI/r) )**2 ) / ( r*cos( q0() ) )**6
   end function gsup33
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------------------------------------------------- Jacobian
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------------------------------------ Jacobian Determinant
+  ! ---------------------------------------------------------------------------
 
   function J()
     double precision, dimension(0:n1, 0:n3) :: J
     J = r**6 * cos( q0() ) / ( RI**3 * ( 1+3*cos(q)**2 ) )
   end function J
 
-  ! ----------------------------------------------------------------------------------------------
-  ! --------------------------------------- Scale Factors for Mapping to Field-Aligned Coordinates
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! -------------------- Scale Factors for Mapping to Field-Aligned Coordinates
+  ! ---------------------------------------------------------------------------
 
   function h1()
     double precision, dimension(0:n1, 0:n3) :: h1
@@ -1531,9 +1565,9 @@ module geometry
     h3 = sqrt( g33() )
   end function h3
 
-  ! ----------------------------------------------------------------------------------------------
-  ! ------------------------------------------- Scale Factors for Mapping to Spherical Coordinates
-  ! ----------------------------------------------------------------------------------------------
+  ! ---------------------------------------------------------------------------
+  ! ------------------------ Scale Factors for Mapping to Spherical Coordinates
+  ! ---------------------------------------------------------------------------
 
   ! We always give hr at RI because Br .eq. 0 at RE by construction. 
   function hr()
@@ -1541,7 +1575,7 @@ module geometry
     hr =  -2*RI*cos( q(:, zz) )**3 / ( cos( q(:, kk) ) * ( 1+3*cos( q(:, zz) )**2 ) )
   end function hr
 
-  ! By default, compute the value at the ionosphere. If RE is given, compute it there instead. 
+  ! By default, compute the value at the ionosphere. 
   function hf(R0)
     double precision, dimension(0:n1, 0:1) :: hf
     double precision, optional, intent(in) :: R0
@@ -1552,7 +1586,7 @@ module geometry
     end if
   end function hf
 
-  ! By default, compute the value at the ionosphere. If RE is given, compute it there instead. 
+  ! By default, compute the value at the ionosphere. 
   function hq(R0)
     double precision, dimension(0:n1, 0:1) :: hq
     double precision, optional, intent(in) :: R0
@@ -1563,9 +1597,9 @@ module geometry
     end if
   end function hq
 
-  ! ==============================================================================================
-  ! ======================================================================= End of Geometry Module
-  ! ==============================================================================================
+  ! ===========================================================================
+  ! ==================================================== End of Geometry Module
+  ! ===========================================================================
 
 end module geometry
 
@@ -2235,14 +2269,6 @@ module fields
     ! compressional driving close to the ionosphere. 
     B3drive(:20) = 0
     B3drive(n3-20:) = 0
-
-
-!    j2drive(:20, :) = 0
-!    ! Zeroing far-out field lines is not necessary. 
-!    j2drive(:, :20) = 0
-!    j2drive(:, n3-20:) = 0
-
-
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
