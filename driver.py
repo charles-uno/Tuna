@@ -28,8 +28,8 @@ runDirName = 'tuna'
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = {
               'jdrive':[4e-4], 
-#              'bdrive':[10], 
-              'tmax':[0],
+              'bdrive':[10], 
+              'tmax':[100],
               'azm':[16],
 #              'azm':[1, 4, 16, 64],
 #              'model':[1, 2, 3, 4],
@@ -223,8 +223,8 @@ def setParams(run):
 # If running on Itasca, the job is submitted to the queue using a PBS script. 
 def setPBS(run):
   # In most cases, a 100s run will complete in an hour. But some parameter
-  # combinations run slower than others. We include a factor of 4 to be safe. 
-  hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/25.) )
+  # combinations run slower than others. We include a factor of 5 to be safe. 
+  hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/20.) )
   # Write out the PBS script. 
   append('#!/bin/bash -l', 'tuna.pbs')
   # Indicate the size and length of the job. 
