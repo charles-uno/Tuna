@@ -880,9 +880,9 @@ module io
                                                        ! duration, s. 
     if (varname .eq. 'latdrive' ) defaultParam = 5.    ! Latitude, degrees. 
     if (varname .eq. 'dlatdrive') defaultParam = 5.    ! Spread in latitude. 
-    if (varname .eq. 'rdrive'   ) defaultParam = 4.5   ! L shell for driving
+    if (varname .eq. 'ldrive'   ) defaultParam = 5.    ! L shell for driving
                                                        ! current. 
-    if (varname .eq. 'drdrive'  ) defaultParam = 0.5   ! Spread in L shell. 
+    if (varname .eq. 'dldrive'  ) defaultParam = 0.5   ! Spread in L shell. 
     ! Integrated atmospheric conductivities. Negative means automatic. 
     if (varname .eq. 'sig0atm') defaultParam = -1      ! Parallel. 
     if (varname .eq. 'sighatm') defaultParam = -1      ! Hall. 
@@ -2014,18 +2014,6 @@ module coefficients
   ! ------------------------------------------------------------------- Assemble Bulk Coefficients
   ! ----------------------------------------------------------------------------------------------
 
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Note: Electron Inertia
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-  ! The electron inertia terms are here, but they're all set to zero right now. We can't actually
-  ! add them without decreasing the parallel dielectric constant (reducing the speed of light)
-  ! for stability. 
-
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
   subroutine bulkCoefficientSetup()
     ! We define a handful of intermediate factors for convenience. 
     double precision, dimension(0:n1,0:n3) :: sine, sinf, cose, cosf, expe, expf, gg12, gg21
@@ -2243,9 +2231,12 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine driveSetup()
-    double precision                       :: qdrive, dqdrive, rdrive, drdrive, Bdrive, jdrive
+    double precision                       :: qdrive, dqdrive, Ldrive, dLdrive, Bdrive, jdrive
     double precision, dimension(0:n1,0:n3) :: scratch
     integer                                :: i
+    ! Let's zero all driving that would be delivered inside the ionosphere. That's just asking for
+    ! instabilities. 
+    double precision                       :: rmin
     ! Grab driving parameters: waveform index, frequency, characteristic timescale. 
     idrive = readParam('idrive')
     wdrive = 2*pi*readParam('fdrive')
@@ -2254,21 +2245,25 @@ module fields
     qdrive = (pi/180)*( 90 - readParam('latdrive') )
     dqdrive = (pi/180)*readParam('dlatdrive')
     ! Current driving also needs to be delivered at a radial distance. 
-    rdrive = readParam('rdrive')
-    drdrive = readParam('drdrive')
+    Ldrive = readParam('ldrive')
+    dLdrive = readParam('dldrive')
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
     ! Compressional driving is delivered at the outer boundary. Map from Bz to B3. 
     scratch = h3()
-    B3drive = Bdrive*scratch(n1,:)*exp( -( ( q(n1,:) - qdrive ) / dqdrive )**2 )
+    B3drive = Bdrive*scratch(n1, :)*exp( -( ( q(n1, :) - qdrive ) / dqdrive )**2 )
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
-    ! As a precaution against instabilities, we don't drive inside the ionosphere. 
-    where (sigH(n1, :) .gt. 0. .or. sigP(n1, :) .gt. 0.) B3drive = 0.
-    where (sigH .gt. 0. .or. sigP .gt. 0.) j2drive = 0.
+              exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
+    ! Find the maximum radius in the ionospheric profile, and the radius corresponding to the
+    ! inner boundary. Don't allow any driving lower than there. 
+    rmin = max( readParam('lmin')*RE, maxval( getIonos('r') ) )
+    where (r(n1, :) .le. rmin) B3drive = 0.
+    where (r .le. rmin) j2drive = 0.
+!    write(*,*) 'max j2drive = ', maxval(j2drive)
+!    write(*,*) 'max B3drive = ', maxval(B3drive)
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
     if (idrive == 4) then
       call random_seed()
