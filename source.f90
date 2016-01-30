@@ -826,11 +826,11 @@ module io
   double precision function defaultParam(varname)
     character(len=*), intent(in) :: varname
     ! Geometric parameters.
-    if (varname .eq. 'n1'  ) defaultParam = 150        ! Number of field lines.
-    if (varname .eq. 'n3'  ) defaultParam = 350        ! Grid points per line. 
-    if (varname .eq. 'lmin') defaultParam = 2          ! Innermost L value. 
+    if (varname .eq. 'n1'  ) defaultParam = 128        ! Number of field lines.
+    if (varname .eq. 'n3'  ) defaultParam = 320        ! Grid points per line. 
+    if (varname .eq. 'lmin') defaultParam = 1.5         ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
-    if (varname .eq. 'sfac') defaultParam = 1.025      ! Geometric spacing
+    if (varname .eq. 'sfac') defaultParam = 1.03       ! Geometric spacing
                                                        ! factor along outermost
                                                        ! field line. 
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
@@ -1572,7 +1572,8 @@ module geometry
   ! We always give hr at RI because Br .eq. 0 at RE by construction. 
   function hr()
     double precision, dimension(0:n1, 0:1) :: hr
-    hr =  -2*RI*cos( q(:, zz) )**3 / ( cos( q(:, kk) ) * ( 1+3*cos( q(:, zz) )**2 ) )
+    hr =  -2*RI*cos( q(:, zz) )**3                                            &
+          / ( cos( q(:, kk) ) * ( 1+3*cos( q(:, zz) )**2 ) )
   end function hr
 
   ! By default, compute the value at the ionosphere. 
@@ -1915,7 +1916,8 @@ module ionos
     call atmSetup()
     ! Compute grid-resolved electric constant and conductivities. 
     call profileSetup()
-    ! Figure out the time step based on the now-known Alfven speed. 
+    ! Figure out the time step based on the now-known Alfven speed. If we're using electron
+    ! inertial effects, the time step is also constrained by the plasma frequency and the (Boris-adjusted) speed of light. 
     call dtSetup()
     ! Write out ionos profiles lined up with our grid. 
     call writeIonos()
@@ -2236,7 +2238,7 @@ module fields
   ! ----------------------------------------------------------------------------------------------
 
   subroutine driveSetup()
-    double precision                       :: qdrive, dqdrive, Ldrive, dLdrive, Bdrive, jdrive
+    double precision                       :: qdrive, dqdrive, rdrive, drdrive, Bdrive, jdrive
     double precision, dimension(0:n1,0:n3) :: scratch
     integer                                :: i
     ! Let's zero all driving that would be delivered inside the ionosphere. That's just asking for
@@ -2249,9 +2251,10 @@ module fields
     ! Get the latitude and spread in latitude, and convert from degrees to radians. 
     qdrive = (pi/180)*( 90 - readParam('latdrive') )
     dqdrive = (pi/180)*readParam('dlatdrive')
-    ! Current driving also needs to be delivered at a radial distance. 
-    Ldrive = readParam('ldrive')
-    dLdrive = readParam('dldrive')
+    ! Current driving also needs to be delivered at a radial distance. The value is given in RE,
+    ! and we need it in Mm. 
+    rdrive = readParam('rdrive')*RE
+    drdrive = readParam('drdrive')*RE
     ! Get the magnitude of the current and compressional driving. One of these should be zero. 
     Bdrive = readParam('bdrive')
     jdrive = readParam('jdrive')
@@ -2261,12 +2264,12 @@ module fields
     ! Current driving is delivered through the electric field. Like the compressional driving, 
     ! it's gaussian in latitude, and it's also gaussian radial distribution. 
     j2drive = jdrive*exp( -0.5*( (q - qdrive)/dqdrive )**2 )*                                    &
-              exp( -0.5*( (L() - Ldrive)/dLdrive )**2 )/( h2()*gsup22() )
+              exp( -0.5*( (r - rdrive)/drdrive )**2 )/( h2()*gsup22() )
     ! Find the maximum radius in the ionospheric profile, and the radius corresponding to the
     ! inner boundary. Don't allow any driving lower than there. 
-    rmin = max( readParam('lmin')*RE, maxval( getIonos('r') ) )
-    where (r(n1, :) .le. rmin) B3drive = 0.
-    where (r .le. rmin) j2drive = 0.
+!    rmin = max( readParam('lmin')*RE, maxval( getIonos('r') ) )
+!    where (r(n1, :) .le. rmin) B3drive = 0.
+!    where (r .le. rmin) j2drive = 0.
 !    write(*,*) 'max j2drive = ', maxval(j2drive)
 !    write(*,*) 'max B3drive = ', maxval(B3drive)
     ! If we're driving with a spectrum, set up an ensemble of frequencies and phase offsets. 
