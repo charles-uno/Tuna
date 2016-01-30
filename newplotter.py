@@ -89,7 +89,7 @@ def main():
   TP = tunaPlotter()
 
   if 'energy' in argv:
-    TP.plotA()
+    TP.plotA(filename='UP_UT.pdf')
 
   if 'snapshot' in argv or 'lazy' in argv:
     TP.plotB()
@@ -104,7 +104,7 @@ def main():
     TP.plotE()
 
   if 'sigma' in argv or 'conductivity' in argv:
-    TP.plotF()
+    TP.plotF(filename='sigma.pdf')
 
   if 'power' in argv:
     TP.plotG()
@@ -113,7 +113,16 @@ def main():
     TP.plotH()
 
   if 'compare' in argv:
-    TP.plotI()
+    TP.plotI(filename='UB_UE.pdf')
+
+  if 'poloidal' in argv:
+    TP.plotJ(filename='SP_unwrapped.pdf')
+
+
+  if 'RI' in argv:
+    TP.plotK(filename='SP_RI.pdf')
+
+
 
   return
 
@@ -136,6 +145,18 @@ class tunaPlotter:
   RI = 6.478388 # Mm
   # Remember the last few arrays we've read in to avoid duplicating our work. 
   arrays = None
+
+  # ===========================================================================
+  # ======================================================== Initialize Plotter
+  # ===========================================================================
+
+  def __init__(self):
+    # Check for any path(s) from the terminal. 
+    self.setPaths(*argv)
+    # If no paths were given, use the default. 
+    if not self.paths:
+      self.setPaths('/export/scratch/users/mceachern/january22/')
+    return
 
   # ===========================================================================
   # ============================================================= Path Handling
@@ -264,6 +285,7 @@ class tunaPlotter:
              'Bx':'nT', 
              'By':'nT', 
              'Bz':'nT', 
+             'C':None,
              'deg':'^\\circ',
              'E':'\\frac{mV}{m}',
              'Ex':'\\frac{mV}{m}',
@@ -292,7 +314,12 @@ class tunaPlotter:
              'X':'R_E', 
              'Z':'R_E'
             }
-    return self.texText( ' (' + ( '?' if x not in units else units[x] ) + ')' )
+    if x not in units:
+      return self.texText(' (?)')
+    elif units[x] is None:
+      return ''
+    else:
+      return self.texText(' (' + units[x] + ')')
 
   def texLabel(self, x, units=True):
     if units:
@@ -475,6 +502,11 @@ class tunaPlotter:
   # This function returns a dictionary of keyword arguments meant to be plugged
   # straight into plotWindow.setParams(). 
   def getCoords(self, path, xaxis='X', yaxis='Z', lim=None):
+
+    if '-u' in argv and xaxis=='X' and yaxis=='Z':
+      xaxis, yaxis = 'C', 'L'
+
+
     coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
              'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
@@ -511,40 +543,43 @@ class tunaPlotter:
   # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
   # ===========================================================================
 
-  def plotA(self, path='/export/scratch/users/mceachern/january23/'):
-    self.setPaths(path)
-    azms = (1, 4, 16, 64)
-    models = (1, 2)
-    fdrive = 0.007
+  def plotA(self, filename=None):
+    azms = (1, 8, 64)
+    models = (1, 2, 3, 4)
+    fdrive = 0.017
     PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
     rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
     colLabels = [ self.texName(model) for model in models ]
     PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
     for row, azm in enumerate(azms):
       for col, model in enumerate(models):
-        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+
+#        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+        path = self.getPath(azm=azm, model=model, inertia=1)
+
         t = self.getArray(path, 't')
         Utor = np.log10( self.getArray(path, 'Utor') )
         Upol = np.log10( self.getArray(path, 'Upol') )
         PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
         PW[row, col].setLine(t, Utor, 'r')
         PW[row, col].setLine(t, Upol, 'b')
+
     # Any parameters constant across the cells go in the title. 
+
     drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
     freq = format(1e3*fdrive, '.0f') + 'mHz'
     title = self.texText( 'Poloidal (Blue) and Toroidal (Red) Energy from ' +
-                          freq + ' ' + drive )
+                          freq + ' ' + drive + ' ' )
+
     PW.setParams(title=title)
     # Show the plot or save it as an image. 
-    return PW.render()
-#    return PW.render('energy.pdf')
+    return PW.render(filename)
 
   # ===========================================================================
   # ==================================================== Snapshot of All Fields
   # ===========================================================================
 
-  def plotB(self, path='/export/scratch/users/mceachern/january23/'):
-    self.setPaths(path)
+  def plotB(self, filename=None):
     # Parameters to be held constant. 
     fdrive = 0.007
     azm = 16
@@ -573,14 +608,13 @@ class tunaPlotter:
                           drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # ====================================== Contours of Ground Signature vs Time
   # ===========================================================================
 
-  def plotC(self, path='/export/scratch/users/mceachern/january22/'):
-    self.setPaths(path)
+  def plotC(self, filename=None):
     # Parameters to be held constant. 
     model = 1
     fdrive = 0.007
@@ -605,14 +639,13 @@ class tunaPlotter:
             'with ' + freq + ' ' + drive )
     PW.setParams(rowLabels=rowLabels, colLabels=colLabels, title=title)
     # Show the plot or save it as an image. 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # =============================================== Poynting Flux RMS over Time
   # ===========================================================================
 
-  def plotD(self, path='/export/scratch/users/mceachern/january22/'):
-    self.setPaths(path)
+  def plotD(self, filename=None):
     # Parameters to be held constant. 
     fdrive = 0.016
     model = 2
@@ -637,14 +670,13 @@ class tunaPlotter:
                           freq + ' ' + drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # ================================ Energy Density, Binned by L-Shell, vs Time
   # ===========================================================================
 
-  def plotE(self, path='/export/scratch/users/mceachern/january22/'):
-    self.setPaths(path)
+  def plotE(self, filename=None):
     # Parameters to be held constant. 
     fdrive = 0.016
     model = 2
@@ -677,20 +709,20 @@ class tunaPlotter:
                           freq + ' ' + drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # ========================================= Ionospheric Conductivity Profiles
   # ===========================================================================
 
-  def plotF(self):
+  def plotF(self, filename=None):
     # Create the window. 
     PW = plotWindow(nrows=2, ncols=2, colorbar=None)
     # For this plot, we don't actually need the 2D arrays that Tuna spat out.
     # We can just read in the profiles directly. 
     for i in range(4):
-      filename = './models/ionpar' + str(i+1) + '.dat'
-      with open(filename, 'r') as fileobj:
+      datname = './models/ionpar' + str(i+1) + '.dat'
+      with open(datname, 'r') as fileobj:
         lines = fileobj.readlines()
       ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
       # Chop off the altitudes at 100km and 10000km. 
@@ -724,14 +756,13 @@ class tunaPlotter:
                  xlabel=self.texLabel('logsigma'), 
                  ylabel=self.texLabel('logalt'), title=title)
     # Show or save the plot. 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # ============================== Power Density from J dot E and Poynting Flux
   # ===========================================================================
 
-  def plotG(self, path='/export/scratch/users/mceachern/january22/'):
-    self.setPaths(path)
+  def plotG(self, filename=None):
     # Parameters to be held constant. 
     model = 1
     fdrive = 0.007
@@ -788,21 +819,20 @@ class tunaPlotter:
 
     PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
 
-    return PW.render()
+    return PW.render(filename)
 
   # ===========================================================================
   # ==================================================== Driving Electric Field
   # ===========================================================================
 
-  def plotH(self, path='/export/scratch/users/mceachern/tuna_20160128_172321/'):
-    self.setPaths(path)
+  def plotH(self, filename=None):
     path = self.getPath()
     PW = plotWindow(nrows=1, ncols=1, colorbar='sym')
     PW.setParams( title=self.texText('Driving Electric Field') +
                         self.texUnit('E') )
     PW.setParams( **self.getCoords(path) )
     PW.setContour( self.getArray(path, 'EyDrive') )
-    return PW.render()
+    return PW.render(filename)
 
 
 
@@ -815,21 +845,26 @@ class tunaPlotter:
   # ================================ Comparison of Electric and Magnetic Fields
   # ===========================================================================
 
-  def plotI(self, path='/export/scratch/users/mceachern/january22/'):
-    self.setPaths(path)
-    # Parameters to be held constant. 
+  def plotI(self, filename=None):
 
-    model = 2
+#    model = 2
 
-    azms = (1, 4, 16, 64)
-    fdrives = (0.007, 0.016)
+    models = (1, 2, 3, 4)
+#    azms = (1, 4, 16, 64)
+    azms = (1, 8, 64)
 
-    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
+#    fdrives = (0.007, 0.016)
+    fdrive = 0.017
+
+#    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=None)
 
     for row, azm in enumerate(azms):
-      for col, fdrive in enumerate(fdrives):
+#      for col, fdrive in enumerate(fdrives):
+      for col, model in enumerate(models):
 
-        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+#        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+        path = self.getPath(azm=azm, model=model, inertia=1)
 
         t = self.getArray(path, 't')
 
@@ -851,22 +886,109 @@ class tunaPlotter:
         PW[row, col].setLine(t, np.log10(meanUB)*np.ones(t.shape), 'r:')
         PW[row, col].setLine(t, np.log10(meanUE)*np.ones(t.shape), 'b:')
 
-#        print 'azm = ', azm, ' and fdrive = ', 1e3*fdrive, 'mHz: '
-#        print '\tMean UB = ', np.mean(UB)
-#        print '\tMean UE = ', np.mean(UE)
+    # Any parameters constant across the cells go in the title. 
 
     drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
-    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + drive) for f in fdrives ]
+
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+
+    title = self.texText( 'Electric (Blue) and Magnetic (Red) Energy from ' +
+                          freq + ' ' + drive + ' ' )
+
+    colLabels = [ self.texName(model) for model in models ]
+
     rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-    title = self.texName(model) + self.texText(' Electric (Blue) and Magnetic (Red) Energy')
+
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
 
-    return PW.render()
+    return PW.render(filename)
 
 
 
 
+  # ===========================================================================
+  # ========================================== Poloidal Poynting Flux Snapshots
+  # ===========================================================================
 
+  def plotJ(self, filename=None):
+
+    models = (1, 2, 3, 4)
+    azms = (1, 8, 64)
+    fdrive = 0.017
+
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar='sym')
+
+    step = 289
+
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+
+        path = self.getPath(azm=azm, model=model, inertia=1)
+
+        Spol = self.getArray(path, 'Spol')
+
+        t = self.getArray(path, 't')
+
+        PW[row, col].setParams( **self.getCoords(path) )
+        PW[row, col].setContour( Spol[:, :, step] )
+
+
+    tlabel = self.texText( format(t[step], '.0f') + 's' )
+
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+
+    colLabels = [ self.texName(model) for model in models ]
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    title = self.texText( 'Poloidal Poynting Flux at ' + tlabel +' from ' +
+                          freq + ' ' + drive + ' ' ) + self.texUnit('S')
+
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+
+    return PW.render(filename)
+
+
+  # ===========================================================================
+  # ============================================== Poloidal Poynting Flux at RI
+  # ===========================================================================
+
+  def plotK(self, filename=None):
+
+    models = (1, 2, 3, 4)
+    azms = (1, 8, 64)
+    fdrive = 0.017
+
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar='sym')
+
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+
+        path = self.getPath(azm=azm, model=model, inertia=1)
+
+        Spol = self.getArray(path, 'Spol')
+
+        PW[row, col].setParams( **self.getCoords(path, 't', 'lat0') )
+
+        PW[row, col].setContour( Spol[:, 0, :] )
+
+    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+
+    freq = format(1e3*fdrive, '.0f') + 'mHz'
+
+    colLabels = [ self.texName(model) for model in models ]
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    title = self.texText( 'Downward Poloidal Poynting Flux at R_I from ' +
+                          freq + ' ' + drive + ' ' ) + self.texUnit('S')
+
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+
+    # Show the plot or save it as an image. 
+    return PW.render(filename)
 
 
 
