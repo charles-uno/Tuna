@@ -1838,8 +1838,13 @@ module ionos
       dtAlfven = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
     call writeParam('Alfven dt', dtAlfven, 's')
-    ! Keep whichever constraint is strongest. 
-    dt = min( dtAlfven, dtInertial, dtCompressional )
+    ! Keep whichever constraint is strongest. Ignore the inertial time step if we're not using
+    ! inertial effects. 
+    if ( readParam('inertia') .gt. 0) then
+      dt = min(dtAlfven, dtInertial, dtCompressional)
+    else
+      dt = min(dtAlfven, dtCompressional)
+    end if
     call writeParam('dt', dt, 's')
     ! Let's also get a sense for the relative cost of different grid setups. 
     call writeParam('Floating Point Operations', n1*n3/dt, 'per second of time simulated')
