@@ -442,27 +442,27 @@ module loop
       B3(n1, 0:n3:2) = B3drive(0:n3:2)*driveScale
       !$omp end single
 
-!      ! -----------------------------------------------------------------------
-!      ! ---------------------------------------- Apply Boundary Conditions to B
-!      ! -----------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------- Apply Boundary Conditions to B
+      ! -----------------------------------------------------------------------
 
-!      ! Magnetic fields use Neumann boundary conditions: the derivative is zero
-!      ! at the boundary. We set this explicitly on the inner and outer
-!      ! boundaries. Ionospheric boundaries are handled using Psi. 
+      ! Magnetic fields use Neumann boundary conditions: the derivative is zero
+      ! at the boundary. We set this explicitly on the inner and outer
+      ! boundaries. Ionospheric boundaries are handled using Psi. 
 
-!      ! B1 is defined at odd i, so it isn't explicitly valued at the edge. 
+      ! B1 is defined at odd i, so it isn't explicitly valued at the edge. 
 
-!      ! B2 is defined on even i, odd k. 
-!      !$omp single
-!      B2(0, 1:n3:2) = B2(2, 1:n3:2)
-!      B2(n1, 1:n3:2) = B2(n1-2, 1:n3:2)
-!      !$omp end single
+      ! B2 is defined on even i, odd k. 
+      !$omp single
+      B2(0, 1:n3:2) = B2(2, 1:n3:2)
+      B2(n1, 1:n3:2) = B2(n1-2, 1:n3:2)
+      !$omp end single
 
-!      ! B3 is defined on even i, even k. We don't touch the outer boundary,
-!      ! since that's where driving is delivered. 
-!      !$omp single
-!      B3(0, 0:n3:2) = B3(2, 0:n3:2)
-!      !$omp end single
+      ! B3 is defined on even i, even k. We don't touch the outer boundary,
+      ! since that's where driving is delivered. 
+      !$omp single
+      B3(0, 0:n3:2) = B3(2, 0:n3:2)
+      !$omp end single
 
       ! -----------------------------------------------------------------------
       ! ------------------------------------------------------------- Advance j
@@ -704,23 +704,23 @@ module loop
       end do
       !$omp end do
 
-!      ! -----------------------------------------------------------------------
-!      ! ---------------------------------------- Apply Boundary Conditions to E
-!      ! -----------------------------------------------------------------------
+      ! -----------------------------------------------------------------------
+      ! ---------------------------------------- Apply Boundary Conditions to E
+      ! -----------------------------------------------------------------------
 
-!      ! Electric fields use Dirichlet boundary conditions: they go to zero at
-!      ! the boundary. We set this explicitly on the inner and outer boundaries.
-!      ! Ionospheric boundaries are handled using Psi. 
+      ! Electric fields use Dirichlet boundary conditions: they go to zero at
+      ! the boundary. We set this explicitly on the inner and outer boundaries.
+      ! Ionospheric boundaries are handled using Psi. 
 
-!      ! E1 is defined on even i, even k. 
-!      !$omp single
-!      E1(0, 0:n3:2) = E1(2, 0:n3:2)
-!      E1(n1, 0:n3:2) = E1(n1-2, 0:n3:2)
-!      !$omp end single
+      ! E1 is defined on even i, even k. 
+      !$omp single
+      E1(0, 0:n3:2) = E1(2, 0:n3:2)
+      E1(n1, 0:n3:2) = E1(n1-2, 0:n3:2)
+      !$omp end single
 
-!      ! E2 is defined on odd i, so we don't have to worry about it. 
+      ! E2 is defined on odd i, so we don't have to worry about it. 
 
-!      ! E3 is defined on odd i, so we don't have to worry about it. 
+      ! E3 is defined on odd i, so we don't have to worry about it. 
 
       ! -----------------------------------------------------------------------
       ! ------------------------------------------------------ End of Time Loop
