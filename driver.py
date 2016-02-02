@@ -30,6 +30,7 @@ parameters = {
               'jdrive':[4e-4], 
 #              'bdrive':[10], 
               'tmax':[300],
+              'n3':[300, 400],
               'azm':[4],
 #              'azm':[1, 4],
               'model':[3],
