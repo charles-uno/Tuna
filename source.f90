@@ -442,27 +442,27 @@ module loop
       B3(n1, 0:n3:2) = B3drive(0:n3:2)*driveScale
       !$omp end single
 
-      ! -----------------------------------------------------------------------
-      ! ---------------------------------------- Apply Boundary Conditions to B
-      ! -----------------------------------------------------------------------
+!      ! -----------------------------------------------------------------------
+!      ! ---------------------------------------- Apply Boundary Conditions to B
+!      ! -----------------------------------------------------------------------
 
-      ! Magnetic fields use Neumann boundary conditions: the derivative is zero
-      ! at the boundary. We set this explicitly on the inner and outer
-      ! boundaries. Ionospheric boundaries are handled using Psi. 
+!      ! Magnetic fields use Neumann boundary conditions: the derivative is zero
+!      ! at the boundary. We set this explicitly on the inner and outer
+!      ! boundaries. Ionospheric boundaries are handled using Psi. 
 
-      ! B1 is defined at odd i, so it isn't explicitly valued at the edge. 
+!      ! B1 is defined at odd i, so it isn't explicitly valued at the edge. 
 
-      ! B2 is defined on even i, odd k. 
-      !$omp single
-      B2(0, 1:n3:2) = B2(2, 1:n3:2)
-      B2(n1, 1:n3:2) = B2(n1-2, 1:n3:2)
-      !$omp end single
+!      ! B2 is defined on even i, odd k. 
+!      !$omp single
+!      B2(0, 1:n3:2) = B2(2, 1:n3:2)
+!      B2(n1, 1:n3:2) = B2(n1-2, 1:n3:2)
+!      !$omp end single
 
-      ! B3 is defined on even i, even k. We don't touch the outer boundary,
-      ! since that's where driving is delivered. 
-      !$omp single
-      B3(0, 0:n3:2) = B3(2, 0:n3:2)
-      !$omp end single
+!      ! B3 is defined on even i, even k. We don't touch the outer boundary,
+!      ! since that's where driving is delivered. 
+!      !$omp single
+!      B3(0, 0:n3:2) = B3(2, 0:n3:2)
+!      !$omp end single
 
       ! -----------------------------------------------------------------------
       ! ------------------------------------------------------------- Advance j
@@ -704,23 +704,23 @@ module loop
       end do
       !$omp end do
 
-      ! -----------------------------------------------------------------------
-      ! ---------------------------------------- Apply Boundary Conditions to E
-      ! -----------------------------------------------------------------------
+!      ! -----------------------------------------------------------------------
+!      ! ---------------------------------------- Apply Boundary Conditions to E
+!      ! -----------------------------------------------------------------------
 
-      ! Electric fields use Dirichlet boundary conditions: they go to zero at
-      ! the boundary. We set this explicitly on the inner and outer boundaries.
-      ! Ionospheric boundaries are handled using Psi. 
+!      ! Electric fields use Dirichlet boundary conditions: they go to zero at
+!      ! the boundary. We set this explicitly on the inner and outer boundaries.
+!      ! Ionospheric boundaries are handled using Psi. 
 
-      ! E1 is defined on even i, even k. 
-      !$omp single
-      E1(0, 0:n3:2) = E1(2, 0:n3:2)
-      E1(n1, 0:n3:2) = E1(n1-2, 0:n3:2)
-      !$omp end single
+!      ! E1 is defined on even i, even k. 
+!      !$omp single
+!      E1(0, 0:n3:2) = E1(2, 0:n3:2)
+!      E1(n1, 0:n3:2) = E1(n1-2, 0:n3:2)
+!      !$omp end single
 
-      ! E2 is defined on odd i, so we don't have to worry about it. 
+!      ! E2 is defined on odd i, so we don't have to worry about it. 
 
-      ! E3 is defined on odd i, so we don't have to worry about it. 
+!      ! E3 is defined on odd i, so we don't have to worry about it. 
 
       ! -----------------------------------------------------------------------
       ! ------------------------------------------------------ End of Time Loop
@@ -1776,55 +1776,7 @@ module ionos
     call writeParam('Outermost Max dz', 1000*maxval( dz(n1, 1:n3-1) ), 'km')
     call writeParam('Innermost Min dz', 1000*minval( dz(0, :) ), 'km')
     call writeParam('Innermost Max dz', 1000*maxval( dz(0, 1:n3-1) ), 'km')
-    ! Our Boris factor is constrained by wdrive**2/wp**2 << 1 and wdrive*np/wp**2 << 1. Let's keep
-    ! four orders of magnitude, just to be safe. Note that wp and np are the plasma frequency and
-    ! the parallel collision frequency, respectively. 
-    wp = sqrt( n()*qe**2 / (me*eps0) )
-    np = n()*qe**2 / (me*sig0)
-    wdrive = 2*pi*readParam('fdrive')
-    ! Note that wp**2 scales as 1/eps0. 
-    call writeParam( 'Max w**2/wp**2', maxval(wdrive/wp)**2 )
-    call writeParam( 'Max w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
-    borisMax = 1e-4 / max( maxval( wdrive**2 / wp**2 ), maxval( wdrive*np / wp**2 ) )
-    call writeParam('Maximum Boris Factor', borisMax)
-    ! If we're given a Boris factor, use that. 
-    if (readParam('epsfac') .gt. 0) then
-      boris = readParam('epsfac')
-    ! Otherwise, use the biggest one we can get away with. 
-    else
-      boris = borisMax
-    end if
-    call writeParam('Boris Factor', boris)
-    ! Recompute the plasma frequency with the Boris factor. Also compute adjusted speed of light. 
-    epsPara = eps0*boris
-    wp = sqrt( n()*qe**2 / (me*epsPara) )
-    c = sqrt( 1/(mu0*epsPara) )
-    ! Confirm that we're not worried about stability. 
-    call writeParam( 'Max Boris-Adjusted w**2/wp**2', maxval(wdrive/wp)**2 )
-    call writeParam( 'Max Boris-Adjusted w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
-    ! Now figure out the time step. We are constrained by Alfven zone crossing time, compressional
-    ! (speed of light) zone crossing time, and the plasma frequency. Let's compute the grid spacing
-    ! everywhere. 
-    call writeParam('Min Boris-Adjusted 1/wp', minval(1/wp), 's')
-    ! The inertial effects are particularly sensitive to the size of the time step. We use a fudge
-    ! factor (in addition to the Courant condition) to ensure stability. 
-    dtInertial = readParam('cour')*readParam('fudge')*minval(1/wp)
-    call writeParam('Inertial dt', dtInertial, 's')
-    ! The zone crossing time of the compressional mode constrains our time step. 
-    oodtx = maxval(c/dx)
-    oodty = maxval(c/dy)
-    oodtz = maxval(c/dz)
-    call writeParam('Min Boris-Adjusted dx/c', 1/oodtx, 's')
-    call writeParam('Min Boris-Adjusted dy/c', 1/oodty, 's')
-    call writeParam('Min Boris-Adjusted dz/c', 1/oodtz, 's')
-    ! Get diagonal zone crossing -- still working in one over time. 
-    if (azm .eq. 0) then
-      dtCompressional = readParam('cour')/ ( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
-    else
-      dtCompressional = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
-    end if
-    call writeParam('Compressional dt', dtCompressional, 's')
-    ! The zone crossing time of an Alfven wave constrains our time step. 
+    ! Our time step is constrained by the zone-crossing time of an Alfven wave. 
     oodtx = maxval(vA()/dx)
     oodty = maxval(vA()/dy)
     oodtz = maxval(vA()/dz)
@@ -1838,18 +1790,71 @@ module ionos
       dtAlfven = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
     end if
     call writeParam('Alfven dt', dtAlfven, 's')
-    ! If we're not including electron inertial effects, we can ignore the inertial time step. 
+    ! Without electron inertial effects, the Alfven speed sets the time step, and we don't change
+    ! the parallel dielectric constant. This means that there are no parallel electric fields. 
     if ( readParam('inertia') .le. 0) then
-      dt = min(dtAlfven, dtCompressional)
-    ! With inertial effects, we have to be super careful about stability. We take whichever
-    ! constraint is strongest from the Alfven, inertial, or compressional time step. And note that
-    ! this still might not be enough if we're not resolving the electron inertial length in the
-    ! perpendicular direction! 
+      dt = dtAlfven
+      epsPara = eps0
+    ! If we're using electron inertial effects, we also need to consider
+    ! compressional crossing time and the plasma frequency as time step
+    ! constraints. We lower these with a Boris correction: we raise the
+    ! electric constant, which lowers the plasma frequency and speed of light,
+    ! while keeping the electron inertial length unchanged.  
     else
+      ! Our Boris factor is constrained by wdrive**2/wp**2 << 1 and wdrive*np/wp**2 << 1. Let's keep
+      ! four orders of magnitude, just to be safe. Note that wp and np are the plasma frequency and
+      ! the parallel collision frequency, respectively. 
+      wp = sqrt( n()*qe**2 / (me*eps0) )
+      np = n()*qe**2 / (me*sig0)
+      wdrive = 2*pi*readParam('fdrive')
+      ! Note that wp**2 scales as 1/eps0. 
+      call writeParam( 'Max w**2/wp**2', maxval(wdrive/wp)**2 )
+      call writeParam( 'Max w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
+      borisMax = 1e-4 / max( maxval( wdrive**2 / wp**2 ), maxval( wdrive*np / wp**2 ) )
+      call writeParam('Maximum Boris Factor', borisMax)
+      ! If we're given a Boris factor, use that. 
+      if (readParam('epsfac') .gt. 0) then
+        boris = readParam('epsfac')
+      ! Otherwise, use the biggest one we can get away with. 
+      else
+        boris = borisMax
+      end if
+      call writeParam('Boris Factor', boris)
+      ! Recompute the plasma frequency with the Boris factor. Also compute adjusted speed of light. 
+      epsPara = eps0*boris
+      wp = sqrt( n()*qe**2 / (me*epsPara) )
+      c = sqrt( 1/(mu0*epsPara) )
+      ! Confirm that we're not worried about stability. 
+      call writeParam( 'Max Boris-Adjusted w**2/wp**2', maxval(wdrive/wp)**2 )
+      call writeParam( 'Max Boris-Adjusted w*nu/wp**2', maxval(wdrive*np/(wp)**2) )
+      ! Now figure out the time step. We are constrained by Alfven zone crossing time, compressional
+      ! (speed of light) zone crossing time, and the plasma frequency. Let's compute the grid spacing
+      ! everywhere. 
+      call writeParam('Min Boris-Adjusted 1/wp', minval(1/wp), 's')
+      ! The inertial effects are particularly sensitive to the size of the time step. We use a fudge
+      ! factor (in addition to the Courant condition) to ensure stability. 
+      dtInertial = readParam('cour')*readParam('fudge')*minval(1/wp)
+      call writeParam('Inertial dt', dtInertial, 's')
+      ! The zone crossing time of the compressional mode constrains our time step. 
+      oodtx = maxval(c/dx)
+      oodty = maxval(c/dy)
+      oodtz = maxval(c/dz)
+      call writeParam('Min Boris-Adjusted dx/c', 1/oodtx, 's')
+      call writeParam('Min Boris-Adjusted dy/c', 1/oodty, 's')
+      call writeParam('Min Boris-Adjusted dz/c', 1/oodtz, 's')
+      ! Get diagonal zone crossing -- still working in one over time. 
+      if (azm .eq. 0) then
+        dtCompressional = readParam('cour')/ ( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
+      else
+        dtCompressional = readParam('cour')/ ( sqrt(3.)*sqrt( oodtx**2 + oodty**2 + oodtz**2 ) )
+      end if
+      call writeParam('Compressional dt', dtCompressional, 's')
+      ! The time step is based on the Alfven crossing time, the compressional crossing time, or
+      ! the plasma timescale, whichever is strictest. 
       dt = min(dtAlfven, dtInertial, dtCompressional)
     end if
+    ! Write out the time step. Let's also get a sense for the relative cost of the grid setup. 
     call writeParam('dt', dt, 's')
-    ! Let's also get a sense for the relative cost of different grid setups. 
     call writeParam('Floating Point Operations', n1*n3/dt, 'per second of time simulated')
   end subroutine dtSetup
 
