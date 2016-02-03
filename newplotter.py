@@ -47,9 +47,11 @@ def main():
   # want the output to be saved as in image instead of displayed. 
   TP = tunaPlotter('-i' in argv)
 
-  for model in (1,):
-    TP.plotA(model)
+#  for model in (1, 2, 4):
+#    TP.plotUPUT(model)
 
+  for model in (1, 2, 4):
+    TP.plotUBUE(model)
 
 
 
@@ -140,7 +142,7 @@ class tunaPlotter:
     # Check if we're supposed to be saving this image or showing it. 
     if save:
       self.savepath = '/home/user1/mceachern/Desktop/plots/' + now() + '/'
-      os.mkdir(savepath)
+      os.mkdir(self.savepath)
     else:
       self.savepath = None
     # Check for any path(s) from the terminal. 
@@ -525,7 +527,6 @@ class tunaPlotter:
     if '-u' in argv and xaxis=='X' and yaxis=='Z':
       xaxis, yaxis = 'C', 'L'
 
-
     coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
              'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
@@ -562,7 +563,7 @@ class tunaPlotter:
   # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
   # ===========================================================================
 
-  def plotA(self, model=1):
+  def plotUPUT(self, model=1):
     # 500 seconds is too long compared to the decays we're looking at. 
     tmax = 300
 
@@ -599,10 +600,78 @@ class tunaPlotter:
         PW[row, col].setLine(t, Upol, 'b')
 
     if self.savepath is not None:
-      print 'Saving ' + self.savepath + 'UP_UT_' + str(model) + '.pdf' 
       return PW.render(self.savepath + 'UP_UT_' + str(model) + '.pdf')
     else:
       return PW.render()
+
+  # ===========================================================================
+  # ========================= Line Plot of Electric and Magnetic Energy vs Time
+  # ===========================================================================
+
+  def plotUBUE(self, model=1):
+    # 500 seconds is too long compared to the decays we're looking at. 
+    tmax = 300
+
+    azms = self.getValues('azm')
+
+    fdrives = self.getValues('fdrive')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=False)
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    driving = 'Current' if max( self.getValues('jdrive') ) else 'Compression'
+
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driving) for f in fdrives ]
+
+    title = self.texText( 'Electric (Blue) and Magnetic (Red) Energy: ' +
+                          self.texName(model) )
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+
+        UB = np.log10( self.getArray(path, 'UB') )[:tmax]
+        UE = np.log10( self.getArray(path, 'UE') )[:tmax]
+
+        t = self.getArray(path, 't')[:tmax]
+        coords = self.getCoords(path, 't', 'logU')
+        coords['X'] = t
+
+        PW[row, col].setParams( **coords )
+        PW[row, col].setLine( t, UB, 'r')
+        PW[row, col].setLine(t, UE, 'b')
+
+        meanUB = np.mean(UB)
+        meanUE = np.mean(UE)
+
+        PW[row, col].setLine(t, meanUB*np.ones(t.shape), 'r:')
+        PW[row, col].setLine(t, meanUE*np.ones(t.shape), 'b:')
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'UB_UE_' + str(model) + '.pdf')
+    else:
+      return PW.render()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ===========================================================================
   # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
