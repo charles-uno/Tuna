@@ -1780,9 +1780,9 @@ module ionos
     oodtx = maxval(vA()/dx)
     oodty = maxval(vA()/dy)
     oodtz = maxval(vA()/dz)
-    call writeParam('Min Boris-Adjusted dx/vA', 1/oodtx, 's')
-    call writeParam('Min Boris-Adjusted dy/vA', 1/oodty, 's')
-    call writeParam('Min Boris-Adjusted dz/vA', 1/oodtz, 's')
+    call writeParam('Min dx/vA', 1/oodtx, 's')
+    call writeParam('Min dy/vA', 1/oodty, 's')
+    call writeParam('Min dz/vA', 1/oodtz, 's')
     ! Get diagonal zone crossing -- still working in one over time. 
     if (azm .eq. 0) then
       dtAlfven = readParam('cour')/ ( sqrt(2.)*sqrt( oodtx**2 + oodtz**2 ) )
