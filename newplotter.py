@@ -20,21 +20,6 @@
 # ##################################################### Import Python Libraries
 # #############################################################################
 
-#import gc
-#import matplotlib
-## Change matplotlib settings to allow use over SSH without X forwarding. 
-#if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] is '':
-#  matplotlib.use('Agg')
-#import matplotlib.pyplot as plt
-#from matplotlib.ticker import FuncFormatter
-#from matplotlib import gridspec, rc
-## To easily draw a half-black-half-white semicircle. 
-#from matplotlib.patches import Wedge
-#import numpy as np
-#from matplotlib.ticker import FuncFormatter
-#import matplotlib.ticker as ticker
-
-
 # The cPickle module is faster, but not always available. 
 try:
   import cPickle as pickle
@@ -51,42 +36,31 @@ from os.path import basename
 from sys import argv, stdout
 from time import localtime as lt, time
 
-'''
-def read(filename):
-  with open(filename, 'r') as fileobj:
-    return fileobj.readlines()
-
-def col(x, width=15):
-  if isinstance(x, float):
-    return format(x, '.1f')[:width-1].ljust(width)
-  else:
-    return str(x)[:width-1].ljust(width)
-
-path='/export/scratch/users/mceachern/january23/'
-
-print 'all in microseconds'
-
-print col('run') + col('inertial dt') + col('alfven dt') + col('compression dt') + col('dt')+ col('inertia dt/dt')
-
-for x in sorted( os.listdir(path) ):
-  if os.path.isdir(path + x) and 'tuna.out' in os.listdir(path + x):
-    output = read(path + x + '/tuna.out')
-    idt = 1e6*float( output[15].split('=')[-1].strip(' \ns') )
-    adt = 1e6*float( output[23].split('=')[-1].strip(' \ns') )
-    cdt = 1e6*float( output[19].split('=')[-1].strip(' \ns') )
-    dt = 1e6*float( output[24].split('=')[-1].strip(' \ns') )
-    print col(x) + col(idt) + col(adt) + col(cdt) + col(dt) + col(idt/dt)
-
-exit()
-'''
-
 # #############################################################################
 # ######################################################################## Main
 # #############################################################################
 
 def main():
 
-  TP = tunaPlotter()
+  # Create the Tuna Plotter object, a Tuna-specific wrapper around the Plot
+  # Window object. If the -i flag was given from the terminal, tell it that we
+  # want the output to be saved as in image instead of displayed. 
+  TP = tunaPlotter('-i' in argv)
+
+  for model in (1,):
+    TP.plotA(model)
+
+
+
+
+  return
+
+
+
+
+
+
+
 
   if 'energy' in argv:
     TP.plotA(filename='UP_UT.pdf')
@@ -126,6 +100,18 @@ def main():
 
   return
 
+
+# Timestamp for labeling output. 
+def now():
+  return ( znt(lt().tm_year, 4) + znt(lt().tm_mon, 2) + znt(lt().tm_mday, 2) +
+           '_' + znt(lt().tm_hour, 2) + znt(lt().tm_min, 2) +
+           znt(lt().tm_sec, 2) )
+
+# Turns the number 3 into '003'. If given a float, truncate it. 
+def znt(x, width=0):
+  return str( int(x) ).zfill(width)
+
+
 # #############################################################################
 # ######################################################### Tuna Plotter Object
 # #############################################################################
@@ -150,47 +136,71 @@ class tunaPlotter:
   # ======================================================== Initialize Plotter
   # ===========================================================================
 
-  def __init__(self):
+  def __init__(self, save=False):
+    # Check if we're supposed to be saving this image or showing it. 
+    if save:
+      self.savepath = '/home/user1/mceachern/Desktop/plots/' + now() + '/'
+      os.mkdir(savepath)
+    else:
+      self.savepath = None
     # Check for any path(s) from the terminal. 
     self.setPaths(*argv)
     # If no paths were given, use the default. 
     if not self.paths:
-      self.setPaths('/export/scratch/users/mceachern/january22/')
+      self.setPaths('/export/scratch/users/mceachern/january31/')
     return
 
   # ===========================================================================
-  # ============================================================= Path Handling
+  # ================================================ Finding and Filtering Data
   # ===========================================================================
 
-  # Given one or more paths, find all data directories. 
+  # Given one or more paths, find all data directories, as well as the
+  # parameters used by each run. 
   def setPaths(self, *args):
-    self.paths = []
+    # Note that self.paths isn't a list of paths to run directories -- it's a
+    # dictionary, keyed by those paths, which lists the parameters used by each
+    # run. We can stoll loop over path in self.paths, but this makes it easier
+    # to track down the run we're looking for based on its parameters. 
+    self.paths = {}
     # Increment over everything we're passed. 
     for arg in args:
       # Ignore non-paths. 
       if os.path.isdir(arg):
         for root, dirs, files in os.walk(arg):
           if 'params.in' in files:
-            self.paths.append( os.path.abspath(root) + '/' )
+            # Always use absolute paths. End directory paths with slashes. 
+            path = os.path.abspath(root) + '/'
+            self.paths[path] = self.getParams(path)
     return
 
-  # Look at the parameter input file for a given path and find a value. 
-  def getParam(self, path, key):
-    # Grab the input parameters. 
-    params = '\n'.join( open(path + 'params.in', 'r').readlines() )
-    # Make sure the parameter was actually provided in this run. 
-    if key not in params:
-      return None
-    # Split out the line with the key we want. 
-    line = params.split(key)[1].split('\n')[0]
-    return num( line.strip(' =') )
+  # Grab all parameters from a parameter input file. 
+  def getParams(self, path):
+    # Parameters are returned as a dictionary. 
+    params = {}
+    # The input file has one parameter per line, 'key = val'. 
+    with open(path + 'params.in', 'r') as paramsfile:
+      paramlines = paramsfile.readlines()
+    for line in paramlines:
+      key, val = [ x.strip() for x in line.split('=') ]
+      params[key] = num(val)
+    return params
+
+  # Find all values for a given keyword parameter that are present in the runs
+  # we're looking at. 
+  def getValues(self, key):
+    values = []
+    # We want to be able to ask about keys that are not present. 
+    for params in self.paths.values():
+      values.append( params[key] if key in params else None )
+    # Make sure we can safely assume the values are in ascending order. 
+    return sorted( set(values) )
 
   # Given some keyword arguments, filter self.paths. 
   def getPath(self, **kargs):
     # Start with all the paths we have, then weed out any that don't match. 
-    paths = self.paths
+    paths = [ p for p in self.paths ]
     for key, val in kargs.items():
-      paths = [ p for p in paths if self.getParam(p, key)==val ]
+      paths = [ p for p in paths if self.paths[p][key]==val ]
     # If there's anything other than exactly one match, something is wrong. 
     if len(paths)<1:
       print 'ERROR: No matching path found for ', kargs
@@ -213,12 +223,9 @@ class tunaPlotter:
   # ===========================================================================
 
   def texText(self, x):
-    return '\\mathrm{' + x.replace(' ', '\\;') + '}'
+    return '\\operatorname{' + x.replace(' ', '\\;') + '}'
 
   def texName(self, x):
-    # Log quantities don't need their own entries. 
-    if str(x).startswith('log'):
-      return self.texText('Log_{10} ') + self.texName( x[3:].strip() )
     # Dictionary of strings we might need. 
     names = {
              # Spell out what each model means. 
@@ -243,6 +250,9 @@ class tunaPlotter:
              'L0':'L = \\frac{r}{\\sin^2 \\theta}', 
              'lat':self.texText('Latitude'), 
              'lat0':self.texText('Latitude'), 
+             'logU':self.texText('Log Energy'), 
+             'logsigma':self.texText('Log Conductivity'), 
+             'logalt':self.texText('Log Altitude'), 
              'RE':self.texText('R_E'), 
              'RI':self.texText('R_I'), 
              'sigma':self.texText('Conductivity'),
@@ -273,9 +283,6 @@ class tunaPlotter:
     return self.texText(' at ' + strx + 's')
 
   def texUnit(self, x):
-    # Log quantities don't need their own entries. 
-    if str(x).startswith('log'):
-      return self.texUnit( x[3:].strip() )
     # Dictionary of units we might care about. 
     units = {
              'alt':'km',
@@ -299,6 +306,8 @@ class tunaPlotter:
              'lat':'^\\circ',
              'lat0':'^\\circ',
              'logU':'\\frac{GJ}{rad}',
+             'logsigma':'\\frac{mS}{m}',
+             'logalt':'km',
              'mHz':'mHz',
              'nT':'nT',
              's':'s',
@@ -460,16 +469,26 @@ class tunaPlotter:
     # Toroidal energy density. 
     elif name=='utor':
       return self.getArray(path, 'uEx') + self.getArray(path, 'uBy')
+    # Integrated magnetic energy. 
+    elif name=='UB':
+      ux, uy = self.getArray(path, 'uBx'), self.getArray(path, 'uBy')
+      dV = self.getArray(path, 'dV')
+      return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
+    # Integrated electric energy. 
+    elif name=='UE':
+      ux, uy = self.getArray(path, 'uEx'), self.getArray(path, 'uEy')
+      dV = self.getArray(path, 'dV')
+      return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
     # Integrated poloidal energy. 
     elif name=='Upol':
-      uB, uE = self.getArray(path, 'uBx'), self.getArray(path, 'uEy')
+      ux, uy = self.getArray(path, 'uBx'), self.getArray(path, 'uEy')
       dV = self.getArray(path, 'dV')
-      return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
+      return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
     # Integrated toroidal energy. 
     elif name=='Utor':
-      uB, uE = self.getArray(path, 'uBy'), self.getArray(path, 'uEx')
+      ux, uy = self.getArray(path, 'uEx'), self.getArray(path, 'uBy')
       dV = self.getArray(path, 'dV')
-      return np.sum( np.sum( (uB + uE)*dV[:, :, None], 1), 0)
+      return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
     # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -522,7 +541,7 @@ class tunaPlotter:
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
     # The first time output is at 1s, but we want to start the axis at zero. 
     if xaxis=='t':
-      coords['xlims'] = (0, np.max( coords['x'] ) )
+      coords['xlims'] = (0, None)
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
       coords['outline'] = True
@@ -543,37 +562,127 @@ class tunaPlotter:
   # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
   # ===========================================================================
 
-  def plotA(self, filename=None):
-    azms = (1, 8, 64)
-    models = (1, 2, 3, 4)
-    fdrive = 0.017
-    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
+  def plotA(self, model=1):
+    # 500 seconds is too long compared to the decays we're looking at. 
+    tmax = 300
+
+    azms = self.getValues('azm')
+
+    fdrives = self.getValues('fdrive')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=False)
+
     rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-    colLabels = [ self.texName(model) for model in models ]
-    PW.setParams(rowLabels=rowLabels, colLabels=colLabels)
+
+    driving = 'Current' if max( self.getValues('jdrive') ) else 'Compression'
+
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driving) for f in fdrives ]
+
+    title = self.texText( 'Poloidal (Blue) and Toroidal (Red) Energy: ' +
+                          self.texName(model) )
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+
     for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+
+        Utor = np.log10( self.getArray(path, 'Utor') )[:tmax]
+        Upol = np.log10( self.getArray(path, 'Upol') )[:tmax]
+
+        t = self.getArray(path, 't')[:tmax]
+        coords = self.getCoords(path, 't', 'logU')
+        coords['X'] = t
+
+        PW[row, col].setParams( **coords )
+        PW[row, col].setLine( t, Utor, 'r')
+        PW[row, col].setLine(t, Upol, 'b')
+
+    if self.savepath is not None:
+      print 'Saving ' + self.savepath + 'UP_UT_' + str(model) + '.pdf' 
+      return PW.render(self.savepath + 'UP_UT_' + str(model) + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
+  # ===========================================================================
+
+  def plotI(self, model=1):
+
+    azms = (1, 4, 16, 64)
+
+    fdrives = (0.007, 0.016)
+
+
+    fdrive = 0.017
+
+#    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=None)
+
+    for row, azm in enumerate(azms):
+#      for col, fdrive in enumerate(fdrives):
       for col, model in enumerate(models):
 
 #        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
         path = self.getPath(azm=azm, model=model, inertia=1)
 
         t = self.getArray(path, 't')
-        Utor = np.log10( self.getArray(path, 'Utor') )
-        Upol = np.log10( self.getArray(path, 'Upol') )
+
+        uB = self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
+        uE = self.getArray(path, 'uEx') + self.getArray(path, 'uEy')
+        dV = self.getArray(path, 'dV')[:, :, None]
+
+        UB = np.sum( np.sum(uB*dV, axis=1), axis=0)
+        UE = np.sum( np.sum(uE*dV, axis=1), axis=0)
+
         PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
-        PW[row, col].setLine(t, Utor, 'r')
-        PW[row, col].setLine(t, Upol, 'b')
+
+        PW[row, col].setLine(t, np.log10(UB), 'r')
+        PW[row, col].setLine(t, np.log10(UE), 'b')
+
+        meanUB = np.mean(UB)
+        meanUE = np.mean(UE)
+
+        PW[row, col].setLine(t, np.log10(meanUB)*np.ones(t.shape), 'r:')
+        PW[row, col].setLine(t, np.log10(meanUE)*np.ones(t.shape), 'b:')
 
     # Any parameters constant across the cells go in the title. 
 
     drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
+
     freq = format(1e3*fdrive, '.0f') + 'mHz'
-    title = self.texText( 'Poloidal (Blue) and Toroidal (Red) Energy from ' +
+
+    title = self.texText( 'Electric (Blue) and Magnetic (Red) Energy from ' +
                           freq + ' ' + drive + ' ' )
 
-    PW.setParams(title=title)
-    # Show the plot or save it as an image. 
+    colLabels = [ self.texName(model) for model in models ]
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
+
     return PW.render(filename)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ===========================================================================
   # ==================================================== Snapshot of All Fields
@@ -834,78 +943,6 @@ class tunaPlotter:
     PW.setContour( self.getArray(path, 'EyDrive') )
     return PW.render(filename)
 
-
-
-
-
-
-
-
-  # ===========================================================================
-  # ================================ Comparison of Electric and Magnetic Fields
-  # ===========================================================================
-
-  def plotI(self, filename=None):
-
-#    model = 2
-
-    models = (1, 2, 3, 4)
-#    azms = (1, 4, 16, 64)
-    azms = (1, 8, 64)
-
-#    fdrives = (0.007, 0.016)
-    fdrive = 0.017
-
-#    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
-    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=None)
-
-    for row, azm in enumerate(azms):
-#      for col, fdrive in enumerate(fdrives):
-      for col, model in enumerate(models):
-
-#        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
-        path = self.getPath(azm=azm, model=model, inertia=1)
-
-        t = self.getArray(path, 't')
-
-        uB = self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
-        uE = self.getArray(path, 'uEx') + self.getArray(path, 'uEy')
-        dV = self.getArray(path, 'dV')[:, :, None]
-
-        UB = np.sum( np.sum(uB*dV, axis=1), axis=0)
-        UE = np.sum( np.sum(uE*dV, axis=1), axis=0)
-
-        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
-
-        PW[row, col].setLine(t, np.log10(UB), 'r')
-        PW[row, col].setLine(t, np.log10(UE), 'b')
-
-        meanUB = np.mean(UB)
-        meanUE = np.mean(UE)
-
-        PW[row, col].setLine(t, np.log10(meanUB)*np.ones(t.shape), 'r:')
-        PW[row, col].setLine(t, np.log10(meanUE)*np.ones(t.shape), 'b:')
-
-    # Any parameters constant across the cells go in the title. 
-
-    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
-
-    freq = format(1e3*fdrive, '.0f') + 'mHz'
-
-    title = self.texText( 'Electric (Blue) and Magnetic (Red) Energy from ' +
-                          freq + ' ' + drive + ' ' )
-
-    colLabels = [ self.texName(model) for model in models ]
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
-
-    return PW.render(filename)
-
-
-
-
   # ===========================================================================
   # ========================================== Poloidal Poynting Flux Snapshots
   # ===========================================================================
@@ -1090,9 +1127,10 @@ class plotWindow:
     plt.close('all')
     # Set the font to match LaTeX. 
     rc('font', **{'family':'sans-serif', 'sans-serif':['Helvetica'], 
-                  'size':'11'})
+                  'size':'9'})
     rc('text', usetex=True)
-    rc('text.latex', preamble='\usepackage{amsmath}, \usepackage{amssymb}')
+    rc('text.latex', preamble='\usepackage{amsmath}, \usepackage{amssymb}, ' + 
+                              '\usepackage{color}')
     # The window width in inches is fixed to match the size of the page. 
     windowWidth = 5.75
     # The window will be broken up into some number of equally-sized tiles.
@@ -1157,10 +1195,15 @@ class plotWindow:
     # If we're supposed to have a color bar, space out a narrow axis for it
     # in the right margin. 
     self.colorbar = colorbar
-    if colorbar:
+    if self.colorbar:
       self.cax = plt.subplot( tiles[titleMargin + headMargin:-footMargin, 
                                     -sideMargin + cellPadding:-sideMargin +
                                                               3*cellPadding] )
+#    # Otherwise, space out room for a legend box. 
+#    else:
+#      self.cax = plt.subplot( tiles[titleMargin + headMargin:-footMargin, 
+#                                    -sideMargin + cellPadding:-sideMargin +
+#                                                              3*cellPadding] )
     # We're done setting up the axes. If we were given any other arguments, 
     # send them to the parameter handler. 
     return self.setParams(**kargs)
@@ -1190,7 +1233,7 @@ class plotWindow:
         self.shax.text(s='$' + val + '$', **targs)
       # Accept a string as the window supertitle. 
       elif key=='title':
-        self.tax.text(s='$' + val + '$', fontsize=14, **targs)
+        self.tax.text(s='$' + val + '$', fontsize=12, **targs)
       # Only the bottom x axes get labels. 
       elif key=='xlabel':
         [ cell.setParams(xlabel=val) for cell in self.cells[-1, :] ]
@@ -1361,6 +1404,7 @@ class plotCell:
       # Set log horizontal scale. 
       elif key=='xlog' and val is True:
         self.ax.set_xscale('log')
+        self.xlog = True
       # Set the horizontal axis tick labels. 
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
@@ -1379,6 +1423,7 @@ class plotCell:
       # Set log vertical scale. 
       elif key=='ylog' and val is True:
         self.ax.set_yscale('log')
+        self.ylog = True
       # Set the vertical axis tick labels. 
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
@@ -1498,7 +1543,15 @@ class plotCell:
       self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
                                                        integer=True) )
 
-    if not self.ylog:
+    if self.ylog:
+
+
+
+      print 'limits: ', self.ax.get_ylim()
+      print 'ticks: ', self.ax.get_yticks()
+      print 'tick labels: ', self.ax.get_yticklabels()
+
+    else:
       self.ax.yaxis.set_major_locator( plt.MaxNLocator(self.nyticks, 
                                                        integer=True) )
 
