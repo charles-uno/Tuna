@@ -50,8 +50,10 @@ def main():
 #  for model in (1, 2, 4):
 #    TP.plotUPUT(model)
 
-  for model in (1, 2, 4):
-    TP.plotUBUE(model)
+#  for model in (1, 2, 4):
+#    TP.plotUBUE(model)
+
+  TP.plotSigma()
 
 
 
@@ -655,7 +657,55 @@ class tunaPlotter:
     else:
       return PW.render()
 
+  # ===========================================================================
+  # ========================================= Ionospheric Conductivity Profiles
+  # ===========================================================================
 
+  def plotSigma(self):
+    # Create the window. 
+    PW = plotWindow(nrows=2, ncols=2, colorbar=None)
+    # For this plot, we don't actually need the 2D arrays that Tuna spat out.
+    # We can just read in the profiles directly. 
+    for i in range(4):
+      datname = './models/ionpar' + str(i+1) + '.dat'
+      with open(datname, 'r') as fileobj:
+        lines = fileobj.readlines()
+      ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
+      # Chop off the altitudes at 100km and 10000km. 
+      bottom = np.argmin(ionos[:, 0]<100)
+      if np.max( ionos[:, 0] )>1e4:
+        top = np.argmax(ionos[:, 0]>1e4)
+      else:
+        top = len( ionos[:, 0] )
+      # Log altitude, rather than altitude on a log scale. 
+      logalt = np.log10( ionos[bottom:top, 0] )
+      # We have to worry about zero and negative values for the perpendicular
+      # conductivity. Clip at the minimum positive value. 
+      sigP = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 2] )
+      sigH = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 3] )
+      minP = np.min( sigP[ np.nonzero(sigP) ] )
+      minH = np.min( sigP[ np.nonzero(sigH) ] )
+      # Plot log conductivity instead of conductivity on a log scale. 
+      logsig0 = np.log10( 1e6/( self.mu0*ionos[bottom:top, 4] ) )
+      logsigH = np.log10( np.clip(sigH, minH, np.inf) )
+      logsigP = np.log10( np.clip(sigP, minP, np.inf) )
+      # Add the lines to the plot. 
+      PW[i].setLine(logsigP, logalt, 'r')
+      PW[i].setLine(logsigH, logalt, 'b')
+      PW[i].setLine(logsig0, logalt, 'g')
+    # Set the labels and title. 
+    colLabels = [ self.texText('Active'), self.texText('Quiet') ]
+    rowLabels = [ self.texText('Day'), self.texText('Night') ]
+    title = self.texText('Pedersen (Blue), Hall (Red), and Parallel (Green) ' +
+                         'Conductivities')
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, nxticks=5, 
+                 xlabel=self.texLabel('logsigma'), 
+                 ylabel=self.texLabel('logalt'), title=title)
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'sigma.pdf')
+    else:
+      return PW.render()
 
 
 
@@ -674,7 +724,7 @@ class tunaPlotter:
 
 
   # ===========================================================================
-  # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
+  # ========================= Line Plot of Electric and Magnetic Energy vs Time
   # ===========================================================================
 
   def plotI(self, model=1):
@@ -887,53 +937,6 @@ class tunaPlotter:
                           freq + ' ' + drive )
     PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
     # Show the plot or save it as an image. 
-    return PW.render(filename)
-
-  # ===========================================================================
-  # ========================================= Ionospheric Conductivity Profiles
-  # ===========================================================================
-
-  def plotF(self, filename=None):
-    # Create the window. 
-    PW = plotWindow(nrows=2, ncols=2, colorbar=None)
-    # For this plot, we don't actually need the 2D arrays that Tuna spat out.
-    # We can just read in the profiles directly. 
-    for i in range(4):
-      datname = './models/ionpar' + str(i+1) + '.dat'
-      with open(datname, 'r') as fileobj:
-        lines = fileobj.readlines()
-      ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
-      # Chop off the altitudes at 100km and 10000km. 
-      bottom = np.argmin(ionos[:, 0]<100)
-      if np.max( ionos[:, 0] )>1e4:
-        top = np.argmax(ionos[:, 0]>1e4)
-      else:
-        top = len( ionos[:, 0] )
-      # Log altitude, rather than altitude on a log scale. 
-      logalt = np.log10( ionos[bottom:top, 0] )
-      # We have to worry about zero and negative values for the perpendicular
-      # conductivity. Clip at the minimum positive value. 
-      sigP = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 2] )
-      sigH = np.abs( 4*np.pi*self.eps0*ionos[bottom:top, 3] )
-      minP = np.min( sigP[ np.nonzero(sigP) ] )
-      minH = np.min( sigP[ np.nonzero(sigH) ] )
-      # Plot log conductivity instead of conductivity on a log scale. 
-      logsig0 = np.log10( 1e6/( self.mu0*ionos[bottom:top, 4] ) )
-      logsigH = np.log10( np.clip(sigH, minH, np.inf) )
-      logsigP = np.log10( np.clip(sigP, minP, np.inf) )
-      # Add the lines to the plot. 
-      PW[i].setLine(logsigP, logalt, 'r')
-      PW[i].setLine(logsigH, logalt, 'b')
-      PW[i].setLine(logsig0, logalt, 'g')
-    # Set the labels and title. 
-    colLabels = [ self.texText('Active'), self.texText('Quiet') ]
-    rowLabels = [ self.texText('Day'), self.texText('Night') ]
-    title = self.texText('Pedersen (Blue), Hall (Red), and Parallel (Green) ' +
-                         'Conductivities')
-    PW.setParams(collabels=colLabels, rowlabels=rowLabels, nxticks=5, 
-                 xlabel=self.texLabel('logsigma'), 
-                 ylabel=self.texLabel('logalt'), title=title)
-    # Show or save the plot. 
     return PW.render(filename)
 
   # ===========================================================================
