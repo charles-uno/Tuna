@@ -27,18 +27,13 @@ runDirName = 'tuna'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = {
-              'jdrive':[4e-4], 
+#              'jdrive':[4e-4], 
               'bdrive':[10], 
-              'tmax':[300],
-              'n3':[350],
-              'sfac':[1.03],
-              'azm':[4],
-#              'azm':[1, 4],
-              'model':[3],
-              'cour':[0.1], 
-#              'fdrive':[0.010, 0.016, 0.022],
-              'inertia':[-1]
-         }
+              'tmax':[400],
+              'azm':[1, 4, 16, 64],
+              'model':[1],
+              'fdrive':[0.010, 0.016, 0.022],
+             }
 
 # #############################################################################
 # ######################################################################## Main
@@ -64,15 +59,6 @@ def main():
   # Iterate over the runs. 
   for r in runs:
     runRun(r)
-
-  # We have a plotter to look at plots. Get rid of plot stuff from the driver, 
-  # so we can call it over an SSH connection without graphics forwarding. 
-#  # Let's just look at the Alfven speed profile. 
-#  return vPlot()
-  # Plot T000 for debugging. 
-#  ax = initPlot()
-#  showPlot(ax)
-
   return
 
 # #############################################################################

@@ -830,7 +830,7 @@ module io
     if (varname .eq. 'n3'  ) defaultParam = 350        ! Grid points per line. 
     if (varname .eq. 'lmin') defaultParam = 2          ! Innermost L value. 
     if (varname .eq. 'lmax') defaultParam = 10         ! Outermost L value. 
-    if (varname .eq. 'sfac') defaultParam = 1.025      ! Geometric spacing
+    if (varname .eq. 'sfac') defaultParam = 1.03       ! Geometric spacing
                                                        ! factor along outermost
                                                        ! field line. 
     if (varname .eq. 'zi'  ) defaultParam = 100        ! Ionosphere height, km.
@@ -843,7 +843,7 @@ module io
     ! Parallel physics handling parameters. 
     if (varname .eq. 'epsfac'  ) defaultParam = -1.    ! Boris factor for eps0.
                                                        ! Negative is automatic.
-    if (varname .eq. 'inertia'  ) defaultParam = 1.    ! Positive includes
+    if (varname .eq. 'inertia'  ) defaultParam = -1.   ! Positive includes
                                                        ! electron inertia. 
     if (varname .eq. 'fudge' ) defaultParam = 0.2      ! Factor to stabilize
                                                        ! plasma oscillations. 
@@ -1390,7 +1390,7 @@ module geometry
     ! Convert distances from Mm to RE for easier plotting. 
     call writeRealArray('r.dat', r/RE)
     ! Write out the eigenvalues and eigenvectors at the ionosphere. 
-    call writeRealColumns('evals.dat', nu)
+    call writeRealColumns( 'evals.dat', nu(0:nModes-1) )
     call writeRealArray('evecs.dat', Yinv(0:nModes-1, :), noskip=.true.)
   end subroutine writeGeometry
 
@@ -1940,7 +1940,7 @@ module ionos
   function BB()
     double precision, dimension(0:n1, 0:n3) :: BB
     ! At the equator, Earth's magnetic field is 31.1e3 nT. We scale it as an ideal dipole. 
-    BB = (31.1e3)**2 * (re/r)**6 * abs( 1+3*cos(q)**2 )
+    BB = (31.1e3)**2 * (RE/r)**6 * abs( 1+3*cos(q)**2 )
   end function BB
 
   ! ----------------------------------------------------------------------------------------------
