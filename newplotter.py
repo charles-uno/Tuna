@@ -47,13 +47,13 @@ def main():
   # want the output to be saved as in image instead of displayed. 
   TP = tunaPlotter('-i' in argv)
 
-#  for model in (1, 2, 4):
-#    TP.plotUPUT(model)
+  for model in (1, 2, 3, 4):
+    TP.plotUPUT(model)
 
-#  for model in (1, 2, 4):
-#    TP.plotUBUE(model)
+  for model in (1, 2, 3, 4):
+    TP.plotUBUE(model)
 
-  TP.plotSigma()
+#  TP.plotSigma()
 
 
 
@@ -151,7 +151,7 @@ class tunaPlotter:
     self.setPaths(*argv)
     # If no paths were given, use the default. 
     if not self.paths:
-      self.setPaths('/export/scratch/users/mceachern/january31/')
+      self.setPaths('/media/My Passport/RUNS')
     return
 
   # ===========================================================================
