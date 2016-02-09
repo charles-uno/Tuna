@@ -47,23 +47,39 @@ def main():
   # want the output to be saved as in image instead of displayed. 
   TP = tunaPlotter('-i' in argv)
 
-  # Integrating the energy over the whole domain only tells us so much. Let's
-  # take some snapshots of each run, so that we actually know something about
-  # what they look like. 
+
+
+#  for driving in ('B', 'J'):
+#    for model in (2,):
+#      TP.plotLayers(model=model, driving=driving)
+#      return
+
+  for model in (1, 2, 3, 4):
+    for field in ('BfE', 'BqE'):
+      TP.plotGroundContours(model=model, field=field)
+
+#  TP.plotAlfvenSpeed()
+
+#  for model in (1, 2, 3, 4):
+#    TP.plotToroidal(model=model)
+
+#  # Integrating the energy over the whole domain only tells us so much. Let's
+#  # take some snapshots of each run, so that we actually know something about
+#  # what they look like. 
 #  for path in TP.paths:
 #    TP.plotS(path)
 
-  for model in (2, 3):
-    TP.plotUPUT(model=model, driving='B')
+#  for model in (2, 3):
+#    TP.plotUPUT(model=model, driving='B')
 
-  for model in (1, 2, 3, 4):
-    TP.plotUPUT(model=model, driving='J')
+#  for model in (1, 2, 3, 4):
+#    TP.plotUPUT(model=model, driving='J')
 
-  for model in (2, 3):
-    TP.plotUBUE(model=model, driving='B')
+#  for model in (2, 3):
+#    TP.plotUBUE(model=model, driving='B')
 
-  for model in (1, 2, 3, 4):
-    TP.plotUBUE(model=model, driving='J')
+#  for model in (1, 2, 3, 4):
+#    TP.plotUBUE(model=model, driving='J')
 
 #  for model in (1,):
 #    TP.plotubar(model)
@@ -285,6 +301,8 @@ class tunaPlotter:
              'upol':self.texText('Poloidal Energy Density'), 
              'utor':self.texText('Toroidal Energy Density'), 
              'U':self.texText('Energy'), 
+             'v':self.texText('Alfv\\acute{e}n Speed'), 
+             'va':self.texText('Alfv\\acute{e}n Speed'), 
              'X':'X', 
              'Z':'Z'
             }
@@ -341,6 +359,8 @@ class tunaPlotter:
              'upol':'\\frac{nJ}{m^3}',
              'utor':'\\frac{nJ}{m^3}',
              'U':'\\frac{GJ}{rad}',
+             'v':'\\frac{Mm}{s}',
+             'va':'\\frac{Mm}{s}',
              'X':'R_E', 
              'Z':'R_E'
             }
@@ -378,17 +398,17 @@ class tunaPlotter:
     if name in ('BfE', 'BfI', 'BqE', 'BqI', 'Bx', 'By', 'Bz', 'Ex', 'Ey', 
                 'Ez', 'JyDrive', 'Jz', 'q', 't'):
       phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
-      return phase( readArray(path + name + '.dat') )
+      return phase( self.readArray(path + name + '.dat') )
     # A few quantities get printed out with scale factors. Un-scale them. 
     # Radius in Mm (from RE). 
     elif name=='r':
-      return self.RE*readArray(path + 'r.dat')
+      return self.RE*self.readArray(path + 'r.dat')
     # Perpendicular electric constant, from units of eps0 to mF/m. 
     elif name=='epsPerp' or name=='epsp':
-      return self.eps0*readArray(path + 'epsPerp.dat')
+      return self.eps0*self.readArray(path + 'epsPerp.dat')
     # Conductivities. Printed in S/m but we want mS/m. 
     elif name in ('sigH', 'sigP', 'sig0'):
-      return 1e-3*readArray(path + name + '.dat')
+      return 1e-3*self.readArray(path + name + '.dat')
     # Altitude in km. Note that we read r in RE and we store RE in Mm. 
     elif name=='alt':
       return 1000*(self.getArray(path, 'r') - self.RE)
@@ -505,6 +525,9 @@ class tunaPlotter:
       ux, uy = self.getArray(path, 'uEx'), self.getArray(path, 'uBy')
       dV = self.getArray(path, 'dV')
       return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
+    # Alfven speed. 
+    elif name=='vA' or name=='va':
+      return 1/np.sqrt( self.getArray(path, 'epsp')*self.mu0 )
     # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -554,9 +577,13 @@ class tunaPlotter:
       # Allow the altitude maximum to be overwritten to zoom in. 
       ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
+
+
     # The first time output is at 1s, but we want to start the axis at zero. 
     if xaxis=='t':
-      coords['xlims'] = (0, None)
+      coords['xlims'] = (0, lim)
+
+
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
       coords['outline'] = True
@@ -734,6 +761,38 @@ class tunaPlotter:
     else:
       return PW.render()
 
+  # ===========================================================================
+  # ====================================================== Alfven Speed Profile
+  # ===========================================================================
+
+  def plotAlfvenSpeed(self):
+    # Create the window. 
+    PW = plotWindow(nrows=2, ncols=2, colorbar='log')
+
+    # We don't actually care about fdrive, azm, or driving style. Just model. 
+
+    azm = self.getValues('azm')[0]
+    fdrive = self.getValues('fdrive')[0]
+
+    for i in range(4):
+
+      path = self.getPath(azm=azm, fdrive=fdrive, bdrive=0, model=i+1)
+
+      PW[i].setParams( **self.getCoords(path) )
+
+      PW[i].setContour( self.getArray(path, 'va') )
+
+    # Set the labels and title. 
+    colLabels = [ self.texText('Active'), self.texText('Quiet') ]
+    rowLabels = [ self.texText('Day'), self.texText('Night') ]
+    title = self.texText('Alfv\\\'en Speed ') + self.texUnit('v')
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'va.pdf')
+    else:
+      return PW.render()
 
   # ===========================================================================
   # ============================== Contour Plot of Time-Averaged Energy Density
@@ -771,8 +830,6 @@ class tunaPlotter:
 
         u = self.getArray(path, 'upol') + self.getArray(path, 'utor')
 
-        umean = np.average(u, axis=-1)
-
         PW[row, col].setParams( **self.getCoords(path) )
 
         PW[row, col].setContour( umean )
@@ -781,6 +838,96 @@ class tunaPlotter:
       return PW.render(self.savepath + 'ubar_' + driving + '_' + str(model) + '.pdf')
     else:
       return PW.render()
+
+  # ===========================================================================
+  # =============== Toroidal Poynting Flux Snapshots -- Failing to Propagate In
+  # ===========================================================================
+
+  def plotToroidal(self, model=2, driving='B'):
+    # 500 seconds is too long compared to the decays we're looking at. 
+    tmax = 300
+
+    azms = self.getValues('azm')
+
+    fdrives = self.getValues('fdrive')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='sym')
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    driveLabel = 'Current' if driving=='J' else 'Compression'
+
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
+
+    title = self.texText( 'Clockwise Toroidal Poynting Flux at 300s: ' + self.texName(model) + self.texUnit('S') )
+
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+
+        if driving=='J':
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0)
+        else:
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
+
+        Stor = self.getArray(path, 'Stor')
+
+        PW[row, col].setParams( **self.getCoords(path) )
+
+        PW[row, col].setContour( Stor[:, :, 299] )
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'Stor_' + driving + '_' + str(model) + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ================================================= Contours of Ground Fields
+  # ===========================================================================
+
+  def plotGroundContours(self, model=1, driving='J', field='BfE'):
+    # 500 seconds is too long compared to the decays we're looking at. 
+    tmax = 300
+    azms = self.getValues('azm')
+    fdrives = self.getValues('fdrive')
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='sym')
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    driveLabel = 'Current' if driving=='J' else 'Compression'
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
+    direction = 'East-West' if 'f' in field else 'North-South'
+    title = self.texText( direction + ' Ground Signatures: ' + self.texName(model) + self.texUnit('B') )
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+    for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+        if driving=='J':
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0)
+        else:
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
+        B = self.getArray(path, field)[:, 0, :]
+        PW[row, col].setParams( **self.getCoords(path, 't', 'lat0', lim=tmax) )
+        PW[row, col].setContour(B)
+    if self.savepath is not None:
+      return PW.render(self.savepath + field + '_' + driving + '_' + str(model) + '.pdf')
+    else:
+      return PW.render()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ===========================================================================
   # =================================================== Poynting Flux Snapshots
@@ -795,7 +942,7 @@ class tunaPlotter:
       drivetitle = self.texText( format(1000*params['fdrive'], '.0f') + 'mHz Current' )
     else:
       drivename = znt(1000*params['fdrive'], 2) + 'mHz_b'
-      drivetitle = self.texText( format(1000*params['fdrive'], '.0f') + 'mHz Ccompression' )
+      drivetitle = self.texText( format(1000*params['fdrive'], '.0f') + 'mHz Compression' )
 
     modelname = 'model' + str( params['model'] )
     modeltitle = self.texName( params['model'] )
@@ -804,9 +951,10 @@ class tunaPlotter:
     azmtitle = 'm = ' + str( params['azm'] )
 
     name = modelname + '_' + drivename + '_' + azmname
-    title = self.texText('Poynting Flux Snapshots: ' + drivetitle + ', ') + azmtitle
 
-    steps = (229, 239, 249, 259, 269, 279, 289, 299)
+    title = self.texText('Poynting Flux Snapshots: ' + drivetitle + ', ' + modeltitle + ', ') + azmtitle
+
+    steps = (239, 249, 259, 269, 279, 289, 299)
     fields = ('Spol', 'Stor')
 
     PW = plotWindow(nrows=len(steps), ncols=len(fields), colorbar='sym')
@@ -829,11 +977,62 @@ class tunaPlotter:
 
         PW[row, col].setContour( f[:, :, step] )
 
-    print name
-
     # It's easier to flip through a bunch of PNGs than it is to flip through a bunch of PDFs. These images aren't going in the thesis. 
     if self.savepath is not None:
       return PW.render(self.savepath + name + '.png')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ================================ Energy Density, Binned by L-Shell, vs Time
+  # ===========================================================================
+
+  def plotLayers(self, model=1, driving='J'):
+
+    tmax = 300
+
+    azms = self.getValues('azm')
+
+    fdrives = self.getValues('fdrive')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log')
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    driveLabel = 'Current' if driving=='J' else 'Compression'
+
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
+
+    title = self.texText( 'Energy Density by L-Shell: ' + self.texName(model) )
+
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      for col, fdrive in enumerate(fdrives):
+
+        if driving=='J':
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0)
+        else:
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
+
+        coords = self.getCoords(path, 't', 'L0')
+        coords['x'] = coords['x'][:tmax]
+        PW[row, col].setParams( **coords )
+
+        u = ( self.getArray(path, 'upol') + self.getArray(path, 'utor') )[:, :, :tmax]
+        dV = self.getArray(path, 'dV')[:, :, None]
+
+        dU = u*dV
+
+        UofL = np.sum(dU, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL = np.sum(dV, axis=1)
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+        uofL = UofL/VofL
+        PW[row, col].setContour(uofL)
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'ulayers_' + driving + '_' + str(model) + '.pdf')
     else:
       return PW.render()
 
@@ -864,91 +1063,7 @@ class tunaPlotter:
 
 
 
-
-
-
-
-
-
-
-
-
-
-  # ===========================================================================
-  # ========================= Line Plot of Electric and Magnetic Energy vs Time
-  # ===========================================================================
-
-  def plotI(self, model=1):
-
-    azms = (1, 4, 16, 64)
-
-    fdrives = (0.007, 0.016)
-
-
-    fdrive = 0.017
-
-#    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=None)
-    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=None)
-
-    for row, azm in enumerate(azms):
-#      for col, fdrive in enumerate(fdrives):
-      for col, model in enumerate(models):
-
-#        path = self.getPath(azm=azm, model=model, fdrive=fdrive)
-        path = self.getPath(azm=azm, model=model, inertia=1)
-
-        t = self.getArray(path, 't')
-
-        uB = self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
-        uE = self.getArray(path, 'uEx') + self.getArray(path, 'uEy')
-        dV = self.getArray(path, 'dV')[:, :, None]
-
-        UB = np.sum( np.sum(uB*dV, axis=1), axis=0)
-        UE = np.sum( np.sum(uE*dV, axis=1), axis=0)
-
-        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
-
-        PW[row, col].setLine(t, np.log10(UB), 'r')
-        PW[row, col].setLine(t, np.log10(UE), 'b')
-
-        meanUB = np.mean(UB)
-        meanUE = np.mean(UE)
-
-        PW[row, col].setLine(t, np.log10(meanUB)*np.ones(t.shape), 'r:')
-        PW[row, col].setLine(t, np.log10(meanUE)*np.ones(t.shape), 'b:')
-
-    # Any parameters constant across the cells go in the title. 
-
-    drive = 'Current' if self.getParam(path, 'jdrive')>0 else 'Compression'
-
-    freq = format(1e3*fdrive, '.0f') + 'mHz'
-
-    title = self.texText( 'Electric (Blue) and Magnetic (Red) Energy from ' +
-                          freq + ' ' + drive + ' ' )
-
-    colLabels = [ self.texName(model) for model in models ]
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    PW.setParams(rowlabels=rowLabels, collabels=colLabels, title=title)
-
-    return PW.render(filename)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+'''
 
 
 
@@ -1294,20 +1409,6 @@ class tunaPlotter:
 
     return PW.render()
 
-'''
-  # Either display the plot or save it as an image. 
-  def render(self, PW, name='plot.png'):
-    # All of the data that the plot needs has been deposited in the plot window
-    # object. This object no longer needs to keep track of anything. 
-    self.refresh()
-    # If we're supposed to save the plot as an image, do so. 
-    if '-i' in self.flags:
-      # Come up with a filename for the output. 
-      filename = self.outDir + name
-      return PW.render(filename)
-    # Otherwise, show the image window. 
-    else:
-      return PW.render()
 '''
 
 
@@ -1842,15 +1943,41 @@ class plotColors(dict):
 
   def logTicksLevels(self, zmax):
 
-    self.zmax = zmax
+    # Ticks are located at powers of ten. Color levels are centered on ticks. 
+    power = np.ceil(np.log10(zmax) - 0.5)
 
-    # One tick at each order of magnitude. 
-    power = int( np.floor( np.log10(self.zmax) ) )
-    self.zmin = self.zmax/10**self.nticks
-    ticks = [ 10**(power - i) for i in range(self.nticks) ]
+    # Each color spans a factor of root ten. This is in contrast to the
+    # symmetric log scale, where each color was a whole order of magnitude. The
+    # goal is to, for each, have the same number of colors and the same number
+    # of orders of magnitude. 
+
+    # Symetric log scale with 7 colors will have three positive powers of ten,
+    # three negative powers, and zero. The log scale will just have three
+    # positive powers. Anything below there will automatically show 0, though
+    # it won't be marked explicitly on the color bar. 
+
+    self.zmax = 10.**(power + 0.25)
+
+#    self.zmin = self.zmax/10**(self.nticks/2 - 0.5)
+    self.zmin = self.zmax/10**(self.nticks/2 + 0.5)
+
+#    ticks = [ 10**(power - 0.5*i) for i in range(self.nticks - 2) ]
+    ticks = [ 10**(power - 0.5*i) for i in range(self.nticks) ]
+
     logMin, logMax = np.log10(self.zmin), np.log10(self.zmax)
+
+#    levels = np.logspace(logMin, logMax, self.ncolors - 2)
     levels = np.logspace(logMin, logMax, self.ncolors)
+
     return ticks, levels
+
+#    # One tick at each order of magnitude. 
+#    power = int( np.floor( np.log10(self.zmax) ) )
+#    self.zmin = self.zmax/10**self.nticks
+#    ticks = [ 10**(power - i) for i in range(self.nticks) ]
+#    logMin, logMax = np.log10(self.zmin), np.log10(self.zmax)
+#    levels = np.logspace(logMin, logMax, self.ncolors)
+#    return ticks, levels
 
   def symTicksLevels(self, zmax):
     # Ticks are located at powers of ten. Color levels are centered on ticks. 
@@ -1918,8 +2045,12 @@ class plotColors(dict):
     if self.colorbar=='log':
 
       # Kinda kludgey. See setColorbar for explanation. 
+#      cmap = plt.get_cmap('seismic')
+#      colors = cmap( np.linspace(0.5, 1, cmap.N // 2) )
+#      return LSC.from_list('Upper Half', colors)
+
 #      norm = self.logNorm
-#      return plt.get_cmap('seismic')
+#      return plt.get_cmap('YlOrRd')
       return None
 
     elif self.colorbar=='sym':
@@ -1930,7 +2061,13 @@ class plotColors(dict):
     N = 1000
     unitInterval = [ i/(N - 1.) for i in range(N) ]
     cmap = plt.get_cmap('seismic')
-    rgb = [ cmap( unitInterval[i] ) for i in range(N) ]
+    rgb = [ cmap(u) for u in unitInterval ]
+
+#    if self.colorbar=='log':
+#      rgb = [ cmap( 0.5 + 0.5*u ) for u in unitInterval ]
+
+
+
     # Renormalize the unit interval. Make sure we get the end points right. 
     newInterval = [ self.linMron( norm(u) ) for u in unitInterval ]
     newInterval[0], newInterval[-1] = 0., 1.
@@ -1970,12 +2107,15 @@ class plotColors(dict):
       # symmetric norm plot, since since SymLogNorm isn't defined. But we can't
       # use a renormalized color map for the log plot due to sampling
       # constraints. This is the odd case out right now. 
+
       norm, mron, fmt = self.logNorm, self.logMron, self.logFormatter
+
       ColorbarBase(cax, boundaries=colorParams['levels'],
                    ticks=colorParams['ticks'], norm=colorParams['norm'],
                    cmap=colorParams['cmap'])
       cax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
       return
+
     elif self.colorbar=='sym':
       norm, mron, fmt = self.symNorm, self.symMron, self.symFormatter
     else:
@@ -2026,6 +2166,9 @@ class plotColors(dict):
     # Zero is always zero. 
     if x==0:
       return '$0$'
+    # Half-power ticks don't get labels. 
+    elif format(x, '.1e').startswith('3'):
+      return ''
     # Otherwise, just keep the power of ten. 
     return '$ 10^{' + format(np.log10(x), '.0f') + '}$'
 

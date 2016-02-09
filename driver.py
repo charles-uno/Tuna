@@ -27,15 +27,15 @@ runDirName = 'tuna'
 
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = {
-#              'jdrive':[4e-4], 
-              'bdrive':[10], 
-              'tmax':[0],
+              'jdrive':[4e-4], 
+#              'bdrive':[10], 
+              'tmax':[300],
               'inertia':[1],
               'lmin':[5],
               'lmax':[7],
-              'azm':[64],
+              'azm':[1, 4, 16, 64],
               'n1':[700],
-              'model':[1, 2, 3],
+              'model':[2],
              }
 
 # #############################################################################
@@ -214,9 +214,15 @@ def setParams(run):
 
 # If running on Itasca, the job is submitted to the queue using a PBS script. 
 def setPBS(run):
-  # In most cases, a 100s run will complete in an hour. But some parameter
-  # combinations run slower than others. We include a factor of 5 to be safe. 
-  hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/20.) )
+
+  # A 100s run should run in about an hour if there are no inertial effects. We
+  # ask for two just to be safe. Resolving inertial length scales slows this
+  # significantly. We just request the maximum allowed runtime.  
+  if 'inertia' in run and run['inertia']>0:
+    hours = '96'
+  else:
+    hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/50.) )
+
   # Write out the PBS script. 
   append('#!/bin/bash -l', 'tuna.pbs')
   # Indicate the size and length of the job. 
@@ -224,8 +230,14 @@ def setPBS(run):
   # Get email when the job begins, ends, or aborts. 
   append('#PBS -m abe', 'tuna.pbs')
   append('#PBS -M mceachern@physics.umn.edu', 'tuna.pbs')
-  # Use the SandyBridge queue. That's 16-core nodes. 
-  append('#PBS -q sb', 'tuna.pbs')
+
+  # Use the SandyBridge queue. That's 16-core nodes. The sb128 queue allows a
+  # higher walltime limit, but has fewer nodes. Use it only for inertial runs. 
+  if 'inertia' in run and run['inertia']>0:
+    append('#PBS -q sb128', 'tuna.pbs')
+  else:
+    append('#PBS -q sb', 'tuna.pbs')
+
   # Specify run name. 
   append('#PBS -N '+run['name'], 'tuna.pbs')
   # Execute in the directory we've created for this run. 
@@ -417,252 +429,6 @@ def srcDir():
     return '/home/user1/mceachern/Desktop/tuna/'
   else:
     return '/home/lysakrl/mceache1/tuna/'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-
-
-
-
-
-
-
-# #############################################################################
-# ############################################################## Driver Plotter
-# #############################################################################
-
-# Let's look at the results quickly, for debugging. This isn't nearly as pretty
-# as the real plotter. Itasca hasn't got the plotting libraries, so this whole
-# chunk also has to be commented out when not running locally...
-
-# =============================================================================
-# ========================================================== Plotting Libraries
-# =============================================================================
-
-import matplotlib.pyplot as plt
-from matplotlib import rc
-import numpy as np
-from matplotlib.colors import LogNorm
-
-# =============================================================================
-# ================================================================== Data Input
-# =============================================================================
-
-# Convert a string to a complex or float. 
-def com(x):
-  if ',' not in x:
-    return float(x)
-  else:
-    # Shave off the parentheses then split into real and imaginary parts. 
-    re, im = x[1:-1].split(',')
-    return (float(re) + float(im)*1j)
-
-# Read in a real or complex array from file. 
-def getArray(path, filename):
-  # Filenames are caps insensitive. Find the file we want. 
-  matches = [ x for x in os.listdir(path) if x.lower()==filename.lower() ]
-  # If the file doesn't exist, bail. 
-  if len(matches)==0:
-    print 'WARNING: No file found matching \"' + path + '/' + filename + '\"'
-    return False
-  else:
-    filename = matches[0]
-    print 'Reading ' + path + '/' + filename
-  # Read in the file as a list of strings. 
-  arrayLines = open(path + '/' + filename, 'r').readlines()
-  # The first line is the array dimensions. 
-  dims = [ int(x) for x in arrayLines.pop(0).split() ]
-  # Assemble a one-dimensional array large enough to hold all of the values. 
-  # (This is much faster than appending as we go.) This means figuring out if
-  # we want reals or complexes. 
-  firstValue = com( arrayLines[0].split()[0] )
-  nVals = np.prod(dims)
-  dtype = np.complex if isinstance(firstValue, np.complex) else np.float
-  vals = np.empty(nVals, dtype=dtype)
-  # Now fill the array with values one at a time. Stop when it's full, or when
-  # we run out of values. 
-  i = 0
-  for line in arrayLines:
-    for val in line.split():
-      # Check if the array is full. 
-      if i==nVals:
-        break
-      # If it's not, grab the next value. 
-      else:
-        vals[i] = com(val)
-        i = i + 1
-  # Before returning the array, reshape and transpose it. Fortran and Python
-  # have opposite conventions for which index should change fastest. Note that
-  # complex arrays are returned as complexes! 
-  arr = np.transpose( np.reshape( vals, dims[::-1] ) )
-  # If the array is full, return it. 
-  if i==nVals:
-    return arr
-  # If we're missing time steps, the run may have crashed or run out of time.
-  # We still want to look at the values. Return the time steps that happened. 
-  elif filename=='t.out':
-    print ('WARNING: Expected ' + str(nVals) + ' values for ' + path + '/' +
-           filename + ' but found ' + str(i) )
-    return arr[:i]
-  elif len(dims)==3:
-    stepsFound = i/( dims[0]*dims[1] )
-    print ('WARNING: Expected ' + by(dims) + ' values for ' + path + '/' + 
-           filename + ' but found ' + by( dims[0:2] + [stepsFound] ) )
-    return arr[:, :, :stepsFound]
-  # If a non-time-resolved array is incomplete, something is very wrong. 
-  else: 
-    print ('ERROR: Expected ' + str(nVals) + ' values for ' + path + '/' + 
-           filename + ' but found ' + str(i) )
-    exit()
-
-# =============================================================================
-# ====================================================== Title Number Formatter
-# =============================================================================
-
-def fmt(x):
-  if x==0:
-    return '0'
-  elif 1e-3<abs(x)<1e3:
-    return str( float(x) if float(x)!=int( float(x) ) else int( float(x) ) )
-  else:
-    snx = format(x, '.0e').replace('e', '\\cdot 10^{') + '}'
-    return snx.replace('+0', '+').replace('-0', '-')
-
-# =============================================================================
-# ====================================================== Initialize Plot Window
-# =============================================================================
-
-# We want to transpose our subplots -- go down the columns instead of across the rows. 
-def subplotPos(nRows, nCols, i):
-  return nRows, nCols, 1 + (i/nRows) + (i%nRows)*nCols
-
-def initPlot():
-  # Set up LaTeX fonts. 
-  rc('font',**{'family':'sans-serif', 'sans-serif':['Helvetica'], 'size':'18'})
-  rc('text', usetex=True)
-  rc('text.latex', preamble='\usepackage{amsmath}, \usepackage{amssymb}')
-  # Set up the plot window. 
-  fig = plt.figure(figsize=(20, 10), facecolor='white')
-  fig.canvas.set_window_title('Tuna Driver')
-  # Partition out subplots. 
-  nRows = 3
-  nCols = 4
-  # Return a list of axes. Note that we flip the usual order of indeces. 
-  return [ plt.subplot( *subplotPos(nRows, nCols, i) ) for i in range(nRows*nCols) ]
-
-# =============================================================================
-# =============================================================== Assemble Data
-# =============================================================================
-
-def colorParams(p99):
-  return {'levels':np.linspace(-p99, p99, 50, endpoint=True), 
-          'cmap':plt.get_cmap('seismic'), 'extend':'both'}
-
-
-def vPlot():
-  # Set up LaTeX fonts. 
-  rc('font',**{'family':'sans-serif', 'sans-serif':['Helvetica'], 'size':'18'})
-  rc('text', usetex=True)
-  rc('text.latex', preamble='\usepackage{amsmath}, \usepackage{amssymb}')
-  # Set up the plot window. 
-  fig = plt.figure(figsize=(20, 10), facecolor='white')
-  fig.canvas.set_window_title('Tuna Driver')
-  # Grab the grid and Alfven speed. 
-  path = 'T000'
-  r, q = getArray(path, 'r.out'), getArray(path, 'q.out')
-  X, Z = r*np.sin(q), r*np.cos(q)
-  v = getArray(path, 'vA.out')
-  # Figure out appropriate levels for the contours. 
-  vmin, vmax = np.min(v), np.max(v)
-  xmin = int( np.floor( np.log10(vmin) ) )
-  xmax = int( np.ceil( np.log10(vmax) ) )
-  levels = np.logspace( xmin, xmax, 7 )
-
-  ticks = [ 10**i for i in range(xmin, xmax+1) ]
-  labels = [ '$' + format(t, '.0f') + '$' for t in ticks ]
-
-  con = plt.contourf( X, Z, v, levels=levels, norm=LogNorm() )
-  cbar = plt.colorbar(con)
-  cbar.set_ticks(ticks)
-  cbar.set_ticklabels(labels)
-
-  plt.show()
-
-
-
-
-
-def showPlot(ax):
-  # We'll just look at T000. 
-  path = 'T000'
-  # Grab coordinate arrays. 
-  r, q = getArray(path, 'r.out'), getArray(path, 'q.out')
-  X, Z = r*np.sin(q), r*np.cos(q)
-  # Set the supertitle based on the last time step. 
-  t = getArray(path, 't.out')
-  plt.suptitle('$\mathrm{Snapshot \;\; at \;\; ' + fmt( float(t[-1]) ) + 's}$', fontsize=24)
-  # Grab the data to plot. 
-  names = ('Bx', 'By', 'Bz', 'Ex', 'Ey', 'Ez')
-  data = [ getArray(path, n + '.out') for n in names ]
-  # Split into real and imaginary components. 
-  realNames = [ '$\mathbb{R} \; ' + n + '$' for n in names ]
-  imagNames = [ '$\mathbb{I} \; ' + n + '$' for n in names ]
-  realData = [ np.real(d) for d in data ]
-  imagData = [ np.imag(d) for d in data ]
-  # Assemble the subplots. We don't show a color bar, but we do set the color levels to be
-  # symmetric around zero, and indicate the max color value in the title. 
-  for i in range( len(names) ):
-    # Real values. 
-    p99 = np.percentile(np.abs( np.real(data[i]) ), 99)
-    ax[i].contourf( X, Z, np.real(data[i][:, :, -1]), **colorParams(p99) )
-    ax[i].set_title('$\mathbb{R} \;\;\; ' + names[i] + ' \;\;\; P_{99} = ' + fmt(p99) + '$')
-    # Imaginary values. 
-    p99 = np.percentile(np.abs( np.imag(data[i]) ), 99)
-    ax[6 + i].contourf( X, Z, np.imag(data[i][:, :, -1]), **colorParams(p99) )
-    ax[6 + i].set_title('$\mathbb{I} \;\;\; ' + names[i] + ' \;\;\; P_{99} = ' + fmt(p99) + '$')
-  # Also, let's draw dipole outlines. 
-  [ a.plot( X[i, :], Z[i, :], color=(0, 0, 0) ) for i in (0, -1) for a in ax ]
-  [ a.plot( X[:, k], Z[:, k], color=(0, 0, 0) ) for k in (0, -1) for a in ax ]
-  # And remove the axis ticks. This plot will be packed enough already. 
-  [ ( a.set_xticks( [] ), a.set_yticks( [] ) ) for a in ax ]
-  # Show the plot window now that it's all assembled. 
-  plt.show()
-  return
-
-
-
-
-
-'''
-
-
-
-
-
-
-
 
 # #############################################################################
 # ########################################################### For Importability
