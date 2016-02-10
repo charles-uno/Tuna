@@ -29,13 +29,14 @@ runDirName = 'tuna'
 parameters = {
               'jdrive':[4e-4], 
 #              'bdrive':[10], 
-              'tmax':[300],
+              'tmax':[0],
               'inertia':[1],
-              'lmin':[5],
-              'lmax':[7],
+#              'lmin':[5],
+#              'lmax':[7],
               'azm':[1, 4, 16, 64],
-              'n1':[700],
-              'model':[2],
+#              'n1':[700],
+              'fdrive':[0.010, 0.016, 0.022],
+              'model':[1, 2],
              }
 
 # #############################################################################
@@ -216,12 +217,12 @@ def setParams(run):
 def setPBS(run):
 
   # A 100s run should run in about an hour if there are no inertial effects. We
-  # ask for two just to be safe. Resolving inertial length scales slows this
+  # ask for four just to be safe. Resolving inertial length scales slows this
   # significantly. We just request the maximum allowed runtime.  
-  if 'inertia' in run and run['inertia']>0:
+  if 'inertia' in run and run['inertia']>0 and 'lmin' in run and run['lmin']>3:
     hours = '96'
   else:
-    hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/50.) )
+    hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/25.) )
 
   # Write out the PBS script. 
   append('#!/bin/bash -l', 'tuna.pbs')
@@ -233,7 +234,7 @@ def setPBS(run):
 
   # Use the SandyBridge queue. That's 16-core nodes. The sb128 queue allows a
   # higher walltime limit, but has fewer nodes. Use it only for inertial runs. 
-  if 'inertia' in run and run['inertia']>0:
+  if 'inertia' in run and run['inertia']>0 and 'lmin' in run and run['lmin']>3:
     append('#PBS -q sb128', 'tuna.pbs')
   else:
     append('#PBS -q sb', 'tuna.pbs')
