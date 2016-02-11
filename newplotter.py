@@ -53,9 +53,27 @@ def main():
 #  TP.plotSymh()
 
 #  for model in (1, 2, 3, 4):
-#    for field in ('BfE', 'BqE'):
-#      for phase in (True, False):
-#        TP.plotGroundContours(model=model, field=field, phase=phase)
+#    for fdrive in TP.getValues('fdrive'):
+#      for alt in ('RE', 'RI', 'RX'):
+#        for azm in TP.getValues('azm'):
+#          TP.plotEdge(model=model, fdrive=fdrive, alt=alt, driving='J', azm=azm)
+
+#  for model in (1, 2):
+#    for fdrive in TP.getValues('fdrive'):
+#      TP.plotJdotE(model=model, fdrive=fdrive, inertia=1)
+
+
+#  for model in (1, 2):
+#    for fdrive in TP.getValues('fdrive'):
+#      for azm in TP.getValues('azm'):
+#        TP.plotInertia(model=model, fdrive=fdrive, azm=azm)
+
+  for model in (1, 2):
+    for fdrive in TP.getValues('fdrive'):
+      TP.plotJS(model=model, fdrive=fdrive)
+
+#  for path in TP.paths:
+#    TP.plotJ(path)
 
 #  TP.plotAlfvenSpeed()
 
@@ -65,9 +83,9 @@ def main():
 #  # Integrating the energy over the whole domain only tells us so much. Let's
 #  # take some snapshots of each run, so that we actually know something about
 #  # what they look like. 
-  for path in TP.paths:
-    for phase in (False, True):
-      TP.plotS(path, phase=phase)
+#  for path in TP.paths:
+#    for phase in (False, True):
+#      TP.plotS(path, phase=phase)
 
 #  for model in (1, 2, 3, 4):
 #    for driving in ('B', 'J'):
@@ -207,8 +225,9 @@ class tunaPlotter:
   # Grab all parameters from a parameter input file. 
   def getParams(self, path):
     # Parameters are returned as a dictionary. Make sure that every dictionary
-    # contains both bdrive and jdrive (one of which will be overwritten). 
-    params = {'bdrive':0, 'jdrive':0}
+    # contains both bdrive and jdrive (one of which will be overwritten). Also
+    # note that the default value is to have inertial effects turned off. 
+    params = {'bdrive':0, 'jdrive':0, 'inertia':-1}
     # The input file has one parameter per line, 'key = val'. 
     with open(path + 'params.in', 'r') as paramsfile:
       paramlines = paramsfile.readlines()
@@ -267,6 +286,7 @@ class tunaPlotter:
              4:self.texText('Quiet Night'),
              # Names for fields, axes, etc. 
              'alt':self.texText('Altitude'), 
+             'B':self.texText('Compression'), 
              'Bf':'B_\\phi', 
              'BfE':'B_\\phi' + self.texText(' at R_E'), 
              'BfI':'B_\\phi' + self.texText(' at R_I'), 
@@ -277,7 +297,12 @@ class tunaPlotter:
              'By':'B_y', 
              'Bz':'B_z', 
              'C':'\\cos\\theta / \\cos\\theta_0', 
-             'Jz':'J_z', 
+             'Ex':'E_x', 
+             'Ey':'E_y', 
+             'Ez':'E_z', 
+             'imag':self.texText('\\mathbb{I}m'), 
+             'J':self.texText('Current'), 
+             'Jz':'J_\\parallel', 
              'L':self.texText('L'), 
              'L0':self.texText('L'), 
              'lat':self.texText('Latitude'), 
@@ -286,8 +311,10 @@ class tunaPlotter:
              'logsigma':self.texText('Log Conductivity'), 
              'logsymh':self.texText('Log Amplitude'), 
              'logalt':self.texText('Log Altitude'), 
-             'RE':self.texText('R_E'), 
-             'RI':self.texText('R_I'), 
+             'real':self.texText('\\mathbb{R}e'), 
+             'RE':self.texText('Earth\'s Surface'), 
+             'RI':self.texText('the Top of the Atmosphere'), 
+             'RX':self.texText('the Bottom of the Ionosphere'), 
              'sigma':self.texText('Conductivity'),
              'S':self.texText('Poynting Flux'),
              'Spol':'\\frac{-1}{\\mu_0}E_yB_x^*',
@@ -336,7 +363,8 @@ class tunaPlotter:
              'Ey':'\\frac{mV}{m}',
              'Ez':'\\frac{mV}{m}',
              'JE':'\\frac{nW}{m^3}',
-             'Jz':'\\frac{\\mu\\!J}{m^2}',
+             'J':'\\frac{\\mu\\!A}{m^2}',
+             'Jz':'\\frac{\\mu\\!A}{m^2}',
              'km':'km',
              'L':'R_E',
              'L0':'R_E',
@@ -376,6 +404,9 @@ class tunaPlotter:
       return self.texReIm(x) + self.texName(x) + self.texUnit(x)
     else:
       return self.texReIm(x) + self.texName(x)
+
+  def texFreq(self, x):
+    return self.texText(format(1e3*x, '.0f') + 'mHz ')
 
   # ===========================================================================
   # =============================================================== Data Access
@@ -572,10 +603,9 @@ class tunaPlotter:
   # This function returns a dictionary of keyword arguments meant to be plugged
   # straight into plotWindow.setParams(). 
   def getCoords(self, path, xaxis='X', yaxis='Z', lim=None):
-
+    # The "unwrap" flag overwrites the dipole default coordinates. 
     if '-u' in argv and xaxis=='X' and yaxis=='Z':
       xaxis, yaxis = 'C', 'L'
-
     coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
              'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
@@ -589,28 +619,21 @@ class tunaPlotter:
       # Allow the altitude maximum to be overwritten to zoom in. 
       ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
-
-
     # The first time output is at 1s, but we want to start the axis at zero. 
     if xaxis=='t':
       coords['xlims'] = (0, lim)
-
-
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
       coords['outline'] = True
     # If we're looking at the log of the energy, we need a bottom limit. 
     if yaxis=='logU':
-
 #      coords['ylims'] = (1 if lim is None else lim, None)
-
       # Let's force the plots to all have the same y axis limits. Note that
       # compressional driving imparts a lot more energy than current. 
       if self.paths[path]['bdrive']==0:
         coords['ylims'] = (2, 6)
       else:
         coords['ylims'] = (4, 8)
-
     # If we're looking at electromagnetic energy on the y axis, we want a log
     # scale, and we also need a minimum. 
     if yaxis=='U':
@@ -620,6 +643,231 @@ class tunaPlotter:
     if coords['y'] is None:
       del coords['y']
     return coords
+
+  # ===========================================================================
+  # ====================== Comparison of Runs With and Without Inertial Effects
+  # ===========================================================================
+
+  def plotInertia(self, model, fdrive, azm):
+    tmax = 300
+    fields = ('Bx', 'By', 'Bz')
+
+    inertias = (-1, 1)
+
+    PW = plotWindow(nrows=len(fields), ncols=len(inertias), colorbar='sym', zmax=100)
+
+    rowLabels = [ self.texName(field) for field in fields ]
+
+    colLabels = [ self.texText('No Inertial Effects'), 
+                  self.texText('Inertial Effects') ]
+
+    title = self.texText('Magnetic Fields from 300s of ' + self.texFreq(fdrive) + 'Current: ' + self.texName(model) + ', ') + 'm = ' + str(azm)
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    for col, inertia in enumerate(inertias):
+      for row, field in enumerate(fields):
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive, inertia=inertia, bdrive=0)
+        f = self.getArray(path, field)[:, :, tmax - 1]
+        PW[row, col].setParams( **self.getCoords(path) )
+        PW[row, col].setContour(f)
+
+    name = 'B_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ====================================== What Lines Up with Parallel Current?
+  # ===========================================================================
+
+  def plotJ(self, path):
+
+    step = 299
+
+    params = self.getParams(path)
+
+    if params['inertia']<0:
+      print 'SKIPPING ' + path
+      return
+
+    modelname = str(params['model'])
+    modeltitle = self.texName(params['model'])
+
+    azmname = znt(params['azm'], 3)
+    azmtitle = 'm = ' + str(params['azm'])
+
+    drivename = znt(1e3*params['fdrive'], 3) + 'mHz'
+    drivetitle = self.texFreq(params['fdrive']) + self.texText('Current')
+
+    name = 'J_' + modelname + '_' + azmname + '_' + drivename
+    title = self.texText('Snapshots at 300s: ' + drivetitle + ', ' + modeltitle + ', ') + azmtitle
+
+    fields = ('Stor', 'utor', 'Jz')
+
+    PW = plotWindow(ncols=1, nrows=len(fields), colorbar='sym', zmax=1)
+
+    PW.setParams(rowlabels=fields, title=title)
+
+    for row, field in enumerate(fields):
+
+      PW[row].setParams( **self.getCoords(path) )
+
+      PW[row].setContour( self.getArray(path, field)[:, :, step] )
+
+    # It's easier to flip through a bunch of PNGs than it is to flip through a bunch of PDFs. These images aren't going in the thesis. 
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.png')
+    else:
+      return PW.render()
+
+
+  # ===========================================================================
+  # ==================================== Parallel Current and the Toroidal Mode
+  # ===========================================================================
+
+  def plotJS(self, model, fdrive):
+
+    step = 299
+
+    fields = ('Jz', 'Stor')
+
+    azms = self.getValues('azm')
+
+    PW = plotWindow(ncols=len(fields), nrows=len(azms), colorbar='sym')
+
+    colLabels = [ self.texText('Field-Aligned Current') + self.texUnit('J'), 
+                  self.texText('Toroidal Poynting Flux') + self.texUnit('S') ]
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    title = self.texText('Field-Aligned Current and the Toroidal Mode: ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current')
+
+    name = 'JS_' + str(model) + '_' + znt(1e3*fdrive) + 'mHz'
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      for col, field in enumerate(fields):
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive, inertia=1)
+        PW[row, col].setParams( **self.getCoords(path) )
+        PW[row, col].setContour( self.getArray(path, field)[:, :, step] )
+
+    # It's easier to flip through a bunch of PNGs than it is to flip through a bunch of PDFs. These images aren't going in the thesis. 
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+
+
+
+
+
+
+
+  # ===========================================================================
+  # ============================== Power Density from J dot E and Poynting Flux
+  # ===========================================================================
+
+  def plotJdotE(self, model, fdrive, inertia=1):
+
+    azms = self.getValues('azm')
+
+    PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    colLabels = ( '{\\displaystyle \\frac{-1}{\\mu_0} \\nabla \\cdot E_y B^*_x}', 
+                  '{\\displaystyle \\frac{1}{\\mu_0} \\nabla \\cdot E_x B^*_y}', 
+                  '{\\displaystyle J_\\parallel E_\parallel}',
+                  '{\\displaystyle \\underline{J}_\\bot \\cdot \\underline{E}_\\bot}'
+                 )
+
+    title = self.texText('Ionospheric Power Density: ') + self.texName(model) + self.texFreq(fdrive) + self.texText(' Compression') + self.texUnit('JE')
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive, inertia=inertia)
+
+      Spol = self.getArray(path, 'Spol')
+      Stor = self.getArray(path, 'Stor')
+
+      JEx = self.getArray(path, 'Jx')*self.getArray(path, 'Ex')
+      JEy = self.getArray(path, 'Jy')*self.getArray(path, 'Ey')
+      JEz = self.getArray(path, 'Jz')*self.getArray(path, 'Ez')
+
+      dx = self.getArray(path, 'dx0')[:, None]
+      dy = azm*self.getArray(path, 'dy0')[:, None]
+      dz = self.getArray(path, 'dz0')[:, None]
+
+      dxStor = self.d( Stor[:, 0, :] )/dx
+      dxSpol = self.d( Spol[:, 0, :] )/dx
+
+      dyStor = Stor[:, 0, :]/dy
+      dySpol = Spol[:, 0, :]/dy
+
+      dzStor = ( Stor[:, 1, :] - Stor[:, 0, :] )/dz
+      dzSpol = ( Spol[:, 1, :] - Spol[:, 0, :] )/dz
+
+      [ PW[row, col].setParams( **self.getCoords(path, 't', 'lat0') ) for col in range(4) ]
+
+      PW[row, 0].setContour(dxSpol + dySpol + dzSpol)
+      PW[row, 1].setContour(dxStor + dyStor + dzStor)
+      PW[row, 2].setContour(JEz[:, 0, :])
+      PW[row, 3].setContour(JEx[:, 0, :] + JEy[:, 0, :])
+
+    name = 'JE_' + str(model) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # =================================================== Contours of Edge Fields
+  # ===========================================================================
+
+  # We can look at the fields themselves or at the phase of those fields. 
+  def plotEdge(self, model, azm, fdrive, driving='J', alt='RE'):
+
+    # 500 seconds is too long compared to the decays we're looking at. 
+    tmax = 300
+
+    PW = plotWindow(nrows=2, ncols=2, colorbar='sym', zmax=100)
+
+    if alt=='RE':
+      fields = ('BqE', 'BfE')
+    elif alt=='RI':
+      fields = ('BqI', 'BfI')
+    else:
+      fields = ('Bx', 'By')
+
+    colLabels = [ self.texName('real'), self.texName('imag') ]
+
+    rowLabels = [ self.texName( f[:2] ) for f in fields ]
+
+    title = self.texText( 'Fields at ' + self.texName(alt) + ': ' + self.texName(model) + ', ' + self.texFreq(fdrive) + self.texName(driving) + ', ' ) + 'm = ' + str(azm)
+
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+
+    drive = { ('bdrive' if driving=='J' else 'jdrive') : 0 }
+    path = self.getPath(azm=azm, model=model, fdrive=fdrive, **drive)
+
+    for row, field in enumerate(fields):
+      for col, phase in enumerate( (np.real, np.imag) ):
+
+        B = phase( self.getArray(path, field, makeReal=False)[:, 0, :] )
+
+        PW[row, col].setParams( **self.getCoords(path, 't', 'lat0', lim=tmax) )
+        PW[row, col].setContour(B)
+
+    if self.savepath is not None:
+      name = alt + '_' + str(model) + '_' + znt(azm, 3) + '_' + znt(fdrive*1e3) + 'mHz_' + driving
+      return PW.render(self.savepath + name + '.png')
+    else:
+      return PW.render()
 
   # ===========================================================================
   # =================================================== Poynting Flux Snapshots
@@ -961,67 +1209,6 @@ class tunaPlotter:
       return PW.render(self.savepath + 'Stor_' + driving + '_' + str(model) + '.pdf')
     else:
       return PW.render()
-
-  # ===========================================================================
-  # ================================================= Contours of Ground Fields
-  # ===========================================================================
-
-  # We can look at the fields themselves or at the phase of those fields. 
-  def plotGroundContours(self, model=1, driving='J', field='BfE', phase=False):
-    # 500 seconds is too long compared to the decays we're looking at. 
-    tmax = 300
-    azms = self.getValues('azm')
-
-    fdrives = self.getValues('fdrive')
-
-    colorbar = 'phase' if phase is True else 'sym'
-
-    ncolors = 9 if phase is True else None
-
-    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar=colorbar, ncolors=ncolors)
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    driveLabel = 'Current' if driving=='J' else 'Compression'
-
-    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
-    direction = 'East-West' if 'f' in field else 'North-South'
-
-    name = 'Ground Signature Phase' if phase is True else 'Ground Signatures'
-    title = self.texText( direction + ' ' + name + ': ' + self.texName(model) + self.texUnit('B') )
-
-    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
-    for row, azm in enumerate(azms):
-      for col, fdrive in enumerate(fdrives):
-        if driving=='J':
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0)
-        else:
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
-
-        if phase is True:
-          Bcomplex = self.getArray(path, field, makeReal=False)[:, 0, :]
-          BR, BI = np.real(Bcomplex), np.imag(Bcomplex)
-          B = np.arctan( np.abs(BI/BR) )
-
-#          B = -1 + 2*( np.abs(BI) / np.abs(Bcomplex) )
-#          B = np.abs( np.angle( self.getArray(path, field, makeReal=False)[:, 0, :] ) )
-
-        else:
-          PW.setParams(zmax=100)
-          B = self.getArray(path, field)[:, 0, :]
-
-        PW[row, col].setParams( **self.getCoords(path, 't', 'lat0', lim=tmax) )
-        PW[row, col].setContour(B)
-
-    if self.savepath is not None:
-
-      ph = 'phase_' if phase is True else ''
-
-      return PW.render(self.savepath + field + '_' + ph + driving + '_' + str(model) + '.pdf')
-
-    else:
-      return PW.render()
-
 
 
 
