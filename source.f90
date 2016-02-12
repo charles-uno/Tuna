@@ -1169,8 +1169,19 @@ module geometry
     double precision, dimension(0:n3)   :: qMin, qMax, sFinal, sTry
     double precision                    :: sFac
     integer                             :: k, m
-    ! Factor by which grid spacing increases along the outermost field line. 
-    sFac = readParam('sfac')
+
+    ! Factor by which grid spacing increases along the outermost field line.
+    ! This is unexpectedly crucial in getting stability... model 3 in
+    ! particular is prone to wigglies when the spacing is too large/small. 
+!    sFac = readParam('sfac')
+    if (readParam('model') .eq. 3) then
+      sFac = 1.03
+      write(*,*) 'Found model 3. Setting sfac = ', sfac
+    else
+      sFac = 1.025
+      write(*,*) 'Found model 1, 2, or 4. Setting sfac = ', sfac
+    end if
+
     ! Spacing along the outermost line increases geometrically to the equator,
     ! then is reflected to the southern hemisphere. 
     do k=0,n3/2
