@@ -36,6 +36,8 @@ from os.path import basename
 from sys import argv, stdout
 from time import localtime as lt, time
 
+from random import choice
+
 # #############################################################################
 # ######################################################################## Main
 # #############################################################################
@@ -47,8 +49,15 @@ def main():
   # want the output to be saved as in image instead of displayed. 
   TP = tunaPlotter('-i' in argv)
 
-#  for model in (1, 2, 3, 4):
-#    TP.plotLayers(model=model, driving='J')
+  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), compare=('S', 'u'), pick=False ):
+      TP.plotJetc(**kargs)
+
+#  for kargs in loopover( model=(1,2,3,4), mode=('', 'pol', 'tor'), pick=False ):
+#    TP.plotLayers(driving='J', **kargs)
+
+#  TP.plotGrid()
+
+#  TP.plotBounce()
 
 #  TP.plotSymh()
 
@@ -58,19 +67,13 @@ def main():
 #        for azm in TP.getValues('azm'):
 #          TP.plotEdge(model=model, fdrive=fdrive, alt=alt, driving='J', azm=azm)
 
-#  for model in (1, 2):
-#    for fdrive in TP.getValues('fdrive'):
-#      TP.plotJdotE(model=model, fdrive=fdrive, inertia=1)
-
+#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), pick=False ):
+#      TP.plotJdotE(inertia=1, **kargs)
 
 #  for model in (1, 2):
 #    for fdrive in TP.getValues('fdrive'):
 #      for azm in TP.getValues('azm'):
 #        TP.plotInertia(model=model, fdrive=fdrive, azm=azm)
-
-  for model in (1, 2):
-    for fdrive in TP.getValues('fdrive'):
-      TP.plotJS(model=model, fdrive=fdrive)
 
 #  for path in TP.paths:
 #    TP.plotJ(path)
@@ -180,6 +183,9 @@ class tunaPlotter:
   RI = 6.478388 # Mm
   # Remember the last few arrays we've read in to avoid duplicating our work. 
   arrays = None
+  # Some runs have been longer than 300 seconds. All runs are at least 300
+  # seconds, and that turns out to be a pretty good window for looking at Pc4s. 
+  tmax = 300
 
   # ===========================================================================
   # ======================================================== Initialize Plotter
@@ -300,9 +306,11 @@ class tunaPlotter:
              'Ex':'E_x', 
              'Ey':'E_y', 
              'Ez':'E_z', 
+             'f':self.texText('Frequency'), 
              'imag':self.texText('\\mathbb{I}m'), 
              'J':self.texText('Current'), 
              'Jz':'J_\\parallel', 
+             'JzI':'J_\\parallel', 
              'L':self.texText('L'), 
              'L0':self.texText('L'), 
              'lat':self.texText('Latitude'), 
@@ -316,15 +324,15 @@ class tunaPlotter:
              'RI':self.texText('the Top of the Atmosphere'), 
              'RX':self.texText('the Bottom of the Ionosphere'), 
              'sigma':self.texText('Conductivity'),
-             'S':self.texText('Poynting Flux'),
-             'Spol':'\\frac{-1}{\\mu_0}E_yB_x^*',
-             'Stor':'\\frac{1}{\\mu_0}E_xB_y^*',
+             'S':'S_P + S_T',
+             'Spol':'S_P',
+             'Stor':'S_T',
              'Sym-H':self.texText('Amplitude'),
              'symh':self.texText('Amplitude'),
              't':self.texText('Time'), 
-             'u':self.texText('Energy Density'), 
-             'upol':self.texText('Poloidal Energy Density'), 
-             'utor':self.texText('Toroidal Energy Density'), 
+             'u':'u_P + u_T', 
+             'upol':'u_P', 
+             'utor':'u_T', 
              'U':self.texText('Energy'), 
              'v':self.texText('Alfv\\acute{e}n Speed'), 
              'va':self.texText('Alfv\\acute{e}n Speed'), 
@@ -332,6 +340,42 @@ class tunaPlotter:
              'Z':'Z'
             }
     return '?' if x not in names else names[x]
+
+  # If there are only one or two columns, we can fit words in the title instead
+  # of symbols. 
+  def texTitle(self, x):
+    # Dictionary of strings we might need. 
+    titles = {
+              # Spell out what each model means. 
+              1:self.texText('Active Day'),
+              2:self.texText('Quiet Day'),
+              3:self.texText('Active Night'),
+              4:self.texText('Quiet Night'),
+              # Names for fields, axes, etc. 
+              'alt':self.texText('Altitude'), 
+              'B':self.texText('Compression'), 
+              'f':self.texText('Frequency'), 
+              'imag':self.texText('\\mathbb{I}m'), 
+              'J':self.texText('Current'), 
+              'lat':self.texText('Latitude'), 
+              'lat0':self.texText('Latitude'), 
+              'logU':self.texText('Log Energy'), 
+              'logsigma':self.texText('Log Conductivity'), 
+              'logsymh':self.texText('Log Amplitude'), 
+              'logalt':self.texText('Log Altitude'), 
+              'real':self.texText('\\mathbb{R}e'), 
+              'RE':self.texText('Earth\'s Surface'), 
+              'RI':self.texText('the Top of the Atmosphere'), 
+              'RX':self.texText('the Bottom of the Ionosphere'), 
+              'sigma':self.texText('Conductivity'),
+              'Sym-H':self.texText('Amplitude'),
+              'symh':self.texText('Amplitude'),
+              't':self.texText('Time'), 
+              'U':self.texText('Energy'), 
+              'v':self.texText('Alfv\\acute{e}n Speed'), 
+              'va':self.texText('Alfv\\acute{e}n Speed'), 
+             }
+    return '?' if x not in titles else titles[x]
 
   def texReIm(self, x):
     if x in ('Ex', 'By', 'Ez', 'Jz', 'BqE', 'BqI'):
@@ -362,6 +406,7 @@ class tunaPlotter:
              'Ex':'\\frac{mV}{m}',
              'Ey':'\\frac{mV}{m}',
              'Ez':'\\frac{mV}{m}',
+             'f':'mHz',
              'JE':'\\frac{nW}{m^3}',
              'J':'\\frac{\\mu\\!A}{m^2}',
              'Jz':'\\frac{\\mu\\!A}{m^2}',
@@ -400,10 +445,7 @@ class tunaPlotter:
       return self.texText(' (' + units[x] + ')')
 
   def texLabel(self, x, units=True):
-    if units:
-      return self.texReIm(x) + self.texName(x) + self.texUnit(x)
-    else:
-      return self.texReIm(x) + self.texName(x)
+    return '{\\displaystyle ' + self.texName(x) + '}' + self.texUnit(x)
 
   def texFreq(self, x):
     return self.texText(format(1e3*x, '.0f') + 'mHz ')
@@ -432,10 +474,11 @@ class tunaPlotter:
       # Usually we just want whichever complex component is larger. 
       if makeReal is True:
         phase = np.imag if '\\mathbb{I}' in self.texReIm(name) else np.real
-        return phase( self.readArray(path + name + '.dat') )
-      # Sometimes we want the complex array. 
+        arr = phase( self.readArray(path + name + '.dat') )
       else:
-        return self.readArray(path + name + '.dat')
+        arr = self.readArray(path + name + '.dat')
+      # Chop off anything after tmax time steps. 
+      return arr[..., :self.tmax] if name=='t' or len(arr.shape)>2 else arr
     # A few quantities get printed out with scale factors. Un-scale them. 
     # Radius in Mm (from RE). 
     elif name=='r':
@@ -459,13 +502,16 @@ class tunaPlotter:
       return self.getArray(path, 'JyDrive')/self.getArray(path, 'epsPerp')
     # Perpendicular currents, computed from electric fields and conductivity. 
     elif name=='Jx':
-      Ex, Ey = self.getArray(path, 'Ex'), self.getArray(path, 'Ey')
+      Ex, Ey = self.getArray(path, 'Ex', makeReal=makeReal), self.getArray(path, 'Ey', makeReal=makeReal)
       sigP, sigH = self.getArray(path, 'sigP'), self.getArray(path, 'sigH')
       return sigP[:, :, None]*Ex - sigH[:, :, None]*Ey
     elif name=='Jy':
-      Ex, Ey = self.getArray(path, 'Ex'), self.getArray(path, 'Ey')
+      Ex, Ey = self.getArray(path, 'Ex', makeReal=makeReal), self.getArray(path, 'Ey', makeReal=makeReal)
       sigP, sigH = self.getArray(path, 'sigP'), self.getArray(path, 'sigH')
       return sigH[:, :, None]*Ex + sigP[:, :, None]*Ey
+    # Parallel current at the ionosphere. 
+    elif name=='JzI':
+      return self.getArray(path, 'Jz', makeReal=makeReal)[:, 0, :]
     # McIlwain parameter. 
     elif name=='L':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
@@ -506,12 +552,21 @@ class tunaPlotter:
     elif name=='dy0':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       return r[:, 0]*np.sin( q[:, 0] )
+    # Differential field line length. 
+    elif name=='dz':
+      r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
+      dr = self.d(r, axis=1)
+      rdq = r*self.d(q, axis=1)
+      return np.sqrt( dr**2 + rdq**2 )
     # Field line length right along the ionospheric boundary. 
     elif name=='dz0':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       dr = r[:, 1] - r[:, 0]
       rdq = 0.5*( r[:, 1] + r[:, 0] )*( q[:, 1] - q[:, 0] )
       return np.sqrt( dr**2 + rdq**2 )
+    # Alfven bounce frequency. The axis will be set by the lines we draw. 
+    elif name=='f':
+      return None
     # Toroidal Poynting flux. 
     elif name=='Stor':
       return self.getArray(path, 'Ex', makeReal=makeReal)*np.conj( self.getArray(path, 'By', makeReal=makeReal) )/self.mu0
@@ -524,6 +579,9 @@ class tunaPlotter:
     # Poloidal Poynting flux. 
     elif name=='Sy':
       return -self.getArray(path, 'Ex', makeReal=makeReal)*np.conj( self.getArray(path, 'Bz', makeReal=makeReal) )/self.mu0
+    # Parallel Poynting flux. 
+    elif name=='S':
+      return self.getArray(path, 'Spol') + self.getArray(path, 'Stor')
     # Sometimes we don't actually need the array, such as when we're grabbing
     # the y axis for a line plot... so the axis will be set by line values. 
     elif name in ('logU', 'U'):
@@ -548,6 +606,9 @@ class tunaPlotter:
     # Toroidal energy density. 
     elif name=='utor':
       return self.getArray(path, 'uEx') + self.getArray(path, 'uBy')
+    # Total energy density. 
+    elif name=='u':
+      return self.getArray(path, 'upol') + self.getArray(path, 'utor')
     # Integrated magnetic energy. 
     elif name=='UB':
       ux, uy = self.getArray(path, 'uBx'), self.getArray(path, 'uBy')
@@ -591,8 +652,8 @@ class tunaPlotter:
   # Helper for when we need to take a derivative. This gets the difference
   # between adjacent values (which we then have to scale by dx, etc). 
   def d(self, arr, axis=0):
-    darr = ( np.roll(arr, shift=1, axis=axis) - 
-             np.roll(arr, shift=-1, axis=axis) )/2
+    darr = ( np.roll(arr, shift=-1, axis=axis) - 
+             np.roll(arr, shift=1, axis=axis) )/2
     darr[0], darr[-1] = darr[1], darr[-2]
     return darr
 
@@ -621,6 +682,7 @@ class tunaPlotter:
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
     # The first time output is at 1s, but we want to start the axis at zero. 
     if xaxis=='t':
+      coords['x'] = coords['x'][:self.tmax]
       coords['xlims'] = (0, lim)
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
@@ -643,6 +705,144 @@ class tunaPlotter:
     if coords['y'] is None:
       del coords['y']
     return coords
+
+  # ===========================================================================
+  # ============================================== Parallel Current, etc, at RI
+  # ===========================================================================
+
+  def plotJetc(self, model, fdrive, compare):
+
+    azms = self.getValues('azm')
+
+    PW = plotWindow(ncols=4, nrows=len(azms), colorbar='sym', zmax=1)
+
+    colLabels = [ self.texName('real') + self.texLabel('Jz'), 
+                  self.texName('imag') + self.texLabel('Jz'), 
+                  self.texLabel(compare + 'pol'), 
+                  self.texLabel(compare + 'tor')             ]
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    comparename = 'Energy Density' if compare=='u' else 'Poynting Flux'
+
+    title = self.texText('Field-Aligned Current and ' + comparename + ' at R_I: ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current')
+
+    name = 'J' + compare + '_' + str(model) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      path = self.getPath(azm=azm, model=model, fdrive=fdrive, inertia=1)
+      [ PW[row, col].setParams( **self.getCoords(path, 't', 'lat0') ) for col in range(4) ]
+
+      Jz = self.getArray(path, 'Jz', makeReal=False)[:, 0, :]
+      JzRe, JzIm = np.real(Jz), np.imag(Jz)
+
+      pol = self.getArray(path, compare + 'pol')[:, 0, :]
+      tor = self.getArray(path, compare + 'tor')[:, 0, :]
+
+      PW[row, 0].setContour(JzRe)
+      PW[row, 1].setContour(JzIm)
+      PW[row, 2].setContour(pol)
+      PW[row, 3].setContour(tor)
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ================================================================== The Grid
+  # ===========================================================================
+
+  def plotGrid(self):
+    PW = plotWindow(ncols=1, nrows=1, colorbar=False)
+    PW.setParams( title=self.texText('Nonorthogonal Dipole Grid') )
+    path = self.paths.keys()[0]
+    X, Z = self.getArray(path, 'X'), self.getArray(path, 'Z')
+    PW.setParams(  **self.getCoords(path) )
+    nx, nz = X.shape
+    stride = 5
+    [ PW.setLine( X[i, :], Z[i, :], 'k' ) for i in range(0, nx, stride) ]
+    [ PW.setLine( X[:, k], Z[:, k], 'k' ) for k in range(0, nz, stride) ]
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'grid.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ================================================= Alfven Bounce Frequencies
+  # ===========================================================================
+
+  def plotBounce(self):
+    PW = plotWindow(nrows=2, ncols=2, colorbar=None)
+
+    # Set the labels and title. 
+    colLabels = [ self.texText('Active'), self.texText('Quiet') ]
+    rowLabels = [ self.texText('Day'), self.texText('Night') ]
+
+#    title = self.texText('Alfv\\acute{e}n Bounce Frequencies')
+    title = self.texText('ALFVEN BOUNCE STUFF')
+
+    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+
+    for i in range(4):
+
+      path = self.getPath(jdrive=0, azm=1, model=i+1, fdrive=0.010)
+
+      PW[i].setParams( **self.getCoords(path, 'L0', 'f') )
+
+      va = self.getArray(path, 'va')
+
+      dz = self.getArray(path, 'dz')
+
+      dt = dz/va
+
+      tbounce = 2*np.sum(dt, axis=1)
+      fbounce = 1e3/tbounce
+
+      L0 = self.getArray(path, 'L0')
+
+#      PW[i].setLine(L0, fbounce)
+
+#      PW[i].setParams( ylims=(0, 60) )
+
+      dL = self.d(L0)
+
+      fprime = self.d(fbounce)/dL
+#      PW[i].setLine(L0[1:-1], fprime[1:-1])
+
+      omega = 2*np.pi*fbounce
+      omegaprime = self.d(omega) / self.d(L0)
+      lam = 1/(2*np.pi*L0)
+      tau = np.abs( self.d(lam) / self.d(omegaprime) )
+      PW[i].setLine(L0[2:-2], 10000*tau[2:-2])
+
+#      Lmin, Lmax = np.min(L0), np.max(L0)
+#      Lrange = Lmax - Lmin
+#      def harmonic(n):
+#        return np.exp( 1j*np.pi*n*(L0 - Lmin)/(Lmax - Lmin) ) / np.sqrt(2*Lrange)
+#      def harmonicprime(n):
+#        return  ( 1j*np.pi*n/(Lmax - Lmin) )*np.exp( 1j*np.pi*n*(L0 - Lmin)/(Lmax - Lmin) ) / np.sqrt(2*Lrange)
+#      nmodes = 1000
+#      modes = np.linspace(-30, 30, nmodes)
+#      dmode = modes[1] - modes[0]
+#      weights = [ np.sum(harmonic(-modes[n])*fbounce*dL) for n in range(nmodes) ]
+#      fseries = np.sum( weights[n]*harmonic(modes[n])*dmode for n in range(nmodes) )
+#      PW[i].setLine( L0, np.real(fseries) )
+#      fprimeseries = np.sum( weights[n]*harmonicprime(modes[n])*dmode for n in range(nmodes) )
+#      PW[i].setLine( L0, np.real(fprimeseries) )
+
+#      pc4min = 7*np.ones(L0.shape)
+#      pc4max = 25*np.ones(L0.shape)
+#      PW[i].setLine(L0, pc4min, 'r:')
+#      PW[i].setLine(L0, pc4max, 'r:')
+
+    if self.savepath is not None:
+#      return PW.render(self.savepath + 'fa.pdf')
+      return PW.render(self.savepath + 'ta.pdf')
+    else:
+      return PW.render()
 
   # ===========================================================================
   # ====================== Comparison of Runs With and Without Inertial Effects
@@ -683,9 +883,6 @@ class tunaPlotter:
   # ===========================================================================
 
   def plotJ(self, path):
-
-    step = 299
-
     params = self.getParams(path)
 
     if params['inertia']<0:
@@ -714,7 +911,7 @@ class tunaPlotter:
 
       PW[row].setParams( **self.getCoords(path) )
 
-      PW[row].setContour( self.getArray(path, field)[:, :, step] )
+      PW[row].setContour( self.getArray(path, field) )
 
     # It's easier to flip through a bunch of PNGs than it is to flip through a bunch of PDFs. These images aren't going in the thesis. 
     if self.savepath is not None:
@@ -722,50 +919,55 @@ class tunaPlotter:
     else:
       return PW.render()
 
-
   # ===========================================================================
-  # ==================================== Parallel Current and the Toroidal Mode
+  # ================================ Energy Density, Binned by L-Shell, vs Time
   # ===========================================================================
 
-  def plotJS(self, model, fdrive):
-
-    step = 299
-
-    fields = ('Jz', 'Stor')
+  def plotLayers(self, model=1, driving='J', mode=''):
 
     azms = self.getValues('azm')
 
-    PW = plotWindow(ncols=len(fields), nrows=len(azms), colorbar='sym')
+    fdrives = self.getValues('fdrive')
 
-    colLabels = [ self.texText('Field-Aligned Current') + self.texUnit('J'), 
-                  self.texText('Toroidal Poynting Flux') + self.texUnit('S') ]
+    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log')
 
     rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
 
-    title = self.texText('Field-Aligned Current and the Toroidal Mode: ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current')
+    driveLabel = 'Current' if driving=='J' else 'Compression'
 
-    name = 'JS_' + str(model) + '_' + znt(1e3*fdrive) + 'mHz'
+    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
 
-    PW.setParams(collabels=colLabels, rowlabels=rowLabels, title=title)
+    modetitle = {'pol':'Poloidal ', 'tor':'Toroidal ', '':'Total '}[mode]
+
+    title = self.texText( modetitle + 'Energy Density by L-Shell: ' + self.texName(model) + self.texUnit('u') )
+
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
 
     for row, azm in enumerate(azms):
-      for col, field in enumerate(fields):
-        path = self.getPath(azm=azm, model=model, fdrive=fdrive, inertia=1)
-        PW[row, col].setParams( **self.getCoords(path) )
-        PW[row, col].setContour( self.getArray(path, field)[:, :, step] )
+      for col, fdrive in enumerate(fdrives):
 
-    # It's easier to flip through a bunch of PNGs than it is to flip through a bunch of PDFs. These images aren't going in the thesis. 
+        if driving=='J':
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0, inertia=-1)
+        else:
+          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
+
+        coords = self.getCoords(path, 't', 'L0')
+        PW[row, col].setParams( **coords )
+
+        u = self.getArray(path, 'u' + mode)
+        dV = self.getArray(path, 'dV')[:, :, None]
+        dU = u*dV
+        UofL = np.sum(dU, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL = np.sum(dV, axis=1)
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+        uofL = UofL/VofL
+        PW[row, col].setContour(uofL)
+
     if self.savepath is not None:
-      return PW.render(self.savepath + name + '.pdf')
+      return PW.render(self.savepath + 'u' + mode + 'layers_' + driving + '_' + str(model) + '.pdf')
     else:
       return PW.render()
-
-
-
-
-
-
-
 
   # ===========================================================================
   # ============================== Power Density from J dot E and Poynting Flux
@@ -779,8 +981,8 @@ class tunaPlotter:
 
     rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
 
-    colLabels = ( '{\\displaystyle \\frac{-1}{\\mu_0} \\nabla \\cdot E_y B^*_x}', 
-                  '{\\displaystyle \\frac{1}{\\mu_0} \\nabla \\cdot E_x B^*_y}', 
+    colLabels = ( '{\\displaystyle \\partial_\\parallel S_P}', 
+                  '{\\displaystyle \\partial_\\parallel S_T}', 
                   '{\\displaystyle J_\\parallel E_\parallel}',
                   '{\\displaystyle \\underline{J}_\\bot \\cdot \\underline{E}_\\bot}'
                  )
@@ -1223,60 +1425,6 @@ class tunaPlotter:
 
 
 
-
-
-  # ===========================================================================
-  # ================================ Energy Density, Binned by L-Shell, vs Time
-  # ===========================================================================
-
-  def plotLayers(self, model=1, driving='J'):
-
-    tmax = 300
-
-    azms = self.getValues('azm')
-
-    fdrives = self.getValues('fdrive')
-
-    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log')
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    driveLabel = 'Current' if driving=='J' else 'Compression'
-
-    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
-
-    title = self.texText( 'Energy Density by L-Shell: ' + self.texName(model) + self.texUnit('u') )
-
-    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
-
-    for row, azm in enumerate(azms):
-      for col, fdrive in enumerate(fdrives):
-
-        if driving=='J':
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0)
-        else:
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
-
-        coords = self.getCoords(path, 't', 'L0')
-        coords['x'] = coords['x'][:tmax]
-        PW[row, col].setParams( **coords )
-
-        u = ( self.getArray(path, 'upol') + self.getArray(path, 'utor') )[:, :, :tmax]
-        dV = self.getArray(path, 'dV')[:, :, None]
-
-        dU = u*dV
-
-        UofL = np.sum(dU, axis=1)
-        # Careful... dV is 0 at the edges. 
-        VofL = np.sum(dV, axis=1)
-        VofL[0], VofL[-1] = VofL[1], VofL[-2]
-        uofL = UofL/VofL
-        PW[row, col].setContour(uofL)
-
-    if self.savepath is not None:
-      return PW.render(self.savepath + 'ulayers_' + driving + '_' + str(model) + '.pdf')
-    else:
-      return PW.render()
 
   # ===========================================================================
   # ================================================================ Sym-H Plot
@@ -2045,65 +2193,40 @@ class plotColors(dict):
   # ---------------------------------------------------------------------------
 
   def linTicksLevels(self, zmax):
+    # We put zmax at the top of the top color level. Ticks go at the middle of
+    # color levels, as they do with symlog plots. 
     self.zmax = zmax
-    ticks = np.linspace( -self.zmax, self.zmax, self.nticks)
     levels = np.linspace(-self.zmax, self.zmax, self.ncolors)
+    ticks = 0.5*( levels[1:] + levels[:-1] )
     # Make sure that the middle tick is exactly zero. 
     ticks[ len(ticks)/2 ] = 0.
     return ticks, levels
 
-
   def phaseTicksLevels(self, zmax):
     self.zmax = np.pi/2
     self.zmin = 0
-
     self.nticks = self.ncolors
-
     ticks = np.linspace(self.zmin, self.zmax, self.nticks)
     levels = np.linspace(self.zmin, self.zmax, self.ncolors)
     return ticks, levels
 
-
-
-
-
   def logTicksLevels(self, zmax):
-
     # Ticks are located at powers of ten. Color levels are centered on ticks. 
     power = np.ceil(np.log10(zmax) - 0.5)
-
     # Each color spans a factor of root ten. This is in contrast to the
     # symmetric log scale, where each color was a whole order of magnitude. The
     # goal is to, for each, have the same number of colors and the same number
     # of orders of magnitude. 
-
     # Symetric log scale with 7 colors will have three positive powers of ten,
     # three negative powers, and zero. The log scale will just have three
     # positive powers. Anything below there will automatically show 0, though
     # it won't be marked explicitly on the color bar. 
-
     self.zmax = 10.**(power + 0.25)
-
-#    self.zmin = self.zmax/10**(self.nticks/2 - 0.5)
     self.zmin = self.zmax/10**(self.nticks/2 + 0.5)
-
-#    ticks = [ 10**(power - 0.5*i) for i in range(self.nticks - 2) ]
     ticks = [ 10**(power - 0.5*i) for i in range(self.nticks) ]
-
     logMin, logMax = np.log10(self.zmin), np.log10(self.zmax)
-
-#    levels = np.logspace(logMin, logMax, self.ncolors - 2)
     levels = np.logspace(logMin, logMax, self.ncolors)
-
     return ticks, levels
-
-#    # One tick at each order of magnitude. 
-#    power = int( np.floor( np.log10(self.zmax) ) )
-#    self.zmin = self.zmax/10**self.nticks
-#    ticks = [ 10**(power - i) for i in range(self.nticks) ]
-#    logMin, logMax = np.log10(self.zmin), np.log10(self.zmax)
-#    levels = np.logspace(logMin, logMax, self.ncolors)
-#    return ticks, levels
 
   def symTicksLevels(self, zmax):
     # Ticks are located at powers of ten. Color levels are centered on ticks. 
@@ -2359,6 +2482,16 @@ def com(x):
     # Shave off the parentheses then split into real and imaginary parts. 
     re, im = x[1:-1].split(',')
     return (float(re) + float(im)*1j)
+
+# Given kargs full of lists, return a list of kargs. Or just one of them. 
+def loopover(pick=False, **kargs):
+  lo = [ [] ]
+  for key, vals in kargs.items():
+    lo = [ l + [ (key, v) ] for l in lo for v in vals ]
+  if pick is True:
+    return [ dict( choice(lo) )  ]
+  else:
+    return [ dict(l) for l in lo ]
 
 # Turn a string into a float or integer. 
 def num(x):
