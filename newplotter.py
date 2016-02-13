@@ -49,8 +49,22 @@ def main():
   # want the output to be saved as in image instead of displayed. 
   TP = tunaPlotter('-i' in argv)
 
-  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), compare=('S', 'u'), pick=False ):
-      TP.plotJetc(**kargs)
+
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('BE', 'PT'), pick=False ):
+#    TP.plotUlines(**kargs)
+
+  TP.plotUlines(fdrive=0.022, mode='BE')
+
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('B', 'E', 'pol', 'tor'), pick=True ):
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('pol', 'tor'), pick=False ):
+#    TP.plotucolor(**kargs)
+
+
+
+
+
+#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), compare=('S', 'u'), pick=False ):
+#      TP.plotJetc(**kargs)
 
 #  for kargs in loopover( model=(1,2,3,4), mode=('', 'pol', 'tor'), pick=False ):
 #    TP.plotLayers(driving='J', **kargs)
@@ -260,8 +274,8 @@ class tunaPlotter:
       paths = [ p for p in paths if self.paths[p][key]==val ]
     # If there's anything other than exactly one match, something is wrong. 
     if len(paths)<1:
-      print 'ERROR: No matching path found for ', kargs
-      exit()
+      print 'WARNING: No matching path found for ', kargs
+      return None
     elif len(paths)>1:
       print 'ERROR: Multiple matching paths found for ', kargs
       exit()
@@ -315,7 +329,7 @@ class tunaPlotter:
              'L0':self.texText('L'), 
              'lat':self.texText('Latitude'), 
              'lat0':self.texText('Latitude'), 
-             'logU':self.texText('Log Energy'), 
+             'logU':self.texText('Log ') + 'U', 
              'logsigma':self.texText('Log Conductivity'), 
              'logsymh':self.texText('Log Amplitude'), 
              'logalt':self.texText('Log Altitude'), 
@@ -592,6 +606,9 @@ class tunaPlotter:
     # Toroidal magnetic field contribution to the energy density. 
     elif name=='uBy':
       return 0.5*self.getArray(path, 'By')**2 / self.mu0
+    # Magnetic field contribution to the energy density. 
+    elif name=='uB':
+      return self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
     # Toroidal electric field contribution to the energy density. 
     elif name=='uEx':
       E, epsPerp = self.getArray(path, 'Ex'), self.getArray(path, 'epsPerp')
@@ -600,6 +617,9 @@ class tunaPlotter:
     elif name=='uEy':
       E, epsPerp = self.getArray(path, 'Ey'), self.getArray(path, 'epsPerp')
       return 0.5*epsPerp[:, :, None]*E[:, :, :]**2
+    # Magnetic field contribution to the energy density. 
+    elif name=='uE':
+      return self.getArray(path, 'uEx') + self.getArray(path, 'uEy')
     # Poloidal energy density. 
     elif name=='upol':
       return self.getArray(path, 'uEy') + self.getArray(path, 'uBx')
@@ -705,6 +725,104 @@ class tunaPlotter:
     if coords['y'] is None:
       del coords['y']
     return coords
+
+  # ===========================================================================
+  # ============================== Line Plot of Energy vs Time, Fixed Frequency
+  # ===========================================================================
+
+  def plotUlines(self, fdrive, mode):
+    azms = self.getValues('azm')
+    models = self.getValues('model')
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=False)
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texName(model) for model in models ]
+
+    if mode=='BE':
+      modetitle = 'Electric (Blue) and Magnetic (Red)'
+    else:
+      modetitle = 'Poloidal (Blue) and Toroidal (Red)'
+
+    title = self.texText(modetitle + ' Energy: ' + self.texFreq(fdrive) + 'Current')
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0, inertia=-1)
+        if path is None:
+          continue
+
+        PW[row, col].setParams( **self.getCoords(path, 't', 'logU') )
+
+        if mode=='BE':
+          U1, U2 = self.getArray(path, 'UE'), self.getArray(path, 'UB')
+        else:
+          U1, U2 = self.getArray(path, 'Upol'), self.getArray(path, 'Utor')
+
+        t = self.getArray(path, 't')
+
+        PW[row, col].setLine(t, np.log10(U1), 'b')
+        PW[row, col].setLine(t, np.log10(U2), 'r')
+
+        if mode=='BE':
+          mean1, mean2 = np.mean(U1), np.mean(U2)
+          PW[row, col].setLine(t, np.log10(mean1)*np.ones(t.shape), 'b:')
+          PW[row, col].setLine(t, np.log10(mean2)*np.ones(t.shape), 'r:')
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'U_' + mode + '_' + znt(1e3*fdrive, 3) + 'mHz.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ============= Contour Plot of Shell Energy Density vs Time, Fixed Frequency
+  # ===========================================================================
+
+  def plotucolor(self, fdrive, mode):
+    azms = self.getValues('azm')
+    models = self.getValues('model')
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar='log', zmax=0.1)
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    colLabels = [ self.texName(model) for model in models ]
+
+    modetitle = {'':'', 'B':'Magnetic ', 'E':'Electric ', 'pol':'Poloidal ', 'tor':'Toroidal '}[mode]
+
+    title = self.texText(modetitle + 'Energy Density by L-Shell: ' + self.texFreq(fdrive) + 'Current')
+    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
+    for row, azm in enumerate(azms):
+      for col, model in enumerate(models):
+        path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0, inertia=-1)
+        if path is None:
+          continue
+        PW[row, col].setParams( **self.getCoords(path, 't', 'L0') )
+        u, dV = self.getArray(path, 'u' + mode), self.getArray(path, 'dV')
+
+        dU = u*dV[:, :, None]
+        UofL = np.sum(dU, axis=1)
+
+        VofL = np.sum(dV, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+
+        uofL = UofL/VofL[:, None]
+
+        PW[row, col].setContour(uofL)
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'ucolor_' + mode + '_' + znt(1e3*fdrive, 3) + 'mHz.pdf')
+    else:
+      return PW.render()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # ===========================================================================
   # ============================================== Parallel Current, etc, at RI
@@ -920,56 +1038,6 @@ class tunaPlotter:
       return PW.render()
 
   # ===========================================================================
-  # ================================ Energy Density, Binned by L-Shell, vs Time
-  # ===========================================================================
-
-  def plotLayers(self, model=1, driving='J', mode=''):
-
-    azms = self.getValues('azm')
-
-    fdrives = self.getValues('fdrive')
-
-    PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log')
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    driveLabel = 'Current' if driving=='J' else 'Compression'
-
-    colLabels = [ self.texText(format(1e3*f, '.0f') + 'mHz ' + driveLabel) for f in fdrives ]
-
-    modetitle = {'pol':'Poloidal ', 'tor':'Toroidal ', '':'Total '}[mode]
-
-    title = self.texText( modetitle + 'Energy Density by L-Shell: ' + self.texName(model) + self.texUnit('u') )
-
-    PW.setParams(colLabels=colLabels, rowLabels=rowLabels, title=title)
-
-    for row, azm in enumerate(azms):
-      for col, fdrive in enumerate(fdrives):
-
-        if driving=='J':
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, bdrive=0, inertia=-1)
-        else:
-          path = self.getPath(azm=azm, model=model, fdrive=fdrive, jdrive=0)
-
-        coords = self.getCoords(path, 't', 'L0')
-        PW[row, col].setParams( **coords )
-
-        u = self.getArray(path, 'u' + mode)
-        dV = self.getArray(path, 'dV')[:, :, None]
-        dU = u*dV
-        UofL = np.sum(dU, axis=1)
-        # Careful... dV is 0 at the edges. 
-        VofL = np.sum(dV, axis=1)
-        VofL[0], VofL[-1] = VofL[1], VofL[-2]
-        uofL = UofL/VofL
-        PW[row, col].setContour(uofL)
-
-    if self.savepath is not None:
-      return PW.render(self.savepath + 'u' + mode + 'layers_' + driving + '_' + str(model) + '.pdf')
-    else:
-      return PW.render()
-
-  # ===========================================================================
   # ============================== Power Density from J dot E and Poynting Flux
   # ===========================================================================
 
@@ -1140,7 +1208,7 @@ class tunaPlotter:
       return PW.render()
 
   # ===========================================================================
-  # ========================= Line Plot of Poloidal and Toroidal Energy vs Time
+  # ========== Line Plot of Poloidal and Toroidal Energy vs Time, Fixed Profile
   # ===========================================================================
 
   def plotUPUT(self, model=1, driving='J'):
@@ -1698,7 +1766,7 @@ class plotWindow:
     # That's the unit we use to specify the relative sizes of plot elements. 
     sideMargin = 40
     cellPadding = 5
-    titleMargin = 25
+    titleMargin = 15
     headMargin = 10
     footMargin = 15
     # The size of each subplot depends on how many columns there are. The total
@@ -1880,20 +1948,37 @@ class plotWindow:
       ymin = np.floor( float( format(self.ymin(), '.4e') ) )
       ymax = np.ceil( float( format(self.ymax(), '.4e') ) )
       self.setParams( xlims=(xmin, xmax), ylims=(ymin, ymax) )
-      # Remove the text from all axes except the edge ones. 
-      for cell in self.cells[:-1, :].flatten():
-        cell.setParams( xlabel='', xticklabels=() )
+
+      print 'ymin, ymax = ', ymin, ymax
+
+      # Try to de-cramp cramped plots a bit. 
+      if ymin==2 and ymax==6:
+        for cell in self.cells.flatten():
+          cell.setParams( yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
+
+      if ymin==2 and ymax==10:
+        for cell in self.cells.flatten():
+          cell.setParams( yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
+
+      # Only the leftmost cells get y axis labels and tick labels. 
       for cell in self.cells[:, 1:].flatten():
         cell.setParams( ylabel='', yticklabels=() )
+      # Try to de-cramp cramped plots a bit. 
+      if xmin==1 and xmax==300:
+        for cell in self.cells.flatten():
+          cell.setParams( xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+      # Only the bottom cells get x axis labela and tick labels. 
+      for cell in self.cells[:-1, :].flatten():
+        cell.setParams( xlabel='', xticklabels=() )
+    # Sometimes, oddly, different things might go on different axes. 
     else:
       [ cell.setParams(rightlabel=True) for cell in self.cells[:, -1] ]
-
     # Use the most extreme contour value among all plots to set the color bar. 
     if self.zmaxManual is not None:
       colors = plotColors(zmax=self.zmaxManual, cax=self.cax, colorbar=self.colorbar, ncolors=self.ncolors)
     else:
       colors = plotColors(zmax=self.zmax(), cax=self.cax, colorbar=self.colorbar, ncolors=self.ncolors)
-
+    # Send the color params to each cell. 
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
     # If given a filename, save the image. 
     if filename is not None:
@@ -1981,6 +2066,9 @@ class plotCell:
       # Set the horizontal axis tick labels. 
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
+      # Set the horizontal axis ticks. 
+      elif key=='xticks':
+        self.ax.set_xticks(val)
       # Vertical axis coordinate. 
       elif key=='y':
         self.y = val
@@ -2000,6 +2088,9 @@ class plotCell:
       # Set the vertical axis tick labels. 
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
+      # Set the vertical axis ticks. 
+      elif key=='yticks':
+        self.ax.set_yticks(val)
       # Report any unfamiliar parameters. 
       else:
         print 'WARNING: Unknown param ', key, ' = ', val
@@ -2120,12 +2211,17 @@ class plotCell:
 #      self.ax.set_yticklabels(labels)
 
     # These subplots can get cramped. Let's reduce the number of ticks. 
-
     if not self.xlog:
-      self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
+      if self.xlims==(0, 300):
+        pass
+#        print 'xlims are 0 to 300'
+#        self.ax.set_xticks( (0, 100, 200, 300) )
+#        print self.ax.get_xticklabels()
+#        if all( label=='' for label in self.ax.get_xticklabels() ):
+#          self.ax.set_xticklabels( ('$0$', '', '', '$300$') )
+      else:
+        self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
                                                        integer=True) )
-
-
 
     if self.ylog:
       pass
