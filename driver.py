@@ -37,6 +37,7 @@ parameters = {
               'azm':[1, 4, 16, 64],
               'lmin':[5],
               'lmax':[7],
+              'inertia':[1],
               'n1':[70],
 #              'fdrive':[0.010],
               'model':[2]
