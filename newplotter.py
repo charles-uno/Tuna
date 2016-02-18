@@ -65,8 +65,14 @@ def main():
 #  for kargs in loopover( model=(1,2,3,4), mode=('', 'pol', 'tor'), pick=False ):
 #    TP.plotLayers(driving='J', **kargs)
 
-  for kargs in loopover( fdrive=TP.getValues('fdrive'), pick=('-i' not in argv) ):
-    TP.plotToroidalFreq(**kargs)
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), pick=('-i' not in argv) ):
+#    TP.plotToroidalFreq(**kargs)
+
+#  for kargs in loopover( path=[ p for p in TP.paths ], pick=('-i' not in argv) ):
+#    TP.plotEz(**kargs)
+
+  for kargs in loopover( path=[ p for p in TP.paths ], pick=('-i' not in argv) ):
+    TP.plotZoom(**kargs)
 
 #  for kargs in loopover( model=(1, 2, 3, 4), pick=('-i' not in argv) ):
 #    TP.plotToroidal(**kargs)
@@ -243,10 +249,8 @@ class tunaPlotter:
 
   # Grab all parameters from a parameter input file. 
   def getParams(self, path):
-    # Parameters are returned as a dictionary. Make sure that every dictionary
-    # contains both bdrive and jdrive (one of which will be overwritten). Also
-    # note that the default value is to have inertial effects turned off. 
-    params = {'bdrive':0, 'jdrive':0, 'inertia':-1}
+    # Parameters are returned as a dictionary. We add some default parameters at the beginning so we don't run into any key errors while filtering runs. 
+    params = {'bdrive':0, 'jdrive':0, 'inertia':-1, 'fdrive':0.016, 'azm':0}
     # The input file has one parameter per line, 'key = val'. 
     with open(path + 'params.in', 'r') as paramsfile:
       paramlines = paramsfile.readlines()
@@ -946,6 +950,135 @@ class tunaPlotter:
       return PW.render()
 
   # ===========================================================================
+  # ========================================= Parallel Electric Field Snapshots
+  # ===========================================================================
+
+  def plotEz(self, path):
+
+    azm, fdrive, model = self.paths[path]['azm'], self.paths[path]['fdrive'], self.paths[path]['model']
+
+    # The runs at inertial timescales are only about 100s. 
+    if 'LMIN' in path:
+      steps = (79, 84, 89, 94, 99)
+    else:
+      steps = (259, 269, 279, 289, 299)
+
+    zmax = 10
+
+    PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
+
+    Ex, Ey, Ez = self.getArray(path, 'Ex'), self.getArray(path, 'Ey'), self.getArray(path, 'Ez')
+
+    scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
+
+    for row, step in enumerate(steps):
+
+      PW[row, 0].setContour( Ex[:, :, step] )
+      PW[row, 1].setContour( Ey[:, :, step] )
+      PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
+
+    colLabels = [ self.texName('Ex'), self.texName('Ey'), '10^{' + znt(scalefac) + '} \\times ' + self.texName('Ez') ]
+
+    rowLabels = [ self.texText(str(s+1) + 's') for s in steps ]
+
+    title = self.texText('Electric Field Snapshots' + self.texUnit('E') + ': ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current, ') + 'm = ' + znt(azm)
+
+    name = 'E_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+
+    PW.setParams( collabels=colLabels, rowlabels=rowLabels, title=title, **self.getCoords(path) )
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+  # ===========================================================================
+  # ========================================= Parallel Electric Field Snapshots
+  # ===========================================================================
+
+  def plotZoom(self, path):
+
+    azm, fdrive, model = self.paths[path]['azm'], self.paths[path]['fdrive'], self.paths[path]['model']
+
+    title = self.texText('Parallel Electric Field at the Ionosphere (\\frac{mV}{m}): ' + self.texName(model) + ', 16mHz Current, ') + 'm = ' + znt(azm)
+
+    PW = plotWindow(ncols=1, nrows=1, colorbar='sym')
+
+    Ez = self.getArray(path, 'Ez')
+
+    PW.setParams( ylims=(100, 1000), title=title )
+    PW.setParams( outline=True, **self.getCoords(path, 'lat', 'alt') )
+
+    PW.setContour( Ez[:, :, 99] )
+
+    return PW.render()
+
+    '''
+    print 'azm values: ', self.getValues('azm')
+    print 'fdrive values: ', self.getValues('fdrive')
+    print 'model values: ', self.getValues('model')
+
+    azms = self.getValues('azm')
+
+    PW = plotWindow(ncols=1, nrows=len(azms), colorbar='sym', outline=True)
+
+    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    title = self.texText('Parallel Electric Field in the Ionosphere ' + self.texUnit('E') + ': Quiet Day, 100s of 16mHz Current')
+
+    PW.setParams(rowlabels=rowLabels, title=title)
+
+    for row, azm in enumerate(azms):
+      path = self.getPath(azm=azm)
+      PW.setParams(**self.getCoords(path, 'lat', 'alt') )
+      Ez = self.getArray(path, 'Ez')
+      PW.setContour( Ez[:, :, -1] )
+
+    return PW.render()'''
+
+
+
+    steps = (259, 269, 279, 289, 299)
+
+    zmax = 10
+
+    PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
+
+    Ex, Ey, Ez = self.getArray(path, 'Ex'), self.getArray(path, 'Ey'), self.getArray(path, 'Ez')
+
+    scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
+
+    for row, step in enumerate(steps):
+
+      PW[row, 0].setContour( Ex[:, :, step] )
+      PW[row, 1].setContour( Ey[:, :, step] )
+      PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
+
+    colLabels = [ self.texName('Ex'), self.texName('Ey'), '10^{' + znt(scalefac) + '} \\times ' + self.texName('Ez') ]
+
+    rowLabels = [ self.texText(str(s+1) + 's') for s in steps ]
+
+    title = self.texText('Electric Field Snapshots' + self.texUnit('E') + ': ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current, ') + 'm = ' + znt(azm)
+
+    name = 'E_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+
+    PW.setParams( collabels=colLabels, rowlabels=rowLabels, title=title, **self.getCoords(path) )
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + name + '.pdf')
+    else:
+      return PW.render()
+
+
+
+
+
+
+
+
+
+
+  # ===========================================================================
   # ============================================== Parallel Current, etc, at RI
   # ===========================================================================
 
@@ -1591,20 +1724,6 @@ class tunaPlotter:
       return PW.render(self.savepath + 'Stor_' + znt(1e3*fdrive, 3) + 'mHz.pdf')
     else:
       return PW.render()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   # ===========================================================================
   # ================================================================ Sym-H Plot

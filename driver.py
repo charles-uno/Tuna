@@ -25,16 +25,21 @@ from time import localtime as lt, time
 # If we want to give this run a custom directory name, put that here. 
 runDirName = 'tuna'
 
+# If running anything at crazy high resolution, use this flag to just request
+# the maximum allowed runtime. 
+USE_MAX_TIME = False
+
 # Tuna includes default values, which it uses for any parameter not specified. 
 parameters = {
               'jdrive':[4e-4], 
 #              'bdrive':[10], 
-              'tmax':[0],
-#              'azm':[1, 2, 4, 8, 16, 32, 64],
-#              'lpp':[6],
-              'ldrive':[6],
-              'fdrive':[0.010],
-              'model':[1, 2, 3, 4]
+              'tmax':[100],
+              'azm':[1, 4, 16, 64],
+              'lmin':[5],
+              'lmax':[7],
+              'n1':[70],
+#              'fdrive':[0.010],
+              'model':[2]
              }
 
 # #############################################################################
@@ -213,15 +218,14 @@ def setParams(run):
 
 # If running on Itasca, the job is submitted to the queue using a PBS script. 
 def setPBS(run):
-
+  global USE_MAX_TIME
   # A 100s run should run in about an hour if there are no inertial effects. We
   # ask for four just to be safe. Resolving inertial length scales slows this
   # significantly. We just request the maximum allowed runtime.  
-  if 'inertia' in run and run['inertia']>0 and 'lmin' in run and run['lmin']>3:
+  if USE_MAX_TIME is True:
     hours = '96'
   else:
     hours = znt(1 if 'tmax' not in run else ceil(run['tmax']/25.) )
-
   # Write out the PBS script. 
   append('#!/bin/bash -l', 'tuna.pbs')
   # Indicate the size and length of the job. 
@@ -229,14 +233,12 @@ def setPBS(run):
   # Get email when the job begins, ends, or aborts. 
   append('#PBS -m abe', 'tuna.pbs')
   append('#PBS -M mceachern@physics.umn.edu', 'tuna.pbs')
-
   # Use the SandyBridge queue. That's 16-core nodes. The sb128 queue allows a
   # higher walltime limit, but has fewer nodes. Use it only for inertial runs. 
-  if 'inertia' in run and run['inertia']>0 and 'lmin' in run and run['lmin']>3:
+  if USE_MAX_TIME is True:
     append('#PBS -q sb128', 'tuna.pbs')
   else:
     append('#PBS -q sb', 'tuna.pbs')
-
   # Specify run name. 
   append('#PBS -N '+run['name'], 'tuna.pbs')
   # Execute in the directory we've created for this run. 
