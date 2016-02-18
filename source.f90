@@ -1704,6 +1704,15 @@ module ionos
     if ( intSig0 .le. 0 ) intSig0 = integrate(getIonos('sig0'), getIonos('r'), RE, RI )
     if ( intSigH .le. 0 ) intSigH = integrate(getIonos('sigH'), getIonos('r'), RE, RI )
     if ( intSigP .le. 0 ) intSigP = integrate(getIonos('sigP'), getIonos('r'), RE, RI )
+
+    call writeParam('Sigma0, integrated RE to RI', 1000*intSig0, 'Mho')
+    call writeParam('SigmaP, integrated RE to RI', 1000*intSigP, 'Mho')
+    call writeParam('SigmaH, integrated RE to RI', 1000*intSigH, 'Mho')
+
+    call writeParam('Sigma0, integrated everywhere', 1000*integrate(getIonos('sig0'), getIonos('r'), RE, maxval( getIonos('r') ) ), 'Mho')
+    call writeParam('SigmaP, integrated everywhere', 1000*integrate(getIonos('sigP'), getIonos('r'), RE, maxval( getIonos('r') ) ), 'Mho')
+    call writeParam('SigmaH, integrated everywhere', 1000*integrate(getIonos('sigH'), getIonos('r'), RE, maxval( getIonos('r') ) ), 'Mho')
+
   end subroutine atmSetup
 
   ! ----------------------------------------------------------------------------------------------

@@ -29,8 +29,8 @@ runDirName = 'tuna'
 parameters = {
               'jdrive':[4e-4], 
 #              'bdrive':[10], 
-              'tmax':[300],
-              'azm':[1, 2, 4, 8, 16, 32, 64],
+              'tmax':[0],
+#              'azm':[1, 2, 4, 8, 16, 32, 64],
 #              'lpp':[6],
               'ldrive':[6],
               'fdrive':[0.010],
