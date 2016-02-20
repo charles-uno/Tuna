@@ -68,11 +68,13 @@ def main():
 #  for kargs in loopover( fdrive=TP.getValues('fdrive'), pick=('-i' not in argv) ):
 #    TP.plotToroidalFreq(**kargs)
 
-#  for kargs in loopover( path=[ p for p in TP.paths ], pick=('-i' not in argv) ):
-#    TP.plotEz(**kargs)
-
   for kargs in loopover( path=[ p for p in TP.paths ], pick=('-i' not in argv) ):
-    TP.plotZoom(**kargs)
+    TP.plotEz(**kargs)
+
+#  TP.plotPlasmaFreq()
+
+#  for kargs in loopover( azm=(1, 4, 16, 64), step=(79, 84, 89, 94, 99), pick=('-i' not in argv) ):
+#    TP.plotZoom(**kargs)
 
 #  for kargs in loopover( model=(1, 2, 3, 4), pick=('-i' not in argv) ):
 #    TP.plotToroidal(**kargs)
@@ -250,7 +252,7 @@ class tunaPlotter:
   # Grab all parameters from a parameter input file. 
   def getParams(self, path):
     # Parameters are returned as a dictionary. We add some default parameters at the beginning so we don't run into any key errors while filtering runs. 
-    params = {'bdrive':0, 'jdrive':0, 'inertia':-1, 'fdrive':0.016, 'azm':0}
+    params = {'bdrive':0, 'jdrive':0, 'inertia':-1, 'fdrive':0.016, 'azm':0, 'n1':150}
     # The input file has one parameter per line, 'key = val'. 
     with open(path + 'params.in', 'r') as paramsfile:
       paramlines = paramsfile.readlines()
@@ -322,7 +324,7 @@ class tunaPlotter:
              'C':'\\cos\\theta / \\cos\\theta_0', 
              'Ex':'E_x', 
              'Ey':'E_y', 
-             'Ez':'E_\\parallel', 
+             'Ez':'E_z', 
              'f':self.texText('Frequency'), 
              'imag':self.texText('\\mathbb{I}m'), 
              'J':self.texText('Current'), 
@@ -450,6 +452,7 @@ class tunaPlotter:
              'sigma':'\\frac{mS}{m}',
              'S/m':'\\frac{S}{m}',
              'mS/m':'\\frac{mS}{m}',
+             'rad/s':'\\frac{rad}{s}',
              'S':'\\frac{mW}{m^2}',
              'Stor':'\\frac{mW}{m^2}',
              'Spol':'\\frac{mW}{m^2}',
@@ -516,6 +519,9 @@ class tunaPlotter:
     # Radius in Mm (from RE). 
     elif name=='r':
       return self.RE*self.readArray(path + 'r.dat')
+    # Number density in 1/Mm^3, from 1/cm^3. 
+    elif name=='n':
+      return 1e24*self.readArray(path + 'n.dat')
     # Perpendicular electric constant, from units of eps0 to mF/m. 
     elif name=='epsPerp' or name=='epsp':
       return self.eps0*self.readArray(path + 'epsPerp.dat')
@@ -741,6 +747,27 @@ class tunaPlotter:
     if coords['y'] is None:
       del coords['y']
     return coords
+
+  # ===========================================================================
+  # ================================================= Plasma Frequency Profiles
+  # ===========================================================================
+
+  def plotPlasmaFreq(self):
+    # Create the window. Note that the plasma frequency depends only on the
+    # number density, which is the same for all runs. 
+    PW = plotWindow(nrows=1, ncols=1, colorbar='log', zmax=5e6)
+    path = [ p for p in self.paths ][0]
+
+    PW.setParams( **self.getCoords(path) )
+    n = self.getArray(path, 'n')
+    PW.setContour( np.sqrt( n*self.qe**2 / (self.me*self.eps0) ) )
+
+    PW.setParams( title=self.texText('Plasma Frequency ') + self.texUnit('rad/s') )
+
+    if self.savepath is not None:
+      return PW.render(self.savepath + 'op.pdf')
+    else:
+      return PW.render()
 
   # ===========================================================================
   # ================= Contour Plot of Edge Field Value vs Time, Fixed Frequency
@@ -996,87 +1023,63 @@ class tunaPlotter:
   # ========================================= Parallel Electric Field Snapshots
   # ===========================================================================
 
-  def plotZoom(self, path):
+  def plotZoom(self, azm, step=99):
+    fdrive = 0.016
+    model = 2
+    lmin = 5
 
-    azm, fdrive, model = self.paths[path]['azm'], self.paths[path]['fdrive'], self.paths[path]['model']
+#    self.setPaths('/media/My Passport/RUNS/LMIN_LMAX/inertia_on')
+#    azms = self.getValues('azm')
+#    title = self.texText('Parallel Electric Field (\\frac{mV}{m}): ' + self.texName(model) + ', ' + str(step+1) + 's of 16mHz Current')
+#    colLabels = ( '\\delta x \\sim 7 ' + self.texText('km'), '\\delta x \\sim 0.7 ' + self.texText('km') )
+#    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+#    PW = plotWindow(ncols=2, nrows=len(azms), colorbar='sym')
+#    PW.setParams( ylims=(100, 1000), title=title, collabels=colLabels, rowlabels=rowLabels )
+#    for row, azm in enumerate(azms):
+#      path = self.getPath(azm=azm)
+#      if path is None:
+#        continue
+#      Ez = self.getArray(path, 'Ez')[:, :, step]
+#      PW[row, 1].setContour(Ez)
+#      # The coordinate arrays will be overwritten, but we want the right column to set the x limits for both columns. 
+#      PW[row, 0].setParams( **self.getCoords(path, 'lat', 'alt') )
+#      PW[row, 1].setParams( **self.getCoords(path, 'lat', 'alt') )
+#    # Now we want to look at the runs with inertial effects but NO inertial length scales. 
+#    self.setPaths('/media/My Passport/RUNS/INERTIA')
+#    for row, azm in enumerate(azms):
+#      path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+#      if path is None:
+#        continue
+#      Ez = self.getArray(path, 'Ez')[:, :, step]
+#      PW[row, 0].setContour(Ez)
+#      PW[row, 0].setParams( **self.getCoords(path, 'lat', 'alt') )
 
-    title = self.texText('Parallel Electric Field at the Ionosphere (\\frac{mV}{m}): ' + self.texName(model) + ', 16mHz Current, ') + 'm = ' + znt(azm)
+#    rc('xtick',  **{'major.pad':'0'} )
+    rc('ytick',  **{'major.pad':'2'} )
 
-    PW = plotWindow(ncols=1, nrows=1, colorbar='sym')
-
-    Ez = self.getArray(path, 'Ez')
-
-    PW.setParams( ylims=(100, 1000), title=title )
+    title = self.texText('Parallel Electric Field (\\frac{mV}{m}): ' + self.texName(model) + ', ' + str(step+1) + 's \\,of 16mHz Current, ') + 'm = ' + znt(azm)
+    rowLabels = ('\\delta x \\! > \\! \\frac{c}{\\omega_P}', '\\delta x \\! < \\! \\frac{c}{\\omega_P}')
+    PW = plotWindow(ncols=1, nrows=2, colorbar='sym')
+    PW.setParams( xlims=(62, 68), ylims=(100, 1000), title=title, rowlabels=rowLabels )
+    self.setPaths('/media/My Passport/RUNS/LMIN_LMAX/inertia_on')
+    path = self.getPath(azm=azm)
+    Ez = self.getArray(path, 'Ez')[:, :, step]
+    PW[1].setContour(Ez)
     PW.setParams( outline=True, **self.getCoords(path, 'lat', 'alt') )
 
-    PW.setContour( Ez[:, :, 99] )
+    self.setPaths('/media/My Passport/RUNS/INERTIA')
+    path = self.getPath(azm=azm, model=model, fdrive=fdrive)
+    Ez = self.getArray(path, 'Ez')[:, :, step]
+    PW[0].setContour(Ez)
+    PW[0].setParams( **self.getCoords(path, 'lat', 'alt') )
 
-    return PW.render()
-
-    '''
-    print 'azm values: ', self.getValues('azm')
-    print 'fdrive values: ', self.getValues('fdrive')
-    print 'model values: ', self.getValues('model')
-
-    azms = self.getValues('azm')
-
-    PW = plotWindow(ncols=1, nrows=len(azms), colorbar='sym', outline=True)
-
-    rowLabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-    title = self.texText('Parallel Electric Field in the Ionosphere ' + self.texUnit('E') + ': Quiet Day, 100s of 16mHz Current')
-
-    PW.setParams(rowlabels=rowLabels, title=title)
-
-    for row, azm in enumerate(azms):
-      path = self.getPath(azm=azm)
-      PW.setParams(**self.getCoords(path, 'lat', 'alt') )
-      Ez = self.getArray(path, 'Ez')
-      PW.setContour( Ez[:, :, -1] )
-
-    return PW.render()'''
-
-
-
-    steps = (259, 269, 279, 289, 299)
-
-    zmax = 10
-
-    PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
-
-    Ex, Ey, Ez = self.getArray(path, 'Ex'), self.getArray(path, 'Ey'), self.getArray(path, 'Ez')
-
-    scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
-
-    for row, step in enumerate(steps):
-
-      PW[row, 0].setContour( Ex[:, :, step] )
-      PW[row, 1].setContour( Ey[:, :, step] )
-      PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
-
-    colLabels = [ self.texName('Ex'), self.texName('Ey'), '10^{' + znt(scalefac) + '} \\times ' + self.texName('Ez') ]
-
-    rowLabels = [ self.texText(str(s+1) + 's') for s in steps ]
-
-    title = self.texText('Electric Field Snapshots' + self.texUnit('E') + ': ' + self.texName(model) + ', ' + self.texFreq(fdrive) + 'Current, ') + 'm = ' + znt(azm)
-
-    name = 'E_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
-
-    PW.setParams( collabels=colLabels, rowlabels=rowLabels, title=title, **self.getCoords(path) )
+    for cell in PW.cells.flatten():
+      cell.ax.yaxis.labelpad = 2
 
     if self.savepath is not None:
-      return PW.render(self.savepath + name + '.pdf')
+      return PW.render(self.savepath + 'Ez_' + znt(azm, 3) + '_' + znt(step+1, 3) + '.pdf')
     else:
       return PW.render()
-
-
-
-
-
-
-
-
-
 
   # ===========================================================================
   # ============================================== Parallel Current, etc, at RI
@@ -1595,6 +1598,7 @@ class tunaPlotter:
       return PW.render(self.savepath + 'va.pdf')
     else:
       return PW.render()
+
 
   # ===========================================================================
   # ============================== Contour Plot of Time-Averaged Energy Density
@@ -2418,8 +2422,9 @@ class plotColors(dict):
     return ticks, levels
 
   def logTicksLevels(self, zmax):
-    # Ticks are located at powers of ten. Color levels are centered on ticks. 
-    power = np.ceil(np.log10(zmax) - 0.5)
+    # Color levels are centered on ticks. The top tick is a power of ten. Each
+    # subsequent tick is down by sqrt(10). 
+    power = np.ceil(np.log10(zmax) - 0.25)
     # Each color spans a factor of root ten. This is in contrast to the
     # symmetric log scale, where each color was a whole order of magnitude. The
     # goal is to, for each, have the same number of colors and the same number
