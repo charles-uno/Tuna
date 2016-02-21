@@ -10,6 +10,8 @@
 # #################################################################### Synopsis
 # #############################################################################
 
+# This plotter makes plots. The under-the-hood working are defined in plotmod. 
+
 # #############################################################################
 # ##################################################### Import Python Libraries
 # #############################################################################
@@ -24,7 +26,7 @@ def main():
 
 #  TP = tunaPlotter()
 
-#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('BE', 'PT'), pick=('-i' not in argv) ):
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('BE', 'PT') ):
 #    TP.plotUlines(**kargs)
 
   plotSigma()
@@ -49,42 +51,52 @@ def plotSigma():
     with open(datname, 'r') as fileobj:
       lines = fileobj.readlines()
     ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
-    # Chop off the altitudes at 100km and 10000km. 
-    bottom = np.argmin(ionos[:, 0]<100)
-    if np.max( ionos[:, 0] )>1e4:
-      top = np.argmax(ionos[:, 0]>1e4)
-    else:
-      top = len( ionos[:, 0] )
     # Log altitude, rather than altitude on a log scale. 
-    logalt = np.log10( ionos[bottom:top, 0] )
+    logalt = np.log10( ionos[:, 0] )
     # Log conductivity instead of conductivity on a log scale. Values are given
     # in mS/m; plot in S/m. 
-    logsig0 = np.log10( 1e6/( phys.mu0*ionos[bottom:top, 4] ) ) - 3
-    logsigH = np.log10( 4*np.pi*phys.eps0*ionos[bottom:top, 3] ) - 3
-    logsigP = np.log10( 4*np.pi*phys.eps0*ionos[bottom:top, 2] ) - 3
+    logsig0 = np.log10( 1e6/( phys.mu0*ionos[:, 4] ) ) - 3
+    logsigH = np.log10( 4*np.pi*phys.eps0*ionos[:, 3] ) - 3
+    logsigP = np.log10( 4*np.pi*phys.eps0*ionos[:, 2] ) - 3
     # Add the lines to the plot. 
     PW[i].setLine(logsigP, logalt, 'r')
     PW[i].setLine(logsigH, logalt, 'b')
     PW[i].setLine(logsig0, logalt, 'g')
   # Set the labels and title. 
-
-  colLabels = [ self.texText('Active'), self.texText('Quiet') ]
-
-  rowLabels = [ self.texText('Day'), self.texText('Night') ]
-
-  title = self.texText('Pedersen (Blue), Hall (Red), and Parallel (Green) Conductivities')
-
-  xlabel = tex('Log_{10} Conductivity (\\frac{S}{m})')
+  colLabels = [ notex('Active'), notex('Quiet') ]
+  rowLabels = [ notex('Day'), notex('Night') ]
+  title = notex('Pedersen (Blue), Hall (Red), and Parallel (Green) ' + 
+                'Conductivities')
+  xlabel = notex('Log Conductivity (\\frac{S}{m})')
   xlims = (-15, 5)
+  ylabel = notex('Log Altitude (km)')
+  ylims = (2, 4)
+  PW.setParams(collabels=colLabels, rowlabels=rowLabels, xlabel=xlabel, 
+               xlims=xlims, ylabel=ylabel, ylims=ylims, title=title)
+  return PW.render()
 
-  ylabel = tex('Log_{10} Altitude (km)')
+# =============================================================================
+# =================================== Line Plot of Poloidal and Toroidal Energy
+# =============================================================================
 
-  PW.setParams(collabels=colLabels, rowlabels=rowLabels, nxticks=5, xlabel=xlabel, xlims=xlims, ylabel=self.texLabel('logalt'), title=title)
+# Columns are frequency: 13mHz, 16mHz, 19mHz, 22mHz. All current. 
+# Columns are modenumber: 1, 2, 4, 8, 16, 32, 64. 
+# Fix the model. We'll want a figure for day and one for night. 
 
-  if self.savepath is not None:
-    return PW.render(self.savepath + 'sigma.pdf')
-  else:
-    return PW.render()
+# =============================================================================
+# ======================== Contour Plot of Poloidal and Toroidal Energy Density
+# =============================================================================
+
+# Columns are poloidal and toroidal energy density, averaged over an L-shell. 
+# Rows are modenumber: probably 1, 8, 64. Maybe 1, 4, 16, 64. 
+# Fix the model. Only model 1 or only model 2. 
+
+# =============================================================================
+# =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
+# =============================================================================
+
+# Columns are field: active Bq, quiet Bq, active Bf, quiet Bf. 
+# Rows are modenumber: 1, 2, 4, 8, 16, 32, 64. 
 
 
 
@@ -99,9 +111,6 @@ def plotSigma():
         for cell in self.cells.flatten():
           cell.setParams( yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
 
-
-
-
       # Try to de-cramp cramped plots a bit. 
       if xmin==1 and xmax==300:
         for cell in self.cells.flatten():
@@ -110,7 +119,6 @@ def plotSigma():
       if all( cell.xlims==(-15, 5) for cell in self.cells.flatten() ):
         for cell in self.cells.flatten():
           cell.setParams( xticks=(-15, -10, -5, 0, 5), xticklabels=('$-15$', '', '$-5$', '', '$5$') )
-
 
     if self.xlims==(-3, 1):
       self.setParams( xticks=(-3, -2, -1, 0, 1), xticklabels=('$-3$', '$-2$', '$-1$', '$0$', '$1$') )
@@ -153,7 +161,7 @@ def tex(x):
              'X':notex('X (R_E)'), 
              'Z':notex('Z (R_E)')
             }
-    return '?' if x not in texdict else texdict[x]
+  return '?' if x not in texdict else texdict[x]
 
 # #####################################################################
 # ################################################### For Importability

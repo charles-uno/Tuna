@@ -472,7 +472,7 @@ class plotWindow:
     cellPadding = 5
     titleMargin = 15
     headMargin = 10 if ncols>1 else 1
-    footMargin = 15
+    footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
     # width of the subplot area (including padding) will always be the same.
     # No more than four columns are allowed. 
@@ -708,7 +708,7 @@ class plotCell:
       # Keys are caps insensitive. 
       key = key.lower()
       # Sometimes we have to finagle with the number of ticks. 
-      elif key=='nxticks':
+      if key=='nxticks':
         self.nxticks = val
       elif key=='nyticks':
         self.nyticks = val
@@ -1188,12 +1188,13 @@ def com(x):
     re, im = x[1:-1].split(',')
     return (float(re) + float(im)*1j)
 
-# Given kargs full of lists, return a list of kargs. Or just one of them. 
-def loopover(pick=False, **kargs):
+# Given kargs full of lists, return a list of kargs (if we're making a series
+# of images) or just one of them (if we're looking at the plot). 
+def loopover(**kargs):
   lo = [ [] ]
   for key, vals in kargs.items():
     lo = [ l + [ (key, v) ] for l in lo for v in vals ]
-  if pick is True:
+  if '-i' in argv:
     return [ dict( choice(lo) )  ]
   else:
     return [ dict(l) for l in lo ]
@@ -1303,10 +1304,4 @@ def readArray(filename):
   else:
     print 'WARNING: ' + datname + ' not found. '
 
-# #####################################################################
-# ################################################### For Importability
-# #####################################################################
-
-if __name__=='__main__':
-  main()
 
