@@ -29,7 +29,10 @@ def main():
 #  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('BE', 'PT') ):
 #    TP.plotUlines(**kargs)
 
-  plotSigma()
+#  plotSigma()
+
+  for kargs in loopover( fdrive=(0.010, 0.013, 0.016, 0.019, 0.022) ):
+    plotGround(**kargs)
 
   return
 
@@ -95,8 +98,40 @@ def plotSigma():
 # =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
 # =============================================================================
 
-# Columns are field: active Bq, quiet Bq, active Bf, quiet Bf. 
-# Rows are modenumber: 1, 2, 4, 8, 16, 32, 64. 
+def plotGround(fdrive):
+  # The Tuna Plotter is in charge of data access. 
+  TP = tunaPlotter()
+  azms = TP.getValues('azm')
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
+  # Set title and labels. 
+  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex(' Current')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( tex(1) + tex('Bq'), tex(2) + tex('Bq'),
+                tex(1) + tex('Bf'), tex(2) + tex('Bf') )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Iterate through the rows. Each row is its own modenumber. 
+  for row, azm in enumerate(azms):
+    # Grab the data for model 1 and plot it. 
+    path = TP.getPath(model=1, fdrive=fdrive, azm=azm)
+    PW[row, 0].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
+    PW[row, 2].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
+    PW[row, 0].setParams( **TP.getCoords(path, 't', 'lat0') )
+    PW[row, 2].setParams( **TP.getCoords(path, 't', 'lat0') )
+    # Grab the data for model 2 and plot it. 
+    path = TP.getPath(model=2, fdrive=fdrive, azm=azm)
+    PW[row, 1].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
+    PW[row, 3].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
+    PW[row, 1].setParams( **TP.getCoords(path, 't', 'lat0') )
+    PW[row, 3].setParams( **TP.getCoords(path, 't', 'lat0') )
+  # Manually clean up the x axis. 
+  PW.setParams( xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+
+  return PW.render()
+
+
+
+
 
 
 
@@ -124,44 +159,6 @@ def plotSigma():
       self.setParams( xticks=(-3, -2, -1, 0, 1), xticklabels=('$-3$', '$-2$', '$-1$', '$0$', '$1$') )
 
 '''
-
-
-# #############################################################################
-# ###################################################### LaTeX Helper Functions
-# #############################################################################
-
-def notex(x):
-  return '\\operatorname{' + x.replace(' ', '\\;') + '}'
-
-def tex(x):
-  # Format frequencies nicely. 
-  if isinstance(x, float):
-    return notex(format(1e3*x, '.0f') + 'mHz ')
-  # Check the input against our dictionary of LaTeX strings. 
-  texdict = {
-             # Spell out what each model means. 
-             1:notex('Active Day'),
-             2:notex('Quiet Day'),
-             3:notex('Active Night'),
-             4:notex('Quiet Night'),
-             # Electric and magnetic field components. 
-             'Bf':'B_\\phi', 
-             'Bq':'B_\\theta', 
-             'Bx':'B_x', 
-             'By':'B_y', 
-             'Bz':'B_z', 
-             'Ex':'E_x', 
-             'Ey':'E_y', 
-             'Ez':'E_z', 
-             # Axis labels. 
-             'alt':notex('Altitude (km)'), 
-             'lat':notex('Latitude (^\\circ)'), 
-             't':notex('Time (s)'), 
-             'logU':notex('Log_{10}') + 'U', 
-             'X':notex('X (R_E)'), 
-             'Z':notex('Z (R_E)')
-            }
-  return '?' if x not in texdict else texdict[x]
 
 # #####################################################################
 # ################################################### For Importability

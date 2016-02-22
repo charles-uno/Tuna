@@ -52,6 +52,46 @@ class phys():
   RE = 6.378388 # Mm
   RI = 6.478388 # Mm
 
+
+
+# #############################################################################
+# ###################################################### LaTeX Helper Functions
+# #############################################################################
+
+def notex(x):
+  return '\\operatorname{' + x.replace(' ', '\\;') + '}'
+
+def tex(x):
+  # Format frequencies nicely. 
+  if isinstance(x, float):
+    return notex(format(1e3*x, '.0f') + 'mHz ')
+  # Check the input against our dictionary of LaTeX strings. 
+  texdict = {
+             # Spell out what each model means. 
+             1:notex('Active Day'),
+             2:notex('Quiet Day'),
+             3:notex('Active Night'),
+             4:notex('Quiet Night'),
+             # Electric and magnetic field components. 
+             'Bf':'B_\\phi', 
+             'Bq':'B_\\theta', 
+             'Bx':'B_x', 
+             'By':'B_y', 
+             'Bz':'B_z', 
+             'Ex':'E_x', 
+             'Ey':'E_y', 
+             'Ez':'E_z', 
+             # Axis labels. 
+             'alt':notex('Altitude (km)'), 
+             'lat':notex('Latitude (^\\circ)'), 
+             'lat0':notex('Latitude (^\\circ)'), 
+             't':notex('Time (s)'), 
+             'logU':notex('Log_{10}') + 'U', 
+             'X':notex('X (R_E)'), 
+             'Z':notex('Z (R_E)')
+            }
+  return '?' if x not in texdict else texdict[x]
+
 # #############################################################################
 # ######################################################### Tuna Plotter Object
 # #############################################################################
@@ -381,8 +421,8 @@ class tunaPlotter:
     # The "unwrap" flag overwrites the dipole default coordinates. 
     if '-u' in argv and xaxis=='X' and yaxis=='Z':
       xaxis, yaxis = 'C', 'L'
-    coords = { 'x':self.getArray(path, xaxis), 'xlabel':self.texLabel(xaxis),
-             'y':self.getArray(path, yaxis), 'ylabel':self.texLabel(yaxis) }
+    coords = { 'x':self.getArray(path, xaxis), 'xlabel':tex(xaxis),
+             'y':self.getArray(path, yaxis), 'ylabel':tex(yaxis) }
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
     # in on the ionosphere. 
     if xaxis=='lat' and yaxis=='alt':
@@ -1194,7 +1234,7 @@ def loopover(**kargs):
   lo = [ [] ]
   for key, vals in kargs.items():
     lo = [ l + [ (key, v) ] for l in lo for v in vals ]
-  if '-i' in argv:
+  if '-i' not in argv:
     return [ dict( choice(lo) )  ]
   else:
     return [ dict(l) for l in lo ]
