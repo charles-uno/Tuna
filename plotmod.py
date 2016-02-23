@@ -52,8 +52,6 @@ class phys():
   RE = 6.378388 # Mm
   RI = 6.478388 # Mm
 
-
-
 # #############################################################################
 # ###################################################### LaTeX Helper Functions
 # #############################################################################
@@ -83,10 +81,12 @@ def tex(x):
              'Ez':'E_z', 
              # Axis labels. 
              'alt':notex('Altitude (km)'), 
+             'L':notex('L (R_E)'), 
+             'L0':notex('L (R_E)'), 
              'lat':notex('Latitude (^\\circ)'), 
              'lat0':notex('Latitude (^\\circ)'), 
              't':notex('Time (s)'), 
-             'logU':notex('Log_{10}') + 'U', 
+             'logU':notex('Log') + 'U' + notex(' (\\frac{GJ}{rad})'), 
              'X':notex('X (R_E)'), 
              'Z':notex('Z (R_E)')
             }
@@ -230,19 +230,19 @@ class tunaPlotter:
     # A few quantities get printed out with scale factors. Un-scale them. 
     # Radius in Mm (from RE). 
     elif name=='r':
-      return self.RE*self.readArray(path + 'r.dat')
+      return phys.RE*self.readArray(path + 'r.dat')
     # Number density in 1/Mm^3, from 1/cm^3. 
     elif name=='n':
       return 1e24*self.readArray(path + 'n.dat')
     # Perpendicular electric constant, from units of eps0 to mF/m. 
     elif name=='epsPerp' or name=='epsp':
-      return self.eps0*self.readArray(path + 'epsPerp.dat')
+      return phys.eps0*self.readArray(path + 'epsPerp.dat')
     # Conductivities. Printed in S/m but we want mS/m. 
     elif name in ('sigH', 'sigP', 'sig0'):
       return 1e-3*self.readArray(path + name + '.dat')
     # Altitude in km. Note that we read r in RE and we store RE in Mm. 
     elif name=='alt':
-      return 1000*(self.getArray(path, 'r') - self.RE)
+      return 1000*(self.getArray(path, 'r') - phys.RE)
     # Normalied latitude. 
     elif name=='C':
       cosq = np.cos( self.getArray(path, 'q') )
@@ -263,7 +263,7 @@ class tunaPlotter:
     # McIlwain parameter. 
     elif name=='L':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return r / ( self.RE * np.sin(q)**2 )
+      return r / ( phys.RE * np.sin(q)**2 )
     # McIlwain parameter as a 1D array. 
     elif name=='L0':
       return self.getArray(path, 'L')[:, 0]
@@ -278,23 +278,23 @@ class tunaPlotter:
     elif name=='dV':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
       # Invariant colatitude. 
-      cosq0 = np.sqrt( 1 - self.RI*np.sin(q)**2/r )
+      cosq0 = np.sqrt( 1 - phys.RI*np.sin(q)**2/r )
       # Dipole coordinates. 
-      u1 = -self.RI/(r*self.RE) * np.sin(q)**2
-      u3 = self.RI**2/(r*self.RE)**2 * np.cos(q)/cosq0
+      u1 = -phys.RI/(r*phys.RE) * np.sin(q)**2
+      u3 = phys.RI**2/(r*phys.RE)**2 * np.cos(q)/cosq0
       # Dipole differentials. Rolling messes up the edges, so we zero them. 
       du1 = ( np.roll(u1, shift=1, axis=0) - np.roll(u1, shift=-1, axis=0) )/2
       du1[0, :], du1[-1, :] = 0, 0
       du3 = ( np.roll(u3, shift=1, axis=1) - np.roll(u3, shift=-1, axis=1) )/2
       du3[:, 0], du3[:, -1] = 0, 0
       # Jacobian determinant. 
-      jac = (r*self.RE)**6/self.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
+      jac = (r*phys.RE)**6/phys.RI**3 * cosq0/( 1 + 3*np.cos(q)**2 )
       # The Jacobian may be negative. Make sure we return a positive volume. 
       return np.abs( du1*du3*jac )
     # Perpendicular grid spacing. This is cheating a little bit, since the
     # coordinates aren't orthogonal, but should give a decent estimate.  
     elif name=='dx0':
-      return self.RI*self.d( self.getArray(path, 'q')[:, 0] )
+      return phys.RI*self.d( self.getArray(path, 'q')[:, 0] )
     # Azimuthal effective grid spacing for taking derivatives. This assumes an
     # azimuthal mode number of 1, and scales linearly. 
     elif name=='dy0':
@@ -317,16 +317,16 @@ class tunaPlotter:
       return None
     # Toroidal Poynting flux. 
     elif name=='Stor':
-      return self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'By', real=real) )/self.mu0
+      return self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'By', real=real) )/phys.mu0
     # Poloidal Poynting flux. 
     elif name=='Spol':
-      return -self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bx', real=real) )/self.mu0
+      return -self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bx', real=real) )/phys.mu0
     # Toroidal Poynting flux. 
     elif name=='Sx':
-      return self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/self.mu0
+      return self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
     # Poloidal Poynting flux. 
     elif name=='Sy':
-      return -self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/self.mu0
+      return -self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
     # Parallel Poynting flux. 
     elif name=='S':
       return self.getArray(path, 'Spol') + self.getArray(path, 'Stor')
@@ -336,10 +336,10 @@ class tunaPlotter:
       return None
     # Poloidal magnetic field contribution to the energy density. 
     elif name=='uBx':
-      return 0.5*self.getArray(path, 'Bx')**2 / self.mu0
+      return 0.5*self.getArray(path, 'Bx')**2 / phys.mu0
     # Toroidal magnetic field contribution to the energy density. 
     elif name=='uBy':
-      return 0.5*self.getArray(path, 'By')**2 / self.mu0
+      return 0.5*self.getArray(path, 'By')**2 / phys.mu0
     # Magnetic field contribution to the energy density. 
     elif name=='uB':
       return self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
@@ -385,15 +385,15 @@ class tunaPlotter:
       return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
     # Alfven speed. 
     elif name=='vA' or name=='va':
-      return 1/np.sqrt( self.getArray(path, 'epsp')*self.mu0 )
+      return 1/np.sqrt( self.getArray(path, 'epsp')*phys.mu0 )
     # GSE X in RE. 
     elif name=='X':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return r*np.sin(q)/self.RE
+      return r*np.sin(q)/phys.RE
     # GSE Z in RE. 
     elif name=='Z':
       r, q = self.getArray(path, 'r'), self.getArray(path, 'q')
-      return r*np.cos(q)/self.RE
+      return r*np.cos(q)/phys.RE
     # Keep an eye out for typos. 
     else:
       print 'ERROR: Not sure how to get ' + name
@@ -434,22 +434,13 @@ class tunaPlotter:
       # Allow the altitude maximum to be overwritten to zoom in. 
       ymax = np.max( np.where(lat>xmin, alt, 0) ) if lim is None else lim
       coords['xlims'], coords['ylims'] = (xmin, xmax), (ymin, ymax)
-    # The first time output is at 1s, but we want to start the axis at zero. 
-    if xaxis=='t':
-      coords['x'] = coords['x'][:self.tmax]
-      coords['xlims'] = (0, lim)
+#    # The first time output is at 1s, but we want to start the axis at zero. 
+#    if xaxis=='t':
+#      coords['x'] = coords['x'][:self.tmax]
+#      coords['xlims'] = (0, lim)
     # Dipole plots need outlines drawn on them. 
     if xaxis=='X' and yaxis=='Z':
       coords['outline'] = True
-    # If we're looking at the log of the energy, we need a bottom limit. 
-    if yaxis=='logU':
-#      coords['ylims'] = (1 if lim is None else lim, None)
-      # Let's force the plots to all have the same y axis limits. Note that
-      # compressional driving imparts a lot more energy than current. 
-      if self.paths[path]['bdrive']==0:
-        coords['ylims'] = (2, 6)
-      else:
-        coords['ylims'] = (4, 8)
     # If we're looking at electromagnetic energy on the y axis, we want a log
     # scale, and we also need a minimum. 
     if yaxis=='U':
@@ -473,13 +464,14 @@ class plotWindow:
   # We keep a color axis for the color bar, a title axis, an array of header
   # axes for column labels, an array of side axes for row labels, a side header
   # axis to label the row labels, and a footer axis just in case. Data axes are
-  # stored by the individual Plot Cells. 
+  # stored by the individual Plot Cells. Also a unit axis. 
   cax = None
   fax = None
   hax = None
   sax = None
   shax = None
   tax = None
+  uax = None
   # The Plot Window also holds an array of Plot Cells, one for each data axis. 
   cells = None
   # Keep track of the style of color bar, if any, we'll be using. Use 'log' for
@@ -495,8 +487,14 @@ class plotWindow:
   # --------------------------------- Initialize Plot Window and Space Out Axes
   # ---------------------------------------------------------------------------
 
-  def __init__(self, ncols=1, nrows=1, colorbar=None, **kargs):
-    # Make sure there's nothing lingering from a previous plot. 
+  def __init__(self, ncols=1, nrows=1, cells=None, **kargs):
+    # If initialized with an array of cells, this isn't a real Plot Window... 
+    # it's a temporary object that allows the access of a slice of cells. 
+    if cells is not None:
+      self.cells = cells
+      return
+    # If we're making a real Plot Window, make sure there's nothing lingering
+    # from a previous plot. 
     plt.close('all')
     # Set the font to match LaTeX. 
     rc('font', **{'family':'sans-serif', 'sans-serif':['Helvetica'], 
@@ -559,19 +557,27 @@ class plotWindow:
     # Side header axis, for the row label header. 
     self.shax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
                                    :sideMargin - 3*cellPadding] )
+    # Narrow axis on the right side for the color bar. 
+    self.cax = plt.subplot( tiles[titleMargin + headMargin:-footMargin, 
+                                  -sideMargin + cellPadding:-sideMargin +
+                                                            3*cellPadding] )
+    # TODO: Space out a tiny axis above the color bar to indicate units. If
+    # there are multiple columns, then it can just line up with the column
+    # labels. But if there's only one column, there are no column labels... 
+    # then, the title should extend only over the plot itself (?). Also tell
+    # setParams how to add text to it. 
+    self.uax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
+                                  -sideMargin + cellPadding:-sideMargin +
+                                                            3*cellPadding] )
     # The title, header, and side axes are for spacing text, not showing data.
-    # The axes themselves need to be hidden. 
+    # The axes themselves need to be hidden. The colorbar axis is hidden by
+    # default as well, though it may be un-hidden later. 
     self.tax.axis('off')
     self.shax.axis('off')
+    self.cax.axis('off')
+    self.uax.axis('off')
     [ x.axis('off') for x in self.sax ]
     [ x.axis('off') for x in self.hax ]
-    # If we're supposed to have a color bar, space out a narrow axis for it
-    # in the right margin. 
-    self.colorbar = colorbar
-    if self.colorbar:
-      self.cax = plt.subplot( tiles[titleMargin + headMargin:-footMargin, 
-                                    -sideMargin + cellPadding:-sideMargin +
-                                                              3*cellPadding] )
     # We're done setting up the axes. If we were given any other arguments, 
     # send them to the parameter handler. 
     return self.setParams(**kargs)
@@ -592,6 +598,11 @@ class plotWindow:
       if key=='collabels':
         for col, label in enumerate(val):
           self.hax[col].text(s='$' + label + '$', **targs)
+      # Turn on the color bar, and specify its scale. 
+      elif key=='colorbar':
+        self.colorbar = val
+        if self.colorbar:
+          self.cax.axis('on')
       # Overwrite the default number of colors. 
       elif key=='ncolors':
         self.ncolors = val
@@ -608,12 +619,6 @@ class plotWindow:
       # Accept a string as the window supertitle. 
       elif key=='title':
         self.tax.text(s='$' + val + '$', fontsize=12, **targs)
-      # Only the bottom x axes get labels. 
-      elif key=='xlabel':
-        [ cell.setParams(xlabel=val) for cell in self.cells[-1, :] ]
-      # Only the leftmost y axes get labels. 
-      elif key=='ylabel':
-        [ cell.setParams(ylabel=val) for cell in self.cells[:, 0] ]
       # Overwrite the automatically-determined color bar range. 
       elif key=='zmax':
         self.zmaxManual = val
@@ -629,10 +634,19 @@ class plotWindow:
   # The Plot Window doesn't actually handle any data. Individual cells should
   # instead be accessed as array entries. 
   def __getitem__(self, index):
+    # If we're asked for a single cell, return that cell. 
     if isinstance(index, int):
       return self.cells.flatten()[index]
-    else:
+    elif isinstance(index, tuple) and all( isinstance(x, int) for x in index ):
       return self.cells[index]
+    # Otherwise, we were asked for a slice. In that case, return a Plot Window
+    # object that has only the requested slice of cells. This allows parameters
+    # to be set for that whole slice of cells without touching the rest. 
+    if isinstance(index, tuple):
+      cells = self.cells[index]
+    else:
+      self.cells.flatten()[index]
+    return plotWindow(cells=cells)
 
   # If the window gets passed a contour, just send it along to each cell. 
   def setContour(self, *args, **kargs):
@@ -827,7 +841,7 @@ class plotCell:
     if self.lines is None:
       self.lines = []
     # Store this line in the list. Worry about the extra arguments later. 
-    self.lines.append( (args, kargs) )
+    self.lines.append( (args, kargs ) )
     return
 
   # ---------------------------------------------------------------------------
@@ -838,18 +852,20 @@ class plotCell:
   # plots). To manage that, the Plot Window asks each cell for its extrema. 
 
   def xmax(self):
-    amax = None if self.x is None else np.max(self.x)
-    if self.lines is None:
-      return amax
-    else:
-      return max( amax, max( max( args[0] ) for args, kargs in self.lines ) )
+    return None if self.x is None else np.max(self.x)
+
+#    amax = None if self.x is None else np.max(self.x)
+#    if self.lines is None:
+#      return amax
+#    else:
+#      return max( amax, max( max( args[0] ) for args, kargs in self.lines ) )
 
   def ymax(self):
     amax = None if self.y is None else np.max(self.y)
     if self.lines is None:
       return amax
     else:
-      return max( amax, max( max( args[1] ) for args, kargs in self.lines ) )
+      return max( amax, max( max( args[0] ) for args, kargs in self.lines ) )
 
   def zmax(self):
     return None if self.z is None else np.max(self.z)
@@ -857,19 +873,20 @@ class plotCell:
   # Minima are tricky, since None counts as smaller than any number. 
 
   def xmin(self):
-    amin = None if self.x is None else np.min(self.x)
-    if self.lines is None:
-      return amin
-    else:
-      lmin = min( min( args[0] ) for args, kargs in self.lines )
-      return lmin if amin is None else min(amin, lmin)
+    return None if self.x is None else np.min(self.x)
+#    amax = None if self.x is None else np.min(self.x)
+#    if self.lines is None:
+#      return amin
+#    else:
+#      lmin = min( min( args[0] ) for args, kargs in self.lines )
+#      return lmin if amin is None else min(amin, lmin)
 
   def ymin(self):
     amin = None if self.y is None else np.min(self.y)
     if self.lines is None:
       return amin
     else:
-      lmin = min( min( args[1] ) for args, kargs in self.lines )
+      lmin = min( min( args[0] ) for args, kargs in self.lines )
       return lmin if amin is None else min(amin, lmin)
 
   def zmin(self):
@@ -888,11 +905,11 @@ class plotCell:
       self.ax.contourf(self.x, self.y, self.z, **kargs)
     # Optionally, draw the outline of the data. 
     if self.outline:
-      [ self.setLine(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
-      [ self.setLine(self.x[:, k], self.y[:, k], 'k') for k in (0, -1) ]
+      [ self.ax.plot(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
+      [ self.ax.plot(self.x[:, k], self.y[:, k], 'k') for k in (0, -1) ]
     # Draw any lines. 
     if self.lines is not None:
-      [ self.ax.plot(*args, **kargs) for args, kargs in self.lines ]
+      [ self.ax.plot(self.x, *args, **kargs) for args, kargs in self.lines ]
     # Set axis limits. 
     self.ax.set_xlim(self.xlims)
     self.ax.set_ylim(self.ylims)

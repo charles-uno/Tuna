@@ -24,15 +24,20 @@ from plotmod import *
 
 def main():
 
-#  TP = tunaPlotter()
-
-#  for kargs in loopover( fdrive=TP.getValues('fdrive'), mode=('BE', 'PT') ):
-#    TP.plotUlines(**kargs)
+  # The Tuna Plotter is in charge of data access. 
+  TP = tunaPlotter()
 
 #  plotSigma()
 
-  for kargs in loopover( fdrive=(0.010, 0.013, 0.016, 0.019, 0.022) ):
-    plotGround(**kargs)
+#  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
+#    plotGround(TP, **kargs)
+
+  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
+#  for kargs in loopover( model=(1,), fdrive=(0.019,) ):
+    plotLayers(TP, **kargs)
+
+#  for kargs in loopover( model=TP.getValues('model') ):
+#    plotEnergy(TP, **kargs)
 
   return
 
@@ -82,52 +87,110 @@ def plotSigma():
 # =================================== Line Plot of Poloidal and Toroidal Energy
 # =============================================================================
 
-# Columns are frequency: 13mHz, 16mHz, 19mHz, 22mHz. All current. 
-# Columns are modenumber: 1, 2, 4, 8, 16, 32, 64. 
-# Fix the model. We'll want a figure for day and one for night. 
+def plotEnergy(TP, model):
+  # One modenumber per row. One frequency per column, to a maximum of 4. 
+  azms = TP.getValues('azm')
+  fdrives = TP.getValues('fdrive')[-4:]
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
+  # Set title and labels. 
+  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Iterate over the cells. 
+  for row, azm in enumerate(azms):
+    for col, fdrive in enumerate(fdrives):
+      # Find the data for this cell, and plot it. 
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      PW[row, col].setParams( **TP.getCoords(path, 't', 'logU') )
+      PW[row, col].setLine( np.log10( TP.getArray(path, 'Upol') ), 'b')
+      PW[row, col].setLine( np.log10( TP.getArray(path, 'Utor') ), 'r')
+  # Manually clean up the axes. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+  PW.setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'U_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
 
 # =============================================================================
 # ======================== Contour Plot of Poloidal and Toroidal Energy Density
 # =============================================================================
 
-# Columns are poloidal and toroidal energy density, averaged over an L-shell. 
-# Rows are modenumber: probably 1, 8, 64. Maybe 1, 4, 16, 64. 
-# Fix the model. Only model 1 or only model 2. 
+def plotLayers(TP, model, fdrive):
+  # With only two columns, we can't fit 7 rows without deforming them like
+  # crazy. Let's keep the frames legible but have fewer of them. 
+  azms = (1, 8, 64)
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow(nrows=len(azms), ncols=2, colorbar='log', zmax=0.1)
+  # Set title and labels. 
+  title = notex('Energy Density by L-Shell (\\frac{nJ}{m^3}): ') + tex(model) + notex(', ') + tex(fdrive) + notex('Current')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( notex('Poloidal Energy Density'),
+                notex('Toroidal Energy Density') )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Find the data and set up the axes. 
+  for row, azm in enumerate(azms):
+    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+    PW[row, :].setParams( **TP.getCoords(path, 't', 'L0') )
+    # Loop over the poloidal and toroidal components. 
+    for col, name in enumerate( ('upol', 'utor') ):
+      # Grab the energy density and the differential volume. 
+      u, dV = TP.getArray(path, name), TP.getArray(path, 'dV')
+      dU = u*dV[:, :, None]
+      # Compute the mean energy density at each L shell. 
+      UofL = np.sum(dU, axis=1)
+      VofL = np.sum(dV, axis=1)
+      # Careful... dV is 0 at the edges. 
+      VofL[0], VofL[-1] = VofL[1], VofL[-2]
+      uofL = UofL/VofL[:, None]
+      PW[row, col].setContour(uofL)
+  # Manually clean up the x axis. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'layers_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
 
 # =============================================================================
 # =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
 # =============================================================================
 
-def plotGround(fdrive):
-  # The Tuna Plotter is in charge of data access. 
-  TP = tunaPlotter()
+def plotGround(TP, fdrive):
   azms = TP.getValues('azm')
   # The Plot Window does the actual plotting. 
   PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
   # Set title and labels. 
-  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex(' Current')
+  title = notex('Magnetic Ground Signatures (nT): ') + tex(fdrive) + notex('Current')
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = ( tex(1) + tex('Bq'), tex(2) + tex('Bq'),
-                tex(1) + tex('Bf'), tex(2) + tex('Bf') )
+  collabels = ( tex(1) + tex('Bq'), tex(1) + tex('Bf'),
+                tex(2) + tex('Bq'), tex(2) + tex('Bf') )
   PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
   # Iterate through the rows. Each row is its own modenumber. 
   for row, azm in enumerate(azms):
     # Grab the data for model 1 and plot it. 
     path = TP.getPath(model=1, fdrive=fdrive, azm=azm)
     PW[row, 0].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
-    PW[row, 2].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
-    PW[row, 0].setParams( **TP.getCoords(path, 't', 'lat0') )
-    PW[row, 2].setParams( **TP.getCoords(path, 't', 'lat0') )
+    PW[row, 1].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
+    PW[row, 0:2].setParams( **TP.getCoords(path, 't', 'lat0') )
     # Grab the data for model 2 and plot it. 
     path = TP.getPath(model=2, fdrive=fdrive, azm=azm)
-    PW[row, 1].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
+    PW[row, 2].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
     PW[row, 3].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
-    PW[row, 1].setParams( **TP.getCoords(path, 't', 'lat0') )
-    PW[row, 3].setParams( **TP.getCoords(path, 't', 'lat0') )
+    PW[row, 2:4].setParams( **TP.getCoords(path, 't', 'lat0') )
   # Manually clean up the x axis. 
-  PW.setParams( xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-
-  return PW.render()
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'ground_' + znt(1e3*fdrive) + 'mHz'
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
 
 
 
