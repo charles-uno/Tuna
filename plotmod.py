@@ -796,12 +796,14 @@ class plotCell:
       elif key=='xlog' and val is True:
         self.ax.set_xscale('log')
         self.xlog = True
-      # Set the horizontal axis tick labels. 
+      # Set the horizontal axis tick labels manually. 
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
-      # Set the horizontal axis ticks. 
+        self.nxticks = None
+      # Set the horizontal axis ticks manually. 
       elif key=='xticks':
         self.ax.set_xticks(val)
+        self.nxticks = None
       # Vertical axis coordinate. 
       elif key=='y':
         self.y = val
@@ -818,12 +820,14 @@ class plotCell:
       elif key=='ylog' and val is True:
         self.ax.set_yscale('log')
         self.ylog = True
-      # Set the vertical axis tick labels. 
+      # Set the vertical axis tick labels manually. 
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
-      # Set the vertical axis ticks. 
+        self.nyticks = None
+      # Set the vertical axis ticks manually. 
       elif key=='yticks':
         self.ax.set_yticks(val)
+        self.nyticks = None
       # Report any unfamiliar parameters. 
       else:
         print 'WARNING: Unknown param ', key, ' = ', val
@@ -927,13 +931,15 @@ class plotCell:
 
     # There can be a lot of frames on these figures. Be economical. 
     if not self.xlog:
-      self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
-                                                       integer=True) )
+      if self.nxticks is not None:
+        self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
+                                                         integer=True) )
       self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
       self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
     if not self.ylog:
-      self.ax.yaxis.set_major_locator( plt.MaxNLocator(self.nyticks, 
-                                                       integer=True) )
+      if self.nyticks is not None:
+        self.ax.yaxis.set_major_locator( plt.MaxNLocator(self.nyticks, 
+                                                         integer=True) )
       self.ax.yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
       self.ax.yaxis.get_majorticklabels()[-1].set_verticalalignment('top')
     return
