@@ -504,22 +504,26 @@ class plotWindow:
                               '\usepackage{color}')
     # The window width in inches is fixed to match the size of the page. 
     windowWidth = 5.75
+    # A negative number of columns means that there should be just one column,
+    # but extra "wide." For example, if asked for -3 columns, row heights are
+    # set up to accommodate 3 columns, then only one cell is put on each row. 
+    ancols, oncols = abs(ncols), max(1, ncols)
     # The window will be broken up into some number of equally-sized tiles.
     # That's the unit we use to specify the relative sizes of plot elements. 
     sideMargin = 40
     cellPadding = 5
     titleMargin = 15
-    headMargin = 10 if ncols>1 else 1
+    headMargin = 1 if ancols==1 else 10
     footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
     # width of the subplot area (including padding) will always be the same.
     # No more than four columns are allowed. 
-    cellWidth = {1:175, 2:80, 3:55, 4:40}[ncols]
+    cellWidth = {1:175, 2:80, 3:55, 4:40}[ancols]
     # Cells are proportioned to show a dipole plot, which is 10RE wide and 8RE
     # tall, in proper proportion. 
     cellHeight = 4*cellWidth/5
     # Tally up how many tiles we need. 
-    tileWidth = ncols*cellWidth + (ncols-1)*cellPadding + 2*sideMargin
+    tileWidth = ancols*cellWidth + (ancols-1)*cellPadding + 2*sideMargin
     tileHeight = ( nrows*cellHeight + (nrows-1)*cellPadding + titleMargin +
                    headMargin + footMargin )
     # Set the window size in proportion with the number of tiles we need. This
@@ -532,14 +536,21 @@ class plotWindow:
     tiles = gridspec.GridSpec(tileHeight, tileWidth)
     plt.subplots_adjust(bottom=0., left=0., right=1., top=1.)
     # Create a lattice of axes and use it to initialize an array of Plot Cells.
-    self.cells = np.empty( (nrows, ncols), dtype=object)
-    for row in range(nrows):
-      for col in range(ncols):
-        xpos = sideMargin + col*(cellWidth + cellPadding)
+    self.cells = np.empty( (nrows, oncols), dtype=object)
+    if ncols<0:
+      for row in range(nrows):
         ypos = titleMargin + headMargin + row*(cellHeight + cellPadding)
         ax = plt.subplot( tiles[ypos:ypos + cellHeight, 
-                                xpos:xpos + cellWidth] )
-        self.cells[row, col] = plotCell(ax)
+                                sideMargin:-sideMargin] )
+        self.cells[row, 0] = plotCell(ax)
+    else:
+      for row in range(nrows):
+        for col in range(ncols):
+          xpos = sideMargin + col*(cellWidth + cellPadding)
+          ypos = titleMargin + headMargin + row*(cellHeight + cellPadding)
+          ax = plt.subplot( tiles[ypos:ypos + cellHeight, 
+                                  xpos:xpos + cellWidth] )
+          self.cells[row, col] = plotCell(ax)
     # Space out the title axis. 
     self.tax = plt.subplot( tiles[:titleMargin, sideMargin:-sideMargin] )
     # Space out an array of side axes to hold row labels. 
@@ -549,8 +560,8 @@ class plotWindow:
       self.sax[row] = plt.subplot( tiles[ypos:ypos + cellHeight, 
                                          :sideMargin - 3*cellPadding] )
     # Space out an array of header axes on the top to hold column labels. 
-    self.hax = np.empty( (ncols,), dtype=object)
-    for col in range(ncols):
+    self.hax = np.empty( (oncols,), dtype=object)
+    for col in range(oncols):
       xpos = sideMargin + col*(cellWidth + cellPadding)
       self.hax[col] = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
                                          xpos:xpos + cellWidth] )
