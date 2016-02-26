@@ -122,6 +122,11 @@ class tunaPlotter:
     # If no paths were given, use the default. 
     if not self.paths:
       self.setPaths('/media/My Passport/RUNS/JDRIVE')
+    # Sometimes the plotter isn't supposed to make any plots at all. Instead,
+    # its job is to go through and pickle some fresh data. 
+    if 'pickle' in argv:
+      self.pickle()
+      exit()
     return
 
   # ===========================================================================
@@ -191,6 +196,25 @@ class tunaPlotter:
     runs = [ d for d in os.listdir(root) if os.path.isdir(root + d) ]
     # Sort by time of last modification, then return the last path. 
     return max( (os.path.getmtime(d), d) for d in runs )[1]
+
+  # ===========================================================================
+  # ============================================================== Data Pickler
+  # ===========================================================================
+
+  # Tuna outputs data as a text file full of numbers. Such files are fast to
+  # create, but large to store, and slow to load. This routine goes through the
+  # data, takes the time to read the values into Numpy arrays, and saves the
+  # arrays as pickles. Pickle files are Python-specific, but they're compressed
+  # (usually by about a factor of 3 compared to text) and they load fast (a
+  # factor of 10, sometimes better, compared to text). 
+  def pickle(self):
+    # The Tuna Plotter object already tracked down all of the data directories,
+    # either from arguments from the terminal or its internal defaults. 
+    for path in self.paths:
+      print '\n' + path
+      # The readArray function makes a pickle whenever it reads in a dat file.
+      [ readArray(f) for f in files(path, end='.dat') ]
+    return
 
   # ===========================================================================
   # =============================================================== Data Access
@@ -1266,6 +1290,15 @@ def com(x):
     # Shave off the parentheses then split into real and imaginary parts. 
     re, im = x[1:-1].split(',')
     return (float(re) + float(im)*1j)
+
+# Grab all files in the given directory. Remember that we always use absolute
+# paths, and that directory names always end with a slash. 
+def files(path=None, end=''):
+  p = path if path is not None else os.getcwd()
+  # Grab all files in the directory. 
+  f = [ p + x for x in os.listdir(p) if os.path.isfile(p + x) ]
+  # Only return the ones that end with our desired extension. 
+  return sorted( x for x in f if x.endswith(end) )
 
 # Given kargs full of lists, return a list of kargs (if we're making a series
 # of images) or just one of them (if we're looking at the plot). 
