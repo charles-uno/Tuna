@@ -513,7 +513,7 @@ class plotWindow:
     sideMargin = 40
     cellPadding = 5
     titleMargin = 15
-    headMargin = 1 if ancols==1 else 10
+    headMargin = 1 if ncols==1 else 10
     footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
     # width of the subplot area (including padding) will always be the same.
@@ -561,10 +561,15 @@ class plotWindow:
                                          :sideMargin - 3*cellPadding] )
     # Space out an array of header axes on the top to hold column labels. 
     self.hax = np.empty( (oncols,), dtype=object)
-    for col in range(oncols):
-      xpos = sideMargin + col*(cellWidth + cellPadding)
-      self.hax[col] = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
-                                         xpos:xpos + cellWidth] )
+    if ncols<0:
+      self.hax[0] = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
+                                       sideMargin:-sideMargin] )
+    else:
+      for col in range(oncols):
+        xpos = sideMargin + col*(cellWidth + cellPadding)
+        self.hax[col] = plt.subplot( tiles[titleMargin:titleMargin +
+                                                       headMargin,
+                                           xpos:xpos + cellWidth] )
     # Side header axis, for the row label header. 
     self.shax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
                                    :sideMargin - 3*cellPadding] )
