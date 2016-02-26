@@ -4,26 +4,19 @@
 
 # Sprint 2016
 
-# Note: This document wraps at column 80. 
-
 # #############################################################################
 # ######################################################### Load Python Modules
 # #############################################################################
 
-from scipy import io
-
-# The cPickle module is faster, but not always available. 
 try:
   import cPickle as pickle
 except ImportError:
   import pickle
-
 import matplotlib.pyplot as plt
 import numpy as np
-
-from subprocess import Popen, PIPE
-
 import os
+from scipy import io
+from subprocess import Popen, PIPE
 
 # #############################################################################
 # ######################################################################## Main
