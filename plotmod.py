@@ -658,7 +658,9 @@ class plotWindow:
         self.sharelimits = bool(val)
       # Put a sideways label in the color bar axis. 
       elif key=='sidelabel':
+        targs['horizontalalignment'] = 'left'
         self.cax.text(s='$' + val + '$', rotation='vertical', **targs)
+        targs['horizontalalignment'] = 'center'
       # Accept a string as the window supertitle. 
       elif key=='title':
         self.tax.text(s='$' + val + '$', fontsize=12, **targs)
@@ -738,10 +740,24 @@ class plotWindow:
   def render(self, filename=None):
     # Use the most extreme x and y values to set the plot domain. Snap to
     # integers, but don't round based on tiny bits of numerical noise. 
-    xmin = np.floor( float( format(self.xmin(), '.4e') ) )
-    xmax = np.ceil( float( format(self.xmax(), '.4e') ) )
-    ymin = np.floor( float( format(self.ymin(), '.4e') ) )
-    ymax = np.ceil( float( format(self.ymax(), '.4e') ) )
+    xmin = None if self.xmin() is None else np.round( self.xmin() )
+    xmax = None if self.xmax() is None else np.round( self.xmax() )
+    ymin = None if self.ymin() is None else np.round( self.ymin() )
+    ymax = None if self.ymax() is None else np.round( self.ymax() )
+
+    if np.iscomplexobj(xmin):
+      print 'xmin is complex! '
+    if np.iscomplexobj(xmax):
+      print 'xmax is complex! '
+    if np.iscomplexobj(ymin):
+      print 'ymin is complex! '
+    if np.iscomplexobj(ymax):
+      print 'ymax is complex! '
+
+#    xmin = np.floor( float( format(self.xmin(), '.4e') ) )
+#    xmax = np.ceil( float( format(self.xmax(), '.4e') ) )
+#    ymin = np.floor( float( format(self.ymin(), '.4e') ) )
+#    ymax = np.ceil( float( format(self.ymax(), '.4e') ) )
     self.setParams( xlims=(xmin, xmax), ylims=(ymin, ymax) )
     # Only the leftmost cells get y axis labels and tick labels. 
     for cell in self.cells[:, 1:].flatten():
@@ -814,12 +830,24 @@ class plotCell:
       # Draw an outline around the plot contents. 
       elif key=='outline':
         self.outline = val
+
+      # Add text inside the cell, along the top. If we want to do anything more
+      # sophisticated with text, like control its position or rotation or
+      # color or size, we'll probably need to add a setText method. 
+      elif key=='text':
+        targs = {'x':0.5, 'y':0.85, 'horizontalalignment':'center', 
+                 'verticalalignment':'center', 'transform':self.ax.transAxes}
+        self.ax.text(s='$' + val + '$', fontsize=9, **targs)
+
       # Horizontal axis coordinate. 
       elif key=='x':
         self.x = val
       # Label the horizontal axis. 
       elif key=='xlabel':
         self.ax.set_xlabel('' if not val else '$' + val + '$')
+      # Change padding between axis and label. 
+      elif key=='xlabelpad':
+        self.ax.xaxis.labelpad = val
       # Set horizontal axis domain. 
       elif key.startswith('xlim'):
         # If the limits are set manually, we want to ignore the automatic
@@ -844,6 +872,9 @@ class plotCell:
       # Label the vertical axis. 
       elif key=='ylabel':
         self.ax.set_ylabel('' if not val else '$' + val + '$')
+      # Change padding between axis and label. 
+      elif key=='ylabelpad':
+        self.ax.yaxis.labelpad = val
       # Set the vertical axis domain. 
       elif key.startswith('ylim'):
         # If the limits are set manually, we want to ignore the automatic
@@ -889,10 +920,11 @@ class plotCell:
     # Initialize line list. 
     if self.lines is None:
       self.lines = []
-
     # If we're given two numpy arrays, the first is the horizontal coordinate. 
     if len(args)>1 and isinstance(args[1], np.ndarray):
       self.lines.append( (args, kargs) )
+      if self.x is None:
+        self.x = args[0]
     # If only given one array, use self.x. 
     else:
       self.lines.append( ( (self.x,) + args, kargs ) )
