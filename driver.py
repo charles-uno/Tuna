@@ -33,6 +33,7 @@ USE_MAX_TIME = False
 parameters = {
               'jdrive':[4e-4], 
 #              'bdrive':[10], 
+              'lpp':[5],
               'tmax':[300],
               'azm':[1, 2, 4, 8, 16, 32, 64],
               'fdrive':[0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025],

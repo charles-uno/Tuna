@@ -121,6 +121,7 @@ class tunaPlotter:
     self.setPaths(*argv)
     # If no paths were given, use the default. 
     if not self.paths:
+      print 'Using default data path. '
       self.setPaths('/media/My Passport/RUNS/JDRIVE')
     # Sometimes the plotter isn't supposed to make any plots at all. Instead,
     # its job is to go through and pickle some fresh data. 
