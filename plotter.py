@@ -27,14 +27,24 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
+#  # Plot snapshots of the electric field components. 
+#  plotSnapshots(TP, model=2, fdrive=0.010, azm=16)
+
+#  # Plot a comparison of parallel current and Poynting flux. 
+#  plotCurrentFlux(TP, model=1, fdrive=0.016)
+
+#  plotDivFlux(TP, model=1, fdrive=0.016)
+
+  plotZoom(TP, azm=16)
+
 #  plotSigma()
 
 #  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
 #    plotGround(TP, **kargs)
 
-  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
+#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
 #  for kargs in loopover( model=(1,), fdrive=(0.019,) ):
-    plotLayers(TP, **kargs)
+#    plotLayers(TP, **kargs)
 
 #  for kargs in loopover( model=TP.getValues('model') ):
 #    plotEnergy(TP, **kargs)
@@ -44,6 +54,174 @@ def main():
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# =============================================================================
+# ========================================= Electron Inertial Length Comparison
+# =============================================================================
+
+def plotZoom(TP, azm, step=99):
+  fdrive = 0.016
+  model = 2
+  lmin = 5
+
+  PW = plotWindow(ncols=2, nrows=1, colorbar='sym')
+
+  title = notex('Parallel Electric Fields: ' + tex(model) + ', ' + str(step+1) + 's \\,of 16mHz Current, ') + 'm = ' + znt(azm)
+  unitlabel = notex('\\frac{mV}{m}')
+  collabels = ('\\delta x > \\frac{c}{\\omega_P}', '\\delta x < \\frac{c}{\\omega_P}')
+
+  xlims = (62, 68)
+  xticks = (62, 63, 64, 65, 66, 67, 68)
+  xticklabels = ('$62^\\circ$', '', '', '$65^\\circ$', '', '', '$68^\\circ$')
+
+  ylims = (100, 1000)
+  yticks = (100, 250, 400, 550, 700, 850, 1000)
+  yticklabels = ('$100$', '', '$400$', '', '$700$', '', '$1000$')
+  PW.setParams(xlims=xlims, xticks=xticks, xticklabels=xticklabels,ylims=ylims, 
+               yticks=yticks,yticklabels=yticklabels, title=title, 
+               collabels=collabels, unitlabel=unitlabel)
+
+  TP.setPaths('/media/My Passport/RUNS/LMIN_LMAX/inertia_on')
+  path = TP.getPath(azm=azm)
+  Ez = TP.getArray(path, 'Ez')[:, :, step]
+  PW[1].setContour(Ez)
+  PW.setParams( outline=True, **TP.getCoords(path, 'lat', 'alt') )
+
+  TP.setPaths('/media/My Passport/RUNS/INERTIA')
+  path = TP.getPath(azm=azm, model=model, fdrive=fdrive)
+  Ez = TP.getArray(path, 'Ez')[:, :, step]
+  PW[0].setContour(Ez)
+  PW[0].setParams( **TP.getCoords(path, 'lat', 'alt') )
+
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'inertial_length.pdf')
+  else:
+    return PW.render()
+
+# =============================================================================
+# ============================== Compare Divergence of Poynting Flux to J dot E
+# =============================================================================
+
+def plotDivFlux(TP, model, fdrive):
+  # Set up the window. 
+  azms = (1, 4, 16, 64)
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
+  # Set title and labels. 
+  title = ( notex('Power Density at ') + 'R_I' + notex(': ') + tex(model) +
+            notex(', ') + tex(fdrive) + notex(' Current') )
+  unitlabel = notex('\\frac{nW}{m^3}')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( '\\nabla_\\bot\\cdot{}\\underline{S}_\\bot', 
+                '\\frac{\\partial}{\\partial{}z}S_z', 
+                '\\underline{J}_\\bot\\cdot\\underline{E}_\\bot', 
+                'J_z\\,E_z' )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, 
+               unitlabel=unitlabel)
+  # Each row comes from a different run. 
+  for row, azm in enumerate(azms):
+    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+    PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
+    # J dot E. 
+    JEx = ( TP.getArray(path, 'Jx')*TP.getArray(path, 'Ex') )[:, 0, :]
+    JEy = ( TP.getArray(path, 'Jy')*TP.getArray(path, 'Ey') )[:, 0, :]
+    JEz = ( TP.getArray(path, 'Jz')*TP.getArray(path, 'Ez') )[:, 0, :]
+    # Differential lengths. 
+    dx = TP.getArray(path, 'dx0')
+    dy = azm*TP.getArray(path, 'dy0')
+    dz = TP.getArray(path, 'dz0')
+    # Poynting flux.
+    Sx = TP.getArray(path, 'Sx')
+    Sy = TP.getArray(path, 'Sy')
+    Sz = TP.getArray(path, 'Sz')
+    # Div S. 
+    dSx = ( Sx[2:, 0, :] - Sx[:-2, 0, :] ) / ( 2*dx[1:-1, None] )
+    dSy = Sy[:, 0, :]/dy[:, None]
+    dSz = ( Sz[:, 1, :] - Sz[:, 0, :] ) / dz[:, None]
+    dSxy = dSy
+    dSxy[1:-1, :] = dSxy[1:-1, :] + dSx
+    # Add them to the plot. 
+    PW[row, 0].setContour(dSxy)
+    PW[row, 1].setContour(dSz)
+    PW[row, 2].setContour(JEx + JEy)
+    PW[row, 3].setContour(JEz)
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'JS_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ================================ Parallel Current and Poynting Flux Snapshots
+# =============================================================================
+
+def plotCurrentFlux(TP, model, fdrive):
+  # Set up the window. 
+  azms = (1, 4, 16, 64)
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=1)
+  # Set title and labels. 
+  title = notex('Current and Poynting Flux at ') + 'R_I' + notex(': ') + tex(model) + notex(', ') + tex(fdrive) + notex(' Current')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( tex('real') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_P' + notex(' (\\frac{mW}{m^2})'),
+                tex('imag') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_T' + notex(' (\\frac{mW}{m^2})') )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Each row comes from a different run. 
+  for row, azm in enumerate(azms):
+    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+    PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
+    # Load up the Poynting flux and the real and imaginary current. 
+    RJ = TP.getArray(path, 'Jz', real=True)[:, 0, :]
+    SP = TP.getArray(path, 'Spol')[:, 0, :]
+    IJ = TP.getArray(path, 'Jz', real=False)[:, 0, :]
+    ST = TP.getArray(path, 'Stor')[:, 0, :]
+    # Add them to the plot. 
+    PW[row, 0].setContour(RJ)
+    PW[row, 1].setContour(SP)
+    PW[row, 2].setContour(IJ)
+    PW[row, 3].setContour(ST)
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'JS_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ==================================================== Electric Field Snapshots
+# =============================================================================
+
+def plotSnapshots(TP, model, fdrive, azm):
+  # Each row is a snapshot at a different time. Three rows is probably enough. 
+  steps = (259, 279, 299)
+  # Plot is handled using a Plot Window object. 
+  zmax = 10
+  PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
+  # Grab the path for the run we're looking at. Then grab the field data. 
+  path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+  Ex, Ey, Ez = [ TP.getArray(path, name) for name in ('Ex', 'Ey', 'Ez') ]
+  # Figure out an appropriate factor by which to scale up Ez. 
+  scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
+  # Set up the plot axes. 
+  PW.setParams( **TP.getCoords(path) )
+  # Add each contour to the plot. 
+  for row, step in enumerate(steps):
+    PW[row, 0].setContour( Ex[:, :, step] )
+    PW[row, 1].setContour( Ey[:, :, step] )
+    PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
+  # Set the plot title and labels. 
+  collabels = ( tex('Ex'), tex('Ey'), '10^{' + znt(scalefac) + '} \\times ' + tex('Ez') )
+  rowlabels = [ notex(str(s+1) + 's') for s in steps ]
+  title = notex('Electric Field Snapshots: ' + tex(model) + ', ' + tex(fdrive) + 'Current, ') + 'm = ' + znt(azm)
+  unitlabel = notex('\\frac{mV}{m}')
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
+  # Name this figure, in case we want to save it. 
+  name = 'snapshot_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + name + '.pdf')
+  else:
+    return PW.render()
 
 # =============================================================================
 # =========================================== Ionospheric Conductivity Profiles

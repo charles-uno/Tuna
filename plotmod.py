@@ -79,12 +79,19 @@ def tex(x):
              'Ex':'E_x', 
              'Ey':'E_y', 
              'Ez':'E_z', 
+             'SFFT':'\\widetilde{E}_y\\widetilde{B}^*_x', 
+             # Units. 
+             'mV/m':notex('\\frac{mV}{m}'),
+             'mW/m^2':notex('\\frac{mW}{m^2}'),
+             # Real/imaginary labels. 
+             'imag':'\\mathbb{I}\\mathrm{m}',
+             'real':'\\mathbb{R}\\mathrm{e}',
              # Axis labels. 
              'alt':notex('Altitude (km)'), 
              'L':notex('L (R_E)'), 
              'L0':notex('L (R_E)'), 
-             'lat':notex('Latitude (^\\circ)'), 
-             'lat0':notex('Latitude (^\\circ)'), 
+             'lat':notex('Latitude'), 
+             'lat0':notex('Latitude'), 
              't':notex('Time (s)'), 
              'logU':notex('Log') + 'U' + notex(' (\\frac{GJ}{rad})'), 
              'X':notex('X (R_E)'), 
@@ -346,14 +353,14 @@ class tunaPlotter:
     # Poloidal Poynting flux. 
     elif name=='Spol':
       return -self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bx', real=real) )/phys.mu0
-    # Toroidal Poynting flux. 
+    # Crosswise Poynting flux. 
     elif name=='Sx':
       return self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
-    # Poloidal Poynting flux. 
+    # Azimuthal Poynting flux. 
     elif name=='Sy':
       return -self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
     # Parallel Poynting flux. 
-    elif name=='S':
+    elif name=='Sz' or name=='S':
       return self.getArray(path, 'Spol') + self.getArray(path, 'Stor')
     # Sometimes we don't actually need the array, such as when we're grabbing
     # the y axis for a line plot... so the axis will be set by line values. 
@@ -448,6 +455,28 @@ class tunaPlotter:
       xaxis, yaxis = 'C', 'L'
     coords = { 'x':self.getArray(path, xaxis), 'xlabel':tex(xaxis),
              'y':self.getArray(path, yaxis), 'ylabel':tex(yaxis) }
+
+    # Let's stop worrying about generalizability and make sure these ticks and
+    # tick labels look good for the plots we need. 
+
+    if xaxis=='t':
+      coords['xlims'] = (0, 300)
+      coords['xticks'] = (0, 100, 200, 300)
+      coords['xticklabels'] = ('$0$', '', '', '$300$')
+
+    if yaxis=='lat' or yaxis=='lat0':
+      coords['ylims'] = (44, 72)
+      coords['yticks'] = (44, 51, 58, 65, 72)
+      coords['yticklabels'] = ('$44^\\circ$', '', '$58^\\circ$', '', '$72^\\circ$')
+
+    if xaxis=='X' and yaxis=='Z':
+      coords['xticks'] = (0, 2.5, 5, 7.5, 10)
+      coords['xticklabels'] = ('$0$', '', '$5$', '', '$10$')
+      coords['yticks'] = (-4, -2, 0, 2, 4)
+      coords['yticklabels'] = ('$-4$', '', '$0$', '', '$+4$')
+
+
+
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
     # in on the ionosphere. 
     if xaxis=='lat' and yaxis=='alt':
@@ -665,6 +694,9 @@ class plotWindow:
       # Accept a string as the window supertitle. 
       elif key=='title':
         self.tax.text(s='$' + val + '$', fontsize=12, **targs)
+      # Put a little label over the color bar indicating units. 
+      elif key=='unitlabel':
+        self.uax.text(s='$' + val + '$', **targs)
       # Overwrite the automatically-determined color bar range. 
       elif key=='zmax':
         self.zmaxManual = val
