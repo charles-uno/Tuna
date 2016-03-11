@@ -474,8 +474,7 @@ class tunaPlotter:
       coords['xticklabels'] = ('$0$', '', '$5$', '', '$10$')
       coords['yticks'] = (-4, -2, 0, 2, 4)
       coords['yticklabels'] = ('$-4$', '', '$0$', '', '$+4$')
-
-
+      coords['ylabelpad'] = -2
 
     # Latitude vs altitude isn't much good for plotting the whole dipole. Zoom
     # in on the ionosphere. 
@@ -568,6 +567,7 @@ class plotWindow:
     cellPadding = 5
     titleMargin = 15
     headMargin = 1 if ncols==1 else 10
+    unitMargin = 10
     footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
     # width of the subplot area (including padding) will always be the same.
@@ -591,54 +591,51 @@ class plotWindow:
     plt.subplots_adjust(bottom=0., left=0., right=1., top=1.)
     # Create a lattice of axes and use it to initialize an array of Plot Cells.
     self.cells = np.empty( (nrows, oncols), dtype=object)
-    if ncols<0:
-      for row in range(nrows):
-        ypos = titleMargin + headMargin + row*(cellHeight + cellPadding)
-        ax = plt.subplot( tiles[ypos:ypos + cellHeight, 
-                                sideMargin:-sideMargin] )
+    for row in range(nrows):
+      top = titleMargin + headMargin + row*(cellHeight + cellPadding)
+      bot = top + cellHeight
+      if ncols<0:
+        ax = plt.subplot( tiles[top:bot, sideMargin:-sideMargin] )
         self.cells[row, 0] = plotCell(ax)
-    else:
-      for row in range(nrows):
+      else:
         for col in range(ncols):
-          xpos = sideMargin + col*(cellWidth + cellPadding)
-          ypos = titleMargin + headMargin + row*(cellHeight + cellPadding)
-          ax = plt.subplot( tiles[ypos:ypos + cellHeight, 
-                                  xpos:xpos + cellWidth] )
+          left = sideMargin + col*(cellWidth + cellPadding)
+          right = left + cellWidth
+          ax = plt.subplot( tiles[top:bot, left:right] )
           self.cells[row, col] = plotCell(ax)
     # Space out the title axis. 
     self.tax = plt.subplot( tiles[:titleMargin, sideMargin:-sideMargin] )
     # Space out an array of side axes to hold row labels. 
     self.sax = np.empty( (nrows,), dtype=object)
+    left, right = 0, sideMargin - 3*cellPadding
     for row in range(nrows):
-      ypos = titleMargin + headMargin + row*(cellHeight + cellPadding)
-      self.sax[row] = plt.subplot( tiles[ypos:ypos + cellHeight, 
-                                         :sideMargin - 3*cellPadding] )
+      top = titleMargin + headMargin + row*(cellHeight + cellPadding)
+      bot = top + cellHeight
+      self.sax[row] = plt.subplot( tiles[top:bot, left:right] )
     # Space out an array of header axes on the top to hold column labels. 
     self.hax = np.empty( (oncols,), dtype=object)
+    top, bot = titleMargin, titleMargin + headMargin
     if ncols<0:
-      self.hax[0] = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
-                                       sideMargin:-sideMargin] )
+      self.hax[0] = plt.subplot( tiles[top:bot, sideMargin:-sideMargin] )
     else:
       for col in range(oncols):
-        xpos = sideMargin + col*(cellWidth + cellPadding)
-        self.hax[col] = plt.subplot( tiles[titleMargin:titleMargin +
-                                                       headMargin,
-                                           xpos:xpos + cellWidth] )
+        left = sideMargin + col*(cellWidth + cellPadding)
+        right = left + cellWidth
+        self.hax[col] = plt.subplot( tiles[top:bot, left:right] )
     # Side header axis, for the row label header. 
-    self.shax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
-                                   :sideMargin - 3*cellPadding] )
+    top, bot = titleMargin, titleMargin + headMargin
+    left, right = 0, sideMargin - 3*cellPadding
+    self.shax = plt.subplot( tiles[top:bot, left:right] )
     # Narrow axis on the right side for the color bar. 
-    self.cax = plt.subplot( tiles[titleMargin + headMargin:-footMargin, 
-                                  -sideMargin + cellPadding:-sideMargin +
-                                                            3*cellPadding] )
-    # TODO: Space out a tiny axis above the color bar to indicate units. If
-    # there are multiple columns, then it can just line up with the column
-    # labels. But if there's only one column, there are no column labels... 
-    # then, the title should extend only over the plot itself (?). Also tell
-    # setParams how to add text to it. 
-    self.uax = plt.subplot( tiles[titleMargin:titleMargin + headMargin, 
-                                  -sideMargin + cellPadding:-sideMargin +
-                                                            3*cellPadding] )
+    top, bot = titleMargin + headMargin, -footMargin
+    left, right = -sideMargin + cellPadding, -sideMargin + 3*cellPadding
+    self.cax = plt.subplot( tiles[top:bot, left:right] )
+    # Space out a tiny axis above the color bar to indicate units. Size it to
+    # line up with the column labels. If there's only one column, and so the
+    # column labels are compressed, still pretend they are sized normally. 
+    top, bot = titleMargin + headMargin - unitMargin, titleMargin + headMargin
+    left, right = -sideMargin + cellPadding, -sideMargin + 3*cellPadding
+    self.uax = plt.subplot( tiles[top:bot, left:right] )
     # The title, header, and side axes are for spacing text, not showing data.
     # The axes themselves need to be hidden. The colorbar axis is hidden by
     # default as well, though it may be un-hidden later. 

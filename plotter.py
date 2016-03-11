@@ -27,21 +27,35 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
-#  # Plot snapshots of the electric field components. 
+#  # Plasma frequency profile. 
+#  plotPlasmaFrequency(TP)
+
+#  # Snapshots of the electric field components. 
 #  plotSnapshots(TP, model=2, fdrive=0.010, azm=16)
 
-#  # Plot a comparison of parallel current and Poynting flux. 
+#  # Comparison of parallel current and Poynting flux. 
 #  plotCurrentFlux(TP, model=1, fdrive=0.016)
 
+#  # Comparison of J dot E to the divergence of the Poynting flux. 
 #  plotDivFlux(TP, model=1, fdrive=0.016)
 
-  plotZoom(TP, azm=16)
+#  # Zoom way in on runs with and without inertial length scales. 
+#  plotZoom(TP, azm=16)
 
-#  plotSigma()
+  # Conductivity profiles. 
+  plotSigma(TP)
 
+#  # The grid. 
+#  plotGrid(TP)
+
+#  # Show waves failing to propagate in when driven from the outer boundary. 
+#  plotBdrive(TP, fdrive=0.022)
+
+#  # Plot magnetic field signatures at the ground. 
 #  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
 #    plotGround(TP, **kargs)
 
+#  # Plot the radial distribution in energy. 
 #  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
 #  for kargs in loopover( model=(1,), fdrive=(0.019,) ):
 #    plotLayers(TP, **kargs)
@@ -56,6 +70,115 @@ def main():
 # #############################################################################
 
 # =============================================================================
+# ============================================================ Plasma Frequency
+# =============================================================================
+
+def plotPlasmaFrequency(TP):
+  PW = plotWindow(nrows=1, ncols=1, colorbar='log')
+  # Set title and labels. 
+  title = notex('Plasma Frequency')
+  # Grab whichever path. 
+  path = TP.paths.keys()[0]
+  X, Z = TP.getArray(path, 'X'), TP.getArray(path, 'Z')
+  coords = TP.getCoords(path)
+  # This isn't a cramped diagram, so let's touch up the ticks. This should
+  # probably go in plotmod, to ensure that this plot always matches the grid. 
+  coords['xticks'] = np.arange(11)
+  coords['xticklabels'] = [ '$' + znt(x) + '$' for x in coords['xticks'] ]
+  coords['xticklabels'][1::2] = ['']*len( coords['xticklabels'][1::2] )
+  coords['yticks'] = (-4, -3, -2, -1, 0, 1, 2, 3, 4)
+  coords['yticklabels'] = ['']*len( coords['yticks'] )
+  coords['yticklabels'][::2] = ('$-4$', '$-2$', '$0$', '$+2$', '$+4$')
+  PW.setParams( **coords )
+  # Grab the number density, and use it to compute the plasma frequency. 
+  n = TP.getArray(path, 'n')
+  # Scaling to Hz lines up better with the color cutoffs. 
+  PW.setContour( np.sqrt( n*phys.qe**2 / (phys.me*phys.eps0) )/(2*np.pi) )
+  unitlabel = notex('Hz')
+#  PW.setContour( np.sqrt( n*phys.qe**2 / (phys.me*phys.eps0) ) )
+#  unitlabel = notex('\\frac{rad}{s}')
+  PW.setParams(title=title, unitlabel=unitlabel)
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    return PW.render( TP.savepath + 'op.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ================================= Compressional Waves Failing to Propagate In
+# =============================================================================
+
+def plotBdrive(TP, fdrive):
+  # Let's look at the runs driven with magnetic compression.  
+  TP.setPaths('/media/My Passport/RUNS/BDRIVE/')
+
+  # Set up the window. 
+  azms = (1, 4, 16, 64)
+  models = (1, 2, 3, 4)
+
+#  PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar='sym')
+  PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar='log')
+
+  # Set title and labels. 
+  title = notex('Mean Energy Density: ') + tex(fdrive) + notex('Compression')
+  unitlabel = notex('\\frac{nJ}{m^3}')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = [ tex(model) for model in models ]
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, 
+               unitlabel=unitlabel, zmax=1)
+
+  # Each cell is a different run. 
+  for row, azm in enumerate(azms):
+
+    for col, model in enumerate(models):
+
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+      PW[:, :].setParams( **TP.getCoords(path) )
+
+#      # Toroidal Poynting flux snapshot? 
+#      Stor = TP.getArray(path, 'Stor')[:, :, 299]
+#      PW[row, col].setContour(Stor)
+
+      # Mean energy density? 
+      u = np.mean(TP.getArray(path, 'u'), axis=-1)
+      PW[row, col].setContour(u)
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'bdrive_' + znt(1e3*fdrive) + 'mHz'
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ==================================================================== The Grid
+# =============================================================================
+
+def plotGrid(TP):
+  PW = plotWindow(ncols=1, nrows=1, colorbar=False)
+  PW.setParams( title=notex('Nonorthogonal Dipole Grid') )
+  path = TP.paths.keys()[0]
+  X, Z = TP.getArray(path, 'X'), TP.getArray(path, 'Z')
+  coords = TP.getCoords(path)
+  # This isn't a cramped diagram, so let's touch up the ticks. 
+  coords['xticks'] = np.arange(11)
+  coords['xticklabels'] = [ '$' + znt(x) + '$' for x in coords['xticks'] ]
+  coords['xticklabels'][1::2] = ['']*len( coords['xticklabels'][1::2] )
+  coords['yticks'] = (-4, -3, -2, -1, 0, 1, 2, 3, 4)
+  coords['yticklabels'] = ['']*len( coords['yticks'] )
+  coords['yticklabels'][::2] = ('$-4$', '$-2$', '$0$', '$+2$', '$+4$')
+  PW.setParams( **coords )
+  nx, nz = X.shape
+  stride = 5
+  [ PW.setLine( X[i, :], Z[i, :], 'k' ) for i in range(0, nx, stride) ]
+  [ PW.setLine( X[:, k], Z[:, k], 'k' ) for k in range(0, nz, stride) ]
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'grid.pdf')
+  else:
+    return PW.render()
+
+# =============================================================================
 # ========================================= Electron Inertial Length Comparison
 # =============================================================================
 
@@ -66,9 +189,11 @@ def plotZoom(TP, azm, step=99):
 
   PW = plotWindow(ncols=2, nrows=1, colorbar='sym')
 
-  title = notex('Parallel Electric Fields: ' + tex(model) + ', ' + str(step+1) + 's \\,of 16mHz Current, ') + 'm = ' + znt(azm)
+  title = notex('Parallel Electric Fields: ' + tex(model) + ', ' +
+                str(step+1) + 's \\,of 16mHz Current, ') + 'm = ' + znt(azm)
   unitlabel = notex('\\frac{mV}{m}')
-  collabels = ('\\delta x > \\frac{c}{\\omega_P}', '\\delta x < \\frac{c}{\\omega_P}')
+  collabels = ('\\delta x > \\frac{c}{\\omega_P}', 
+               '\\delta x < \\frac{c}{\\omega_P}')
 
   xlims = (62, 68)
   xticks = (62, 63, 64, 65, 66, 67, 68)
@@ -103,6 +228,7 @@ def plotZoom(TP, azm, step=99):
 # =============================================================================
 
 def plotDivFlux(TP, model, fdrive):
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
   # Set up the window. 
   azms = (1, 4, 16, 64)
   PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
@@ -146,7 +272,7 @@ def plotDivFlux(TP, model, fdrive):
     PW[row, 3].setContour(JEz)
   # Show or save the plot. 
   if TP.savepath is not None:
-    name = 'JS_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+    name = 'JE_' + znt(1e3*fdrive) + 'mHz_' + str(model)
     return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
@@ -156,11 +282,13 @@ def plotDivFlux(TP, model, fdrive):
 # =============================================================================
 
 def plotCurrentFlux(TP, model, fdrive):
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
   # Set up the window. 
   azms = (1, 4, 16, 64)
   PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=1)
   # Set title and labels. 
-  title = notex('Current and Poynting Flux at ') + 'R_I' + notex(': ') + tex(model) + notex(', ') + tex(fdrive) + notex(' Current')
+  title = ( notex('Current and Poynting Flux at ') + 'R_I' + notex(': ') +
+            tex(model) + notex(', ') + tex(fdrive) + notex(' Current') )
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = ( tex('real') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
                 'S_P' + notex(' (\\frac{mW}{m^2})'),
@@ -193,6 +321,7 @@ def plotCurrentFlux(TP, model, fdrive):
 # =============================================================================
 
 def plotSnapshots(TP, model, fdrive, azm):
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
   # Each row is a snapshot at a different time. Three rows is probably enough. 
   steps = (259, 279, 299)
   # Plot is handled using a Plot Window object. 
@@ -211,13 +340,17 @@ def plotSnapshots(TP, model, fdrive, azm):
     PW[row, 1].setContour( Ey[:, :, step] )
     PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
   # Set the plot title and labels. 
-  collabels = ( tex('Ex'), tex('Ey'), '10^{' + znt(scalefac) + '} \\times ' + tex('Ez') )
+  collabels = ( tex('Ex'), tex('Ey'), 
+               '10^{' + znt(scalefac) + '} \\times ' + tex('Ez') )
   rowlabels = [ notex(str(s+1) + 's') for s in steps ]
-  title = notex('Electric Field Snapshots: ' + tex(model) + ', ' + tex(fdrive) + 'Current, ') + 'm = ' + znt(azm)
+  title = ( notex('Electric Field Snapshots: ' + tex(model) + ', ' +
+                  tex(fdrive) + 'Current, ') + 'm = ' + znt(azm) )
   unitlabel = notex('\\frac{mV}{m}')
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, 
+               unitlabel=unitlabel)
   # Name this figure, in case we want to save it. 
-  name = 'snapshot_' + str(model) + '_' + znt(azm, 3) + '_' + znt(1e3*fdrive, 3) + 'mHz'
+  name = ('snapshot_' + str(model) + '_' + znt(azm, 3) + '_' +
+          znt(1e3*fdrive, 3) + 'mHz')
   if TP.savepath is not None:
     return PW.render(TP.savepath + name + '.pdf')
   else:
@@ -227,7 +360,7 @@ def plotSnapshots(TP, model, fdrive, azm):
 # =========================================== Ionospheric Conductivity Profiles
 # =============================================================================
 
-def plotSigma():
+def plotSigma(TP):
   # Create the window. 
   PW = plotWindow(nrows=2, ncols=2, colorbar=None)
   # For this plot, we don't actually need the 2D arrays that Tuna spits out. We
@@ -254,12 +387,23 @@ def plotSigma():
   title = notex('Pedersen (Blue), Hall (Red), and Parallel (Green) ' + 
                 'Conductivities')
   xlabel = notex('Log Conductivity (\\frac{S}{m})')
+  ylabel = notex('Log Altitude  (km)')
+  # Set the ticks manually. 
   xlims = (-15, 5)
-  ylabel = notex('Log Altitude (km)')
+  xticks = (-15, -10, -5, 0, 5)
+  xticklabels = ('$-15$', '', '$-5$', '', '$+5$')
   ylims = (2, 4)
+  yticks = (2, 2.5, 3, 3.5, 4)
+  yticklabels = ('$2$', '', '$3$', '', '$4$')
   PW.setParams(collabels=colLabels, rowlabels=rowLabels, xlabel=xlabel, 
-               xlims=xlims, ylabel=ylabel, ylims=ylims, title=title)
-  return PW.render()
+               xlims=xlims, xticks=xticks, xticklabels=xticklabels, 
+               ylabel=ylabel, ylims=ylims, yticks=yticks, 
+               yticklabels=yticklabels, title=title)
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    return PW.render( TP.savepath + 'sigma.pdf' )
+  else:
+    return PW.render()
 
 # =============================================================================
 # =================================== Line Plot of Poloidal and Toroidal Energy
