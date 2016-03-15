@@ -566,7 +566,7 @@ class plotWindow:
     sideMargin = 40
     cellPadding = 5
     titleMargin = 15
-    headMargin = 1 if ncols==1 else 10
+    headMargin = 1 if ncols<2 else 10
     unitMargin = 10
     footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
@@ -839,6 +839,9 @@ class plotCell:
   # doesn't delete it when it's cleaning up the non-edge ticks and labels. 
   rightaxis = False
 
+  xtickrelax, ytickrelax = False, False
+
+
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------- Initialize Cell
   # ---------------------------------------------------------------------------
@@ -900,6 +903,10 @@ class plotCell:
       elif key=='xticklabels':
         self.ax.set_xticklabels(val)
         self.nxticks = None
+
+      elif key=='xtickrelax':
+        self.xtickrelax = val
+
       # Set the horizontal axis ticks manually. 
       elif key=='xticks':
         self.ax.set_xticks(val)
@@ -927,6 +934,10 @@ class plotCell:
       elif key=='yticklabels':
         self.ax.set_yticklabels(val)
         self.nyticks = None
+
+      elif key=='ytickrelax':
+        self.ytickrelax = val
+
       # Set the vertical axis ticks manually. 
       elif key=='yticks':
         self.ax.set_yticks(val)
@@ -1026,19 +1037,23 @@ class plotCell:
     self.ax.set_xlim(self.xlims)
     self.ax.set_ylim(self.ylims)
 
-    # There can be a lot of frames on these figures. Be economical. 
+    # There can be a lot of cells. Try to be economical. 
     if not self.xlog:
       if self.nxticks is not None:
         self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
                                                          integer=True) )
-      self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
-      self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
+      if not self.xtickrelax:
+        self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+        self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
+
     if not self.ylog:
       if self.nyticks is not None:
         self.ax.yaxis.set_major_locator( plt.MaxNLocator(self.nyticks, 
                                                          integer=True) )
-      self.ax.yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
-      self.ax.yaxis.get_majorticklabels()[-1].set_verticalalignment('top')
+
+      if not self.ytickrelax:
+        self.ax.yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
+        self.ax.yaxis.get_majorticklabels()[-1].set_verticalalignment('top')
     return
 
 # #############################################################################

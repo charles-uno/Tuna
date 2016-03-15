@@ -27,14 +27,17 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
+  # Schematic illustrating first and second harmonics. 
+  plotOddEven(TP)
+
 #  # Plasma frequency profile. 
 #  plotPlasmaFrequency(TP)
 
 #  # Alfven speed profiles. 
 #  plotAlfvenSpeed(TP)
 
-  # Compressional Alfven frequency cutoff. 
-  plotAlfvenCutoff(TP, model=2)
+#  # Compressional Alfven frequency cutoff. 
+#  plotAlfvenCutoff(TP, model=2)
 
 #  # Snapshots of the electric field components. 
 #  plotSnapshots(TP, model=2, fdrive=0.010, azm=16)
@@ -77,6 +80,50 @@ def main():
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# =============================================================================
+# ======================================= Compressional Alfven Cutoff Frequency
+# =============================================================================
+
+def plotOddEven(TP):
+  # Make a triple-wide window. 
+  PW = plotWindow(nrows=2, ncols=-3, colorbar=None)
+  # Set the ticks, etc, manually. 
+  ytks = (0, 0.5, 1)
+  ytls = [ '$' + notex(name) + '$' for name in ('S', '0', 'N') ]
+  ylms = (0, 1)
+  xlms = (-1, 1)
+  xtks = -1 + 2*np.arange(1, 18, 2)/18.
+  xtls = ( '$-\\pi$', '', '$-\\frac{\\pi}{2}$', '', '$0$', '',
+           '$+\\frac{\\pi}{2}$', '', '$+\\pi$' )
+  xlabel = notex('Time (\\frac{1}{\\omega})')
+  PW.setParams(xlabel=xlabel, xlims=xlms, xticks=xtks, xticklabels=xtls, 
+               xtickrelax=True, ylims=ylms, yticks=ytks, yticklabels=ytls)
+  # Normalize the waves to the grid spacing. 
+  mag = ( xtks[1] - xtks[0] )/2.5
+  y = np.linspace(0, 1, 1000)
+  # Iterate over the time steps. 
+  for x in xtks:
+    # Iterate over first and second harmonics. 
+    for i in range(2):
+      # Plot electric and magnetic perturbations. 
+      B = mag*np.cos(np.pi*(i+1)*y)*np.sin( 2*np.pi*x/( xtks[-1] - xtks[0] ) )
+      E = mag*np.sin(np.pi*(i+1)*y)*np.cos( 2*np.pi*x/( xtks[-1] - xtks[0] ) )
+      PW[i].setLine(x + B, y, 'r')
+      PW[i].setLine(x + E, y, 'b')
+  # Put in a guide for the eye juse above the equator. 
+  gx = np.linspace(xlms[0], xlms[1], 1000)
+  gy = np.ones(gx.shape)*0.6
+  PW.setLine(gx, gy, 'g:')
+  # Set title. Label rows. 
+  title = notex('Electric (Blue) and Magnetic (Red) Harmonic Perturbations')
+  rowlabels = ( notex('First') + '$\n$' + notex('Harmonic'), notex('Second') + '$\n$' + notex('Harmonic') )
+  PW.setParams(title=title, rowlabels=rowlabels)
+  # Create the plot. 
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'harmonics.pdf')
+  else:
+    return PW.render()
 
 # =============================================================================
 # ======================================= Compressional Alfven Cutoff Frequency
