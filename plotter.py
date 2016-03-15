@@ -30,6 +30,12 @@ def main():
 #  # Plasma frequency profile. 
 #  plotPlasmaFrequency(TP)
 
+#  # Alfven speed profiles. 
+#  plotAlfvenSpeed(TP)
+
+  # Compressional Alfven frequency cutoff. 
+  plotAlfvenCutoff(TP, model=2)
+
 #  # Snapshots of the electric field components. 
 #  plotSnapshots(TP, model=2, fdrive=0.010, azm=16)
 
@@ -42,11 +48,14 @@ def main():
 #  # Zoom way in on runs with and without inertial length scales. 
 #  plotZoom(TP, azm=16)
 
-  # Conductivity profiles. 
-  plotSigma(TP)
+#  # Conductivity profiles. 
+#  plotSigma(TP)
 
 #  # The grid. 
 #  plotGrid(TP)
+
+#  # Sym-H index and its Fourier transform. 
+#  plotSymh(TP)
 
 #  # Show waves failing to propagate in when driven from the outer boundary. 
 #  plotBdrive(TP, fdrive=0.022)
@@ -68,6 +77,167 @@ def main():
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# =============================================================================
+# ======================================= Compressional Alfven Cutoff Frequency
+# =============================================================================
+
+def plotAlfvenCutoff(TP, model=2):
+
+  PW = plotWindow(nrows=1, ncols=3, colorbar='log', zmax=1e3)
+
+  azms = (1, 8, 64)
+
+  # Frequency doesn't matter. Just pick one. 
+  fdrive = TP.getValues('fdrive')[0]
+
+  collabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+  title = notex('Compressional Alfv\\acute{e}n Cutoff Frequency')
+  unitlabel = notex('mHz')
+
+  PW.setParams(collabels=collabels, title=title, unitlabel=unitlabel)
+
+  for i, azm in enumerate(azms):
+
+    path = TP.getPath(azm=azm, fdrive=fdrive, model=model)
+    PW[i].setParams( **TP.getCoords(path) )
+
+    r = TP.getArray(path, 'r')
+    va = TP.getArray(path, 'va')
+    kperp = azm/(2*np.pi*r)
+
+    PW[i].setContour( 1e3*kperp*va )
+
+
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'alfven_cutoff.pdf')
+  else:
+    return PW.render()
+
+
+# =============================================================================
+# ======================================================= Alfven Speed Profiles
+# =============================================================================
+
+def plotAlfvenSpeed(TP):
+  PW = plotWindow(nrows=2, ncols=2, colorbar='log')
+  # We don't actually care about fdrive, azm, or driving style. Just model. 
+  azm = TP.getValues('azm')[0]
+  fdrive = TP.getValues('fdrive')[0]
+  for i in range(4):
+    path = TP.getPath(azm=azm, fdrive=fdrive, bdrive=0, model=i+1)
+    PW[i].setParams( **TP.getCoords(path) )
+    PW[i].setContour( 1000*TP.getArray(path, 'va') )
+  # Set the labels and title. 
+  collabels = [ notex('Active'), notex('Quiet') ]
+  rowlabels = [ notex('Day'), notex('Night') ]
+  title = notex('Alfv\\acute{e}n Speed')
+  unitlabel = notex('\\frac{km}{s}')
+  PW.setParams(collabels=collabels, rowlabels=rowlabels, title=title, 
+               unitlabel=unitlabel)
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'va.pdf')
+  else:
+    return PW.render()
+
+# =============================================================================
+# =========================================== Sym-H Index in Time and Frequency
+# =============================================================================
+
+from time import gmtime
+from calendar import timegm
+
+# Returns the time, in seconds, from 1970-01-01. 
+def timeint(date=None, time=None):
+  # Parse a string of the form hh:mm:ss. 
+  if time is None:
+    hh, mm, ss = 0, 0, 0
+  else:
+    # Account for missing colons and/or missing seconds. 
+    hms = ( time.replace(':', '') + '00' )[:6]
+    hh, mm, ss = int( hms[0:2] ), int( hms[2:4] ), int( hms[4:6] )
+  # Parse a string of the form yyyy-mm-dd. If no date is given, use 
+  # 1970-01-01 so that the returned value is just in seconds from midnight. 
+  if date is None:
+    year, mon, day = 1970, 1, 1
+  else:
+    # Allow missing dashes in the date. 
+    ymd = date.replace('-', '')
+    year, mon, day = int( ymd[0:4] ), int( ymd[4:6] ), int( ymd[6:8] )
+  return timegm( (year, mon, day, hh, mm, ss) )
+
+# Returns strings indicating the date and time. 
+def timestr(ti):
+  year, mon, day = gmtime(ti).tm_year, gmtime(ti).tm_mon, gmtime(ti).tm_mday
+  hh, mm, ss = gmtime(ti).tm_hour, gmtime(ti).tm_min, gmtime(ti).tm_sec
+  date = znt(year, 4) + '-' + znt(mon, 2) + '-' + znt(day, 2)
+  time = znt(hh, 2) + ':' + znt(mm, 2) + ':' + znt(ss, 2)
+  return date, time
+
+def plotSymh(TP, showline=False):
+  # Two cells, side by side, sharing neither axis. 
+  PW = plotWindow(nrows=1, ncols=2, colorbar=False)
+  # Grab the data that we downloaded from NASA CDAWeb. 
+  filename = '/home/user1/mceachern/Desktop/tuna-old/symh/symh_20130601.txt'
+  data = [ line for line in open(filename, 'r').readlines() if line.strip() ]
+  t, symh = np.zeros( len(data) ), np.zeros( len(data) )
+  for i, line in enumerate(data):
+    year, day, hour, minute, value = [ int(col) for col in line.split() ]
+    t[i] = 24*60*day + 60*hour + minute
+    symh[i] = value
+
+  # Plot the Sym-H waveform in units of days. 
+  date = ( t - t[0] )/1440.
+  # Set the ticks manually. 
+  ylabel = notex('Amplitude (nT)')
+  ylims = (-150, 50)
+  yticks = (-150, -100, -50, 0, 50)
+  yticklabels = ('$-150$', '', '$-50$', '', '$+50$')
+  xlabel = notex('Time (Days)')
+  xlims = (0, 3)
+  xticks = (0, 0.5, 1, 1.5, 2, 2.5, 3)
+  xticklabels = ('$0$', '', '$1$', '', '$2$', '', '$3$')
+  # Plot. 
+  PW[0].setParams(xlabel=xlabel, xlims=xlims, xticks=xticks, 
+                  xticklabels=xticklabels, ylabel=ylabel, ylims=ylims, 
+                  yticks=yticks, yticklabels=yticklabels)
+  PW[0].setLine(date, symh, 'k')
+
+  # Get the Fourier transform of the Sym-H waveform. Throw a factor of 1/N in
+  # there, since Numpy normalizes backwards. 
+  symhfft = np.fft.rfft(symh)[:-1] / date.size
+  # Scale days to ks to get frequency in mHz. 
+  dt = ( date[1] - date[0] )*86400/1e3
+  freq = np.fft.fftfreq(symh.size, d=dt)[:symhfft.size]
+  # Plot log-log, skipping the DC offset. 
+  logf, logs,  = np.log10( freq[1:] ), np.log10( np.abs(symhfft)[1:] )
+  # Set ticks manually. 
+  lims = (-3, 1)
+  ticks = (-3, -2, -1, 0, 1)
+  ticklabels = ('$-3$', '', '$-1$', '', '$+1$')
+  ylabel = notex('Log Amplitude (nT)')
+  xlabel = notex('Log Frequency (mHz)')
+  PW[1].setParams(xlabel=xlabel, xlims=lims, xticks=ticks, 
+                  xticklabels=ticklabels, ylabel=ylabel, ylims=lims, 
+                  yticks=ticks, yticklabels=ticklabels, axright=True)
+  PW[1].setLine(logf, logs)
+
+  # Also plot a fit. Really just a red line along the top of the distribution. 
+  power = -1
+  intercept = 0.1
+  fit = intercept * freq[1:]**power
+  PW[1].setLine(logf, np.log10(fit), color='r')
+
+  # Set title and labels. 
+  title = notex('Sym-H for June 2013 Storm')
+  colLabels = ( notex('Sym-H'), notex('Sym-H Fourier Transform') )
+  PW.setParams(title=title, collabels=colLabels)
+
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'symh.pdf')
+  else:
+    return PW.render()
 
 # =============================================================================
 # ============================================================ Plasma Frequency
@@ -332,6 +502,10 @@ def plotSnapshots(TP, model, fdrive, azm):
   Ex, Ey, Ez = [ TP.getArray(path, name) for name in ('Ex', 'Ey', 'Ez') ]
   # Figure out an appropriate factor by which to scale up Ez. 
   scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
+
+  scalefac = 6
+
+
   # Set up the plot axes. 
   PW.setParams( **TP.getCoords(path) )
   # Add each contour to the plot. 
@@ -513,37 +687,6 @@ def plotGround(TP, fdrive):
     return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
-
-
-
-
-
-
-
-'''
-
-      # Try to de-cramp cramped plots a bit. 
-      if ymin==2 and ymax==6:
-        for cell in self.cells.flatten():
-          cell.setParams( yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
-
-      if ymin==2 and ymax==10:
-        for cell in self.cells.flatten():
-          cell.setParams( yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
-
-      # Try to de-cramp cramped plots a bit. 
-      if xmin==1 and xmax==300:
-        for cell in self.cells.flatten():
-          cell.setParams( xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-
-      if all( cell.xlims==(-15, 5) for cell in self.cells.flatten() ):
-        for cell in self.cells.flatten():
-          cell.setParams( xticks=(-15, -10, -5, 0, 5), xticklabels=('$-15$', '', '$-5$', '', '$5$') )
-
-    if self.xlims==(-3, 1):
-      self.setParams( xticks=(-3, -2, -1, 0, 1), xticklabels=('$-3$', '$-2$', '$-1$', '$0$', '$1$') )
-
-'''
 
 # #####################################################################
 # ################################################### For Importability

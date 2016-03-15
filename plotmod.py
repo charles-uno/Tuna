@@ -791,7 +791,8 @@ class plotWindow:
     self.setParams( xlims=(xmin, xmax), ylims=(ymin, ymax) )
     # Only the leftmost cells get y axis labels and tick labels. 
     for cell in self.cells[:, 1:].flatten():
-      cell.setParams( ylabel='', yticklabels=() )
+      if not cell.rightaxis:
+        cell.setParams( ylabel='', yticklabels=() )
     # Only the bottom cells get x axis labela and tick labels. 
     for cell in self.cells[:-1, :].flatten():
       cell.setParams( xlabel='', xticklabels=() )
@@ -834,6 +835,9 @@ class plotCell:
   outline = False
   # Cells can be small. Let's try to keep the number of ticks under control.
   nxticks, nyticks = 3, 4
+  # Sometimes we want an extra axis label on the right. Make sure the window
+  # doesn't delete it when it's cleaning up the non-edge ticks and labels. 
+  rightaxis = False
 
   # ---------------------------------------------------------------------------
   # ----------------------------------------------------------- Initialize Cell
@@ -852,15 +856,20 @@ class plotCell:
     for key, val in kargs.items():
       # Keys are caps insensitive. 
       key = key.lower()
+      # Sometimes we want to sneak in an extra axis of labels. 
+      if key=='axright' and bool(val) is True:
+        self.rightaxis = True
+        self.ax.yaxis.set_label_position('right')
+        self.ax.yaxis.tick_right()
+        self.ax.yaxis.set_ticks_position('both')
       # Sometimes we have to finagle with the number of ticks. 
-      if key=='nxticks':
+      elif key=='nxticks':
         self.nxticks = val
       elif key=='nyticks':
         self.nyticks = val
       # Draw an outline around the plot contents. 
       elif key=='outline':
         self.outline = val
-
       # Add text inside the cell, along the top. If we want to do anything more
       # sophisticated with text, like control its position or rotation or
       # color or size, we'll probably need to add a setText method. 
@@ -868,7 +877,6 @@ class plotCell:
         targs = {'x':0.5, 'y':0.85, 'horizontalalignment':'center', 
                  'verticalalignment':'center', 'transform':self.ax.transAxes}
         self.ax.text(s='$' + val + '$', fontsize=9, **targs)
-
       # Horizontal axis coordinate. 
       elif key=='x':
         self.x = val
