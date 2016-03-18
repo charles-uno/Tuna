@@ -853,6 +853,8 @@ module io
                                                        ! 2 is quiet dayside. 
                                                        ! 3 is active nightside. 
                                                        ! 4 is quiet nightside. 
+                                                       ! 5 is QUIET flank. 
+                                                       ! 6 is ACTIVE flank. 
     if (varname .eq. 'naz'  ) defaultParam = 10        ! Density at auroral
                                                        ! base, cm^-3. 
     if (varname .eq. 'haz'  ) defaultParam = 1         ! Scale height (in RE)

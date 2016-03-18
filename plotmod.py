@@ -30,7 +30,9 @@ except ImportError:
 from matplotlib import gridspec, rc
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import LinearSegmentedColormap as LSC
+from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.colors import LogNorm, Normalize
+from matplotlib.patches import Wedge
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -540,7 +542,7 @@ class plotWindow:
   # --------------------------------- Initialize Plot Window and Space Out Axes
   # ---------------------------------------------------------------------------
 
-  def __init__(self, ncols=1, nrows=1, cells=None, **kargs):
+  def __init__(self, ncols=1, nrows=1, cells=None, square=False, joinlabel=None, **kargs):
     # If initialized with an array of cells, this isn't a real Plot Window... 
     # it's a temporary object that allows the access of a slice of cells. 
     if cells is not None:
@@ -566,7 +568,7 @@ class plotWindow:
     sideMargin = 40
     cellPadding = 5
     titleMargin = 15
-    headMargin = 1 if ncols<2 else 10
+    headMargin = 1 if ncols<2 and joinlabel is None else 10
     unitMargin = 10
     footMargin = 20
     # The size of each subplot depends on how many columns there are. The total
@@ -575,7 +577,7 @@ class plotWindow:
     cellWidth = {1:175, 2:80, 3:55, 4:40}[ancols]
     # Cells are proportioned to show a dipole plot, which is 10RE wide and 8RE
     # tall, in proper proportion. 
-    cellHeight = 4*cellWidth/5
+    cellHeight = cellWidth if square is True else 4*cellWidth/5 
     # Tally up how many tiles we need. 
     tileWidth = ancols*cellWidth + (ancols-1)*cellPadding + 2*sideMargin
     tileHeight = ( nrows*cellHeight + (nrows-1)*cellPadding + titleMargin +
@@ -613,12 +615,14 @@ class plotWindow:
       bot = top + cellHeight
       self.sax[row] = plt.subplot( tiles[top:bot, left:right] )
     # Space out an array of header axes on the top to hold column labels. 
-    self.hax = np.empty( (oncols,), dtype=object)
-    top, bot = titleMargin, titleMargin + headMargin
-    if ncols<0:
+    if joinlabel is True:
+      self.hax = np.empty( (1,), dtype=object)
+      top, bot = titleMargin, titleMargin + headMargin
       self.hax[0] = plt.subplot( tiles[top:bot, sideMargin:-sideMargin] )
     else:
-      for col in range(oncols):
+      self.hax = np.empty( (ancols,), dtype=object)
+      top, bot = titleMargin, titleMargin + headMargin
+      for col in range(ancols):
         left = sideMargin + col*(cellWidth + cellPadding)
         right = left + cellWidth
         self.hax[col] = plt.subplot( tiles[top:bot, left:right] )
@@ -731,6 +735,10 @@ class plotWindow:
   def setLine(self, *args, **kargs):
     return [ cell.setLine(*args, **kargs) for cell in self.cells.flatten() ]
 
+  # If the window gets passed a mesh, just send it along to each cell. 
+  def setMesh(self, *args, **kargs):
+    return [ cell.setMesh(*args, **kargs) for cell in self.cells.flatten() ]
+
   # ---------------------------------------------------------------------------
   # ---------------------------------------------------------- Get Cell Extrema
   # ---------------------------------------------------------------------------
@@ -822,7 +830,7 @@ class plotCell:
 
   # If this cell contains a contour, we'll need to hold the spatial coordinates
   # and the data values. We also keep room for any arguments for contourf. 
-  x, y, z, kargs = None, None, None, None
+  x, y, cz, mz, kargs = None, None, None, None, None
   # A plot can have any number of lines drawn on it. Those will be stored here. 
   lines = None
   # If we manually set the axis limits, we want to ignore the automatically-set
@@ -956,9 +964,9 @@ class plotCell:
     self.kargs = kargs
     # Accept the contour with or without its spatial coordinates. 
     if len(args)==1:
-      self.z = args[0]
+      self.cz = args[0]
     elif len(args)==3:
-      self.x, self.y, self.z = args
+      self.x, self.y, self.cz = args
     # If we're passed a weird number of arguments, bail. 
     else:
       print 'ERROR: Illegal number of arguments to plotCell.setContour '
@@ -979,6 +987,20 @@ class plotCell:
       self.lines.append( ( (self.x,) + args, kargs ) )
     return
 
+  def setMesh(self, *args, **kargs):
+    # Store any keyword parameters meant for the contourf call. 
+    self.kargs = kargs
+    # Accept the contour with or without its spatial coordinates. 
+    if len(args)==1:
+      self.mz = args[0]
+    elif len(args)==3:
+      self.x, self.y, self.mz = args
+    # If we're passed a weird number of arguments, bail. 
+    else:
+      print 'ERROR: Illegal number of arguments to plotCell.setMesh '
+      exit()
+    return
+
   # ---------------------------------------------------------------------------
   # ------------------------------------------------------- Report Cell Extrema
   # ---------------------------------------------------------------------------
@@ -997,7 +1019,9 @@ class plotCell:
       return max( amax, max( max( args[1] ) for args, kargs in self.lines ) )
 
   def zmax(self):
-    return None if self.z is None else np.max(self.z)
+    cmax = None if self.cz is None else np.max(self.cz)
+    mmax = None if self.mz is None else np.max(self.mz)
+    return max(cmax, mmax)
 
   # Minima are tricky, since None counts as smaller than any number. 
 
@@ -1013,7 +1037,14 @@ class plotCell:
       return lmin if amin is None else min(amin, lmin)
 
   def zmin(self):
-    return None if self.z is None else np.min(self.z)
+    cmin = None if self.cz is None else np.min(self.cz)
+    mmin = None if self.mz is None else np.min(self.mz)
+    if cmin is None:
+      return mmin
+    elif mmin is None:
+      return cmin
+    else:
+      min(cmin, mmin)
 
   # ---------------------------------------------------------------------------
   # ---------------------------------------------------------- Render Plot Cell
@@ -1021,11 +1052,27 @@ class plotCell:
 
   def render(self, **colors):
     # If this cell has a contour, lay that down first. 
-    if self.z is not None:
+    if self.cz is not None:
       # Use the color params we were passed, but allow keyword arguments from
       # the contour call to overwrite them. 
       kargs = dict( colors.items() + self.kargs.items() )
-      self.ax.contourf(self.x, self.y, self.z, **kargs)
+      self.ax.contourf(self.x, self.y, self.cz, **kargs)
+    # Same for a mesh. 
+    if self.mz is not None:
+      # The mesh wants arguments formulated a bit differently. 
+      kargs = dict( colors.items() + self.kargs.items() )
+      # Make sure we can call the color map. 
+      if 'cmap' not in kargs or kargs['cmap'] is None:
+        kargs['cmap'] = plt.get_cmap(None)
+      # Get the colors we want for each color level. 
+      clevs = np.array( kargs['levels'] )
+      ulevs = ( clevs - clevs[0] )/( clevs[-1] - clevs[0] )
+      clist = [ kargs['cmap'](u) for u in 0.5*( ulevs[1:] + ulevs[:-1] ) ]
+      # Create a stepwise color map at those colors. 
+      cmap = ListedColormap(clist)
+      # Also create a norm to deliniate the step boundaries. 
+      norm = BoundaryNorm(clevs, cmap.N)
+      self.ax.pcolormesh(self.x, self.y, self.mz, cmap=cmap, norm=norm)
     # Optionally, draw the outline of the data. 
     if self.outline:
       [ self.ax.plot(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
@@ -1092,6 +1139,13 @@ class plotColors(dict):
     elif self.colorbar=='phase':
       temp['ticks'], temp['levels'] = self.phaseTicksLevels(zmax)
       temp['norm'] = Normalize()
+
+
+    elif self.colorbar=='pos':
+      temp['ticks'], temp['levels'] = self.posTicksLevels(zmax)
+      temp['norm'] = Normalize()
+
+
     else:
       temp['ticks'], temp['levels'] = self.linTicksLevels(zmax)
       temp['norm'] = Normalize()
@@ -1125,6 +1179,14 @@ class plotColors(dict):
     self.nticks = self.ncolors
     ticks = np.linspace(self.zmin, self.zmax, self.nticks)
     levels = np.linspace(self.zmin, self.zmax, self.ncolors)
+    return ticks, levels
+
+  # Seems to work? Don't lean too heavily... it was just thrown together. 
+  def posTicksLevels(self, zmax):
+    # Linear scale from 0 to zmax. Tick at every other level, like with log. 
+    self.zmax = zmax
+    levels = np.linspace(0, self.zmax, self.ncolors)
+    ticks = 0.5*( levels[1:] + levels[:-1] )[::2]
     return ticks, levels
 
   def logTicksLevels(self, zmax):
@@ -1217,7 +1279,7 @@ class plotColors(dict):
   # match the normalization of our ticks and color levels. 
   def getCmap(self):
     # Figure out the unit interval renormalization to use. 
-    if self.colorbar=='log':
+    if self.colorbar=='log' or self.colorbar=='pos':
       # Kinda kludgey. See setColorbar for explanation. 
       return None
     elif self.colorbar=='sym':
@@ -1279,6 +1341,17 @@ class plotColors(dict):
                    cmap=colorParams['cmap'])
       cax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
       return
+
+    elif self.colorbar=='pos':
+      fmt = self.linFormatter
+      ColorbarBase(cax, boundaries=colorParams['levels'],
+                   ticks=colorParams['ticks'], norm=colorParams['norm'],
+                   cmap=colorParams['cmap'])
+      cax.set_yticklabels( [ fmt(t).replace('+', '') for t in colorParams['ticks'] ] )
+      return
+
+
+
     elif self.colorbar=='sym':
       norm, mron, fmt = self.symNorm, self.symMron, self.symFormatter
     elif self.colorbar=='phase':
@@ -1315,10 +1388,23 @@ class plotColors(dict):
     # If our numbers are around order unity, the top tick should show two
     # significant figures, and the rest should match that decimal place. 
     elif 1e-3<self.zmax<1e3:
-      power = int( format(self.zmax, '.1e').split('e')[-1] )
-      digs = max(0, 1 - power)
+
       sign = '' if x<0 else '+'
-      return '$' + sign + format(x, '.' + str(digs) + 'f') + '$'
+
+      power = int( format(self.zmax, '.1e').split('e')[-1] )
+
+      if power>1:
+        xp = x/10.**power
+        d0 = int(xp)
+        d1 = int( round( 10*(xp - d0) ) )
+        fx = format((d0 + 0.1*d1)*10**power, '.0f')
+
+      else:
+        digs = 1 - power
+        fx = format(x, '.' + str(digs) + 'f')
+
+      return '$' + sign + fx + '$'
+
     else:
       # Cast the number in scientific notation. 
       s = format(x, '.1e').replace('e', ' \\cdot 10^{') + '}'

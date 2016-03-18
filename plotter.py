@@ -27,14 +27,18 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
-  # Schematic illustrating first and second harmonics. 
-  plotOddEven(TP)
+#  # Schematic illustrating poloidal and toroidal waves. 
+#  plotToroidal(TP)
+#  plotPoloidal(TP)
+
+#  # Schematic illustrating first and second harmonics. 
+#  plotOddEven(TP)
 
 #  # Plasma frequency profile. 
 #  plotPlasmaFrequency(TP)
 
-#  # Alfven speed profiles. 
-#  plotAlfvenSpeed(TP)
+  # Alfven speed profiles. 
+  plotAlfvenSpeed(TP)
 
 #  # Compressional Alfven frequency cutoff. 
 #  plotAlfvenCutoff(TP, model=2)
@@ -82,6 +86,88 @@ def main():
 # #############################################################################
 
 # =============================================================================
+# =============================================================== Toroidal Mode
+# =============================================================================
+
+def plotToroidal(TP):
+  PW = plotWindow(nrows=1, ncols=-2, colorbar=None, joinlabel=False)
+  # Set title and labels. 
+  title = notex('Toroidal Resonance Structure')
+  collabels = ( notex('First Harmonic'), notex('Second Harmonic') )
+  PW.setParams(title=title, collabels=collabels)
+  # Set ticks and limits. No tick labels. 
+  xtks = np.linspace(-10, 10, 9)
+  ytks = np.linspace(-4, 4, 5)
+  xtls, ytls = (), ()
+  xlms, ylms = (-10, 10), (-4, 4)
+  xlbl, ylbl = notex('X'), notex('Z')
+  PW.setParams(xlabel=xlbl, xlims=xlms, xticks=xtks, xticklabels=xtls, 
+               ylabel=ylbl, ylims=ylms, yticks=ytks, yticklabels=ytls)
+  # Draw Earth. This is a bit kludgey. 
+  ax = ax = PW.cells.flatten()[0].ax
+  ax.add_artist( Wedge( (0, 0), 1, 0, 360, fc='w' ) )
+  # Draw a field line, leaving out the part inside Earth. 
+  L, dL = 8, 0.2
+  q0 = np.arcsin( np.sqrt(1./L) )
+  q = np.linspace(q0, np.pi - q0, 150)
+  r = L*np.sin(q)**2
+  x, z = r*np.sin(q), r*np.cos(q)
+  # Normalized coordinate for convenience. 
+  u = np.pi*( q - q[0] )/( q[-1] - q[0] )
+  for n in (1, 2):
+    # Thickness of the line. Bottoms out at plus or minus 1. 
+    w = 5*np.sin(n*u)
+    w = np.where(np.abs(w)<1, np.sign(w), w)
+    for i in range(1, u.size, 2):
+      color = 'k' if w[i]>0 else 'k:'
+      ax.plot( (-1)**n * x[i-1:i+2], z[i-1:i+2], color, linewidth=np.abs( w[i] ) )
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'toroidal.pdf')
+  else:
+    return PW.render()
+
+# =============================================================================
+# =============================================================== Poloidal Mode
+# =============================================================================
+
+def plotPoloidal(TP):
+  PW = plotWindow(nrows=1, ncols=-2, colorbar=None, joinlabel=False)
+  # Set title and labels. 
+  title = notex('Poloidal Resonance Structure')
+  collabels = ( notex('First Harmonic'), notex('Second Harmonic') )
+  PW.setParams(title=title, collabels=collabels)
+  # Set ticks and limits. No tick labels. 
+  xtks = np.linspace(-10, 10, 9)
+  ytks = np.linspace(-4, 4, 5)
+  xtls, ytls = (), ()
+  xlms, ylms = (-10, 10), (-4, 4)
+  xlbl, ylbl = notex('X'), notex('Z')
+  PW.setParams(xlabel=xlbl, xlims=xlms, xticks=xtks, xticklabels=xtls, 
+               ylabel=ylbl, ylims=ylms, yticks=ytks, yticklabels=ytls)
+  # Draw a field line, leaving out the part inside Earth. 
+  L, dL = 8, 0.7
+  q0 = np.arcsin( np.sqrt(1./L) )
+  q = np.linspace(q0, np.pi - q0, 100)
+  r = L*np.sin(q)**2
+  x, z = r*np.sin(q), r*np.cos(q)
+  [ PW.setLine(sign*x, z, 'k') for sign in (-1, 1) ]
+  # Draw Earth. This is a bit kludgey. 
+  ax = ax = PW.cells.flatten()[0].ax
+  ax.add_artist( Wedge( (0, 0), 1, 0, 360, fc='w' ) )
+  # Normalized coordinate for convenience. 
+  u = np.pi*( q - q[0] )/( q[-1] - q[0] )
+  for i in range(2):
+    dr = dL*np.sin( (i+1)*u )
+    xm, zm = (-1)**(i+1)*(r - dr)*np.sin(q), (r - dr)*np.cos(q)
+    xp, zp = (-1)**(i+1)*(r + dr)*np.sin(q), (r + dr)*np.cos(q)
+    PW.setLine(xm, zm, 'b')
+    PW.setLine(xp, zp, 'r')
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'poloidal.pdf')
+  else:
+    return PW.render()
+
+# =============================================================================
 # ======================================= Compressional Alfven Cutoff Frequency
 # =============================================================================
 
@@ -115,6 +201,15 @@ def plotOddEven(TP):
   gx = np.linspace(xlms[0], xlms[1], 1000)
   gy = np.ones(gx.shape)*0.6
   PW.setLine(gx, gy, 'g:')
+  # Plot a drift-bounce path. 
+  dbx = xtks[4] - xtks[0]
+  for x in xtks[0::8]:
+    xup = np.linspace(x - dbx, x, 10)
+    xdn = np.linspace(x, x + dbx, 10)
+    yup = np.linspace(0.2, 0.8, 10)
+    ydn = np.linspace(0.8, 0.2, 10)
+    PW[1].setLine(xup, yup, 'm:')
+    PW[1].setLine(xdn, ydn, 'm:')
   # Set title. Label rows. 
   title = notex('Electric (Blue) and Magnetic (Red) Harmonic Perturbations')
   rowlabels = ( notex('First') + '$\n$' + notex('Harmonic'), notex('Second') + '$\n$' + notex('Harmonic') )
@@ -130,55 +225,42 @@ def plotOddEven(TP):
 # =============================================================================
 
 def plotAlfvenCutoff(TP, model=2):
-
   PW = plotWindow(nrows=1, ncols=3, colorbar='log', zmax=1e3)
-
   azms = (1, 8, 64)
-
   # Frequency doesn't matter. Just pick one. 
   fdrive = TP.getValues('fdrive')[0]
-
   collabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
   title = notex('Compressional Alfv\\acute{e}n Cutoff Frequency')
   unitlabel = notex('mHz')
-
   PW.setParams(collabels=collabels, title=title, unitlabel=unitlabel)
-
   for i, azm in enumerate(azms):
-
     path = TP.getPath(azm=azm, fdrive=fdrive, model=model)
     PW[i].setParams( **TP.getCoords(path) )
-
     r = TP.getArray(path, 'r')
     va = TP.getArray(path, 'va')
     kperp = azm/(2*np.pi*r)
-
     PW[i].setContour( 1e3*kperp*va )
-
-
   if TP.savepath is not None:
     return PW.render(TP.savepath + 'alfven_cutoff.pdf')
   else:
     return PW.render()
-
 
 # =============================================================================
 # ======================================================= Alfven Speed Profiles
 # =============================================================================
 
 def plotAlfvenSpeed(TP):
-  PW = plotWindow(nrows=2, ncols=2, colorbar='log')
+  PW = plotWindow(nrows=3, ncols=2, colorbar='log')
   # We don't actually care about fdrive, azm, or driving style. Just model. 
   azm = TP.getValues('azm')[0]
   fdrive = TP.getValues('fdrive')[0]
-  for i in range(4):
-    path = TP.getPath(azm=azm, fdrive=fdrive, bdrive=0, model=i+1)
+  for i, model in enumerate( (1, 2, 6, 5, 3, 4) ):
+    path = TP.getPath(azm=azm, fdrive=fdrive, bdrive=0, model=model)
     PW[i].setParams( **TP.getCoords(path) )
     PW[i].setContour( 1000*TP.getArray(path, 'va') )
   # Set the labels and title. 
   collabels = [ notex('Active'), notex('Quiet') ]
-  rowlabels = [ notex('Day'), notex('Night') ]
+  rowlabels = [ notex('Day'), notex('Flank'), notex('Night') ]
   title = notex('Alfv\\acute{e}n Speed')
   unitlabel = notex('\\frac{km}{s}')
   PW.setParams(collabels=collabels, rowlabels=rowlabels, title=title, 
@@ -583,11 +665,11 @@ def plotSnapshots(TP, model, fdrive, azm):
 
 def plotSigma(TP):
   # Create the window. 
-  PW = plotWindow(nrows=2, ncols=2, colorbar=None)
+  PW = plotWindow(nrows=3, ncols=2, colorbar=None)
   # For this plot, we don't actually need the 2D arrays that Tuna spits out. We
   # can just read in the profiles directly. 
-  for i in range(4):
-    datname = './models/ionpar' + str(i+1) + '.dat'
+  for i, model in enumerate( (1, 2, 6, 5, 3, 4) ):
+    datname = './models/ionpar' + str(model) + '.dat'
     with open(datname, 'r') as fileobj:
       lines = fileobj.readlines()
     ionos = np.array( [ [ float(x) for x in l.split() ] for l in lines ] )
@@ -604,7 +686,7 @@ def plotSigma(TP):
     PW[i].setLine(logsig0, logalt, 'g')
   # Set the labels and title. 
   colLabels = [ notex('Active'), notex('Quiet') ]
-  rowLabels = [ notex('Day'), notex('Night') ]
+  rowLabels = [ notex('Day'), notex('Flank'), notex('Night') ]
   title = notex('Pedersen (Blue), Hall (Red), and Parallel (Green) ' + 
                 'Conductivities')
   xlabel = notex('Log Conductivity (\\frac{S}{m})')
