@@ -37,8 +37,8 @@ def main():
 #  # Plasma frequency profile. 
 #  plotPlasmaFrequency(TP)
 
-  # Alfven speed profiles. 
-  plotAlfvenSpeed(TP)
+#  # Alfven speed profiles. 
+#  plotAlfvenSpeed(TP)
 
 #  # Compressional Alfven frequency cutoff. 
 #  plotAlfvenCutoff(TP, model=2)
@@ -76,14 +76,47 @@ def main():
 #  for kargs in loopover( model=(1,), fdrive=(0.019,) ):
 #    plotLayers(TP, **kargs)
 
-#  for kargs in loopover( model=TP.getValues('model') ):
-#    plotEnergy(TP, **kargs)
+  for kargs in loopover( model=TP.getValues('model') ):
+    plotEnergy(TP, **kargs)
 
   return
 
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# =============================================================================
+# =================================== Line Plot of Poloidal and Toroidal Energy
+# =============================================================================
+
+def plotEnergy(TP, model):
+  # One modenumber per row. One frequency per column, to a maximum of 4. 
+  azms = TP.getValues('azm')
+  fdrives = TP.getValues('fdrive')[-4:]
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
+  # Set title and labels. 
+  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Iterate over the cells. 
+  for row, azm in enumerate(azms):
+    for col, fdrive in enumerate(fdrives):
+      # Find the data for this cell, and plot it. 
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      PW[row, col].setParams( **TP.getCoords(path, 't', 'logU') )
+      PW[row, col].setLine( np.log10( TP.getArray(path, 'Upol') ), 'b')
+      PW[row, col].setLine( np.log10( TP.getArray(path, 'Utor') ), 'r')
+  # Manually clean up the axes. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+  PW.setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'U_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
 
 # =============================================================================
 # =============================================================== Toroidal Mode
@@ -705,39 +738,6 @@ def plotSigma(TP):
   # Show or save the plot. 
   if TP.savepath is not None:
     return PW.render( TP.savepath + 'sigma.pdf' )
-  else:
-    return PW.render()
-
-# =============================================================================
-# =================================== Line Plot of Poloidal and Toroidal Energy
-# =============================================================================
-
-def plotEnergy(TP, model):
-  # One modenumber per row. One frequency per column, to a maximum of 4. 
-  azms = TP.getValues('azm')
-  fdrives = TP.getValues('fdrive')[-4:]
-  # The Plot Window does the actual plotting. 
-  PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
-  # Set title and labels. 
-  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
-  # Iterate over the cells. 
-  for row, azm in enumerate(azms):
-    for col, fdrive in enumerate(fdrives):
-      # Find the data for this cell, and plot it. 
-      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-      PW[row, col].setParams( **TP.getCoords(path, 't', 'logU') )
-      PW[row, col].setLine( np.log10( TP.getArray(path, 'Upol') ), 'b')
-      PW[row, col].setLine( np.log10( TP.getArray(path, 'Utor') ), 'r')
-  # Manually clean up the axes. 
-  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-  PW.setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'U_' + str(model)
-    return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
 
