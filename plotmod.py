@@ -92,6 +92,8 @@ def tex(x):
              'EBt':'\\widetilde{E}_x\\widetilde{B}^*_y', 
              'SpFFT':'-\\frac{L^3}{\\mu_0}\\widetilde{E}_y\\widetilde{B}^*_x', 
              'StFFT':'\\frac{L^3}{\\mu_0}\\widetilde{E}_x\\widetilde{B}^*_y', 
+             'BBp':'\\widetilde{B}_z/\\widetilde{B}_x', 
+             'BBt':'\\widetilde{B}_z/\\widetilde{B}_y', 
              # Units. 
              'mHz':notex('mHz'),
              'mV/m':notex('\\frac{mV}{m}'),
@@ -825,7 +827,10 @@ class plotWindow:
     [ cell.render(**colors) for cellRow in self.cells for cell in cellRow ]
     # If given a filename, save the image. 
     if filename is not None:
-      print 'Saving ' + filename
+      # Make sure the folder exists. 
+      if not os.path.exists( os.path.dirname(filename) ):
+        os.makedirs( os.path.dirname(filename) )
+      # Silently save the image. 
       plt.savefig(filename)
       return True
     # Otherwise, display it. 

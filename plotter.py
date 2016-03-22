@@ -32,9 +32,9 @@ def main():
 #  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
 #    plotLayers(TP, **kargs)
 
-  # Plot magnetic field signatures at the ground. 
-  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
-    plotGround(TP, **kargs)
+#  # Plot magnetic field signatures at the ground. 
+#  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
+#    plotGround(TP, **kargs)
 
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
@@ -73,8 +73,8 @@ def main():
 #  # Sym-H index and its Fourier transform. 
 #  plotSymh(TP)
 
-#  # Show waves failing to propagate in when driven from the outer boundary. 
-#  plotBdrive(TP, fdrive=0.022)
+  # Show waves failing to propagate in when driven from the outer boundary. 
+  plotBdrive(TP, fdrive=0.022)
 
 #  for kargs in loopover( model=TP.getValues('model') ):
 #    plotEnergy(TP, **kargs)
