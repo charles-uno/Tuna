@@ -28,9 +28,13 @@ def main():
   TP = tunaPlotter()
 
 #  # Plot the radial distribution in energy. 
-#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
-  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
-    plotLayers(TP, **kargs)
+##  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
+#  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
+#    plotLayers(TP, **kargs)
+
+  # Plot magnetic field signatures at the ground. 
+  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
+    plotGround(TP, **kargs)
 
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
@@ -71,10 +75,6 @@ def main():
 
 #  # Show waves failing to propagate in when driven from the outer boundary. 
 #  plotBdrive(TP, fdrive=0.022)
-
-#  # Plot magnetic field signatures at the ground. 
-#  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
-#    plotGround(TP, **kargs)
 
 #  for kargs in loopover( model=TP.getValues('model') ):
 #    plotEnergy(TP, **kargs)
@@ -800,13 +800,16 @@ def plotSigma(TP):
 def plotGround(TP, fdrive):
   azms = TP.getValues('azm')
   # The Plot Window does the actual plotting. 
-  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=10)
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=100)
   # Set title and labels. 
-  title = notex('Magnetic Ground Signatures (nT): ') + tex(fdrive) + notex('Current')
+  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current')
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = ( tex(1) + tex('Bq'), tex(1) + tex('Bf'),
                 tex(2) + tex('Bq'), tex(2) + tex('Bf') )
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+
+  unitlabel = notex('nT')
+
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
   # Iterate through the rows. Each row is its own modenumber. 
   for row, azm in enumerate(azms):
     # Grab the data for model 1 and plot it. 
