@@ -22,6 +22,12 @@
 # ##################################################### Import Python Libraries
 # #############################################################################
 
+
+# Change matplotlib settings to allow use over SSH without X forwarding. 
+import matplotlib
+import os
+if 'DISPLAY' not in os.environ or os.environ['DISPLAY'] is '':
+  matplotlib.use('Agg')
 # The cPickle module is faster, but not always available. 
 try:
   import cPickle as pickle
@@ -35,7 +41,6 @@ from matplotlib.colors import LogNorm, Normalize
 from matplotlib.patches import Wedge
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 from os.path import basename
 from random import choice
 from sys import argv, stdout
@@ -81,17 +86,23 @@ def tex(x):
              'Ex':'E_x', 
              'Ey':'E_y', 
              'Ez':'E_z', 
-             'SFFT':'\\widetilde{E}_y\\widetilde{B}^*_x', 
+             'L3S':'L^3\\widetilde{S}', 
+             'EB':'\\widetilde{E}\\widetilde{B}^*', 
+             'EBp':'-\\widetilde{E}_y\\widetilde{B}^*_x', 
+             'EBt':'\\widetilde{E}_x\\widetilde{B}^*_y', 
+             'SpFFT':'-\\frac{L^3}{\\mu_0}\\widetilde{E}_y\\widetilde{B}^*_x', 
+             'StFFT':'\\frac{L^3}{\\mu_0}\\widetilde{E}_x\\widetilde{B}^*_y', 
              # Units. 
+             'mHz':notex('mHz'),
              'mV/m':notex('\\frac{mV}{m}'),
              'mW/m^2':notex('\\frac{mW}{m^2}'),
-             # Real/imaginary labels. 
+             # Field Modifiers. 
              'imag':'\\mathbb{I}\\mathrm{m}',
              'real':'\\mathbb{R}\\mathrm{e}',
              # Axis labels. 
              'alt':notex('Altitude (km)'), 
-             'L':notex('L (R_E)'), 
-             'L0':notex('L (R_E)'), 
+             'L':notex('L'), 
+             'L0':notex('L'), 
              'lat':notex('Latitude'), 
              'lat0':notex('Latitude'), 
              't':notex('Time (s)'), 
@@ -1335,36 +1346,36 @@ class plotColors(dict):
       # symmetric norm plot, since since SymLogNorm isn't defined. But we can't
       # use a renormalized color map for the log plot due to sampling
       # constraints. This is the odd case out right now. 
-      norm, mron, fmt = self.logNorm, self.logMron, self.logFormatter
+      norm, mron, fmtr = self.logNorm, self.logMron, self.logFormatter
       ColorbarBase(cax, boundaries=colorParams['levels'],
                    ticks=colorParams['ticks'], norm=colorParams['norm'],
                    cmap=colorParams['cmap'])
-      cax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
+      cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
       return
 
     elif self.colorbar=='pos':
-      fmt = self.linFormatter
+      fmtr = self.linFormatter
       ColorbarBase(cax, boundaries=colorParams['levels'],
                    ticks=colorParams['ticks'], norm=colorParams['norm'],
                    cmap=colorParams['cmap'])
-      cax.set_yticklabels( [ fmt(t).replace('+', '') for t in colorParams['ticks'] ] )
+      cax.set_yticklabels( [ fmtr(t).replace('+', '') for t in colorParams['ticks'] ] )
       return
 
 
 
     elif self.colorbar=='sym':
-      norm, mron, fmt = self.symNorm, self.symMron, self.symFormatter
+      norm, mron, fmtr = self.symNorm, self.symMron, self.symFormatter
     elif self.colorbar=='phase':
-      norm, mron, fmt = self.phaseNorm, self.phaseMron, self.phaseFormatter
+      norm, mron, fmtr = self.phaseNorm, self.phaseMron, self.phaseFormatter
     else:
-      norm, mron, fmt = self.linNorm, self.linMron, self.linFormatter
+      norm, mron, fmtr = self.linNorm, self.linMron, self.linFormatter
     # Draw the contour. 
     Z = np.vectorize(norm)(Y)
     cax.contourf( X, Y, Z, **colorParams)
     # Place the ticks appropriately on the unit interval (Y axis). 
     cax.set_yticks( [ mron(t) for t in colorParams['ticks'] ] )
     # Format tick names nicely. 
-    cax.set_yticklabels( [ fmt(t) for t in colorParams['ticks'] ] )
+    cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
     # Put the color bar ticks on the right, get rid of the ticks on the bottom,
     # and hide the little notches in the color bar. 
     cax.yaxis.tick_right()

@@ -27,6 +27,11 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
+#  # Plot the radial distribution in energy. 
+#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
+  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
+    plotLayers(TP, **kargs)
+
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
 #  plotPoloidal(TP)
@@ -71,13 +76,8 @@ def main():
 #  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
 #    plotGround(TP, **kargs)
 
-#  # Plot the radial distribution in energy. 
-#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
-#  for kargs in loopover( model=(1,), fdrive=(0.019,) ):
-#    plotLayers(TP, **kargs)
-
-  for kargs in loopover( model=TP.getValues('model') ):
-    plotEnergy(TP, **kargs)
+#  for kargs in loopover( model=TP.getValues('model') ):
+#    plotEnergy(TP, **kargs)
 
   return
 
@@ -86,17 +86,69 @@ def main():
 # #############################################################################
 
 # =============================================================================
+# ======================== Contour Plot of Poloidal and Toroidal Energy Density
+# =============================================================================
+
+def plotLayers(TP, mode, model):
+  # With only two columns, we can't fit 7 rows without deforming them like
+  # crazy. Let's keep the frames legible but have fewer of them. 
+  azms = (1, 2, 4, 8, 16, 32, 64)
+  fdrives=(0.013, 0.016, 0.019, 0.022)
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log', zmax=0.1)
+  # Set title and labels. 
+  modename = {'p':'Poloidal ', 't':'Toroidal '}[mode]
+  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model)
+  unitlabel = notex('\\frac{nJ}{m^3}')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
+
+#  collabels = ( notex('Poloidal Energy Density'),
+#                notex('Toroidal Energy Density') )
+
+
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
+  # Find the data and set up the axes. 
+  for row, azm in enumerate(azms):
+    for col, fdrive in enumerate(fdrives):
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      PW[row, col].setParams( **TP.getCoords(path, 't', 'L0') )
+      # Grab the energy density and the differential volume. 
+      uname = {'p':'upol', 't':'utor'}[mode]
+      u, dV = TP.getArray(path, uname), TP.getArray(path, 'dV')
+      dU = u*dV[:, :, None]
+      # Compute the mean energy density at each L shell. 
+      UofL = np.sum(dU, axis=1)
+      VofL = np.sum(dV, axis=1)
+      # Careful... dV is 0 at the edges. 
+      VofL[0], VofL[-1] = VofL[1], VofL[-2]
+      uofL = UofL/VofL[:, None]
+      PW[row, col].setContour(uofL)
+
+  # Manually clean up the x axis. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$'),
+                ylims=(2, 10), yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'layers_' + mode + '_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
 # =================================== Line Plot of Poloidal and Toroidal Energy
 # =============================================================================
 
 def plotEnergy(TP, model):
   # One modenumber per row. One frequency per column, to a maximum of 4. 
   azms = TP.getValues('azm')
-  fdrives = TP.getValues('fdrive')[-4:]
+  fdrives = (0.013, 0.016, 0.019, 0.022)
   # The Plot Window does the actual plotting. 
   PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
   # Set title and labels. 
-  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)
+  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)# + notex(', ') + 'L_{PP} = 5'
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
   PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
@@ -738,47 +790,6 @@ def plotSigma(TP):
   # Show or save the plot. 
   if TP.savepath is not None:
     return PW.render( TP.savepath + 'sigma.pdf' )
-  else:
-    return PW.render()
-
-# =============================================================================
-# ======================== Contour Plot of Poloidal and Toroidal Energy Density
-# =============================================================================
-
-def plotLayers(TP, model, fdrive):
-  # With only two columns, we can't fit 7 rows without deforming them like
-  # crazy. Let's keep the frames legible but have fewer of them. 
-  azms = (1, 8, 64)
-  # The Plot Window does the actual plotting. 
-  PW = plotWindow(nrows=len(azms), ncols=2, colorbar='log', zmax=0.1)
-  # Set title and labels. 
-  title = notex('Energy Density by L-Shell (\\frac{nJ}{m^3}): ') + tex(model) + notex(', ') + tex(fdrive) + notex('Current')
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = ( notex('Poloidal Energy Density'),
-                notex('Toroidal Energy Density') )
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
-  # Find the data and set up the axes. 
-  for row, azm in enumerate(azms):
-    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-    PW[row, :].setParams( **TP.getCoords(path, 't', 'L0') )
-    # Loop over the poloidal and toroidal components. 
-    for col, name in enumerate( ('upol', 'utor') ):
-      # Grab the energy density and the differential volume. 
-      u, dV = TP.getArray(path, name), TP.getArray(path, 'dV')
-      dU = u*dV[:, :, None]
-      # Compute the mean energy density at each L shell. 
-      UofL = np.sum(dU, axis=1)
-      VofL = np.sum(dV, axis=1)
-      # Careful... dV is 0 at the edges. 
-      VofL[0], VofL[-1] = VofL[1], VofL[-2]
-      uofL = UofL/VofL[:, None]
-      PW[row, col].setContour(uofL)
-  # Manually clean up the x axis. 
-  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'layers_' + znt(1e3*fdrive) + 'mHz_' + str(model)
-    return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
 
