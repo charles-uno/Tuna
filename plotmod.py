@@ -64,7 +64,10 @@ class phys():
 # #############################################################################
 
 def notex(x):
-  return '\\operatorname{' + x.replace(' ', '\\;') + '}'
+  if '\n' in x:
+    return '$\n$'.join( notex(y) for y in x.split('\n') )
+  else:
+    return '\\operatorname{' + x.replace(' ', '\\;') + '}'
 
 def tex(x):
   # Format frequencies nicely. 
@@ -550,6 +553,8 @@ class plotWindow:
   ncolors = 8
   # Overwrite the automatically-determined color bar range. 
   zmaxManual = None
+  # Do we want to specify units for the color bar tick labels? 
+  unit = ''
 
   # ---------------------------------------------------------------------------
   # --------------------------------- Initialize Plot Window and Space Out Axes
@@ -708,6 +713,9 @@ class plotWindow:
       # Accept a string as the window supertitle. 
       elif key=='title':
         self.tax.text(s='$' + val + '$', fontsize=12, **targs)
+      # In case we want to put units on the color bar tick labels. 
+      elif key=='unit':
+        self.unit = val
       # Put a little label over the color bar indicating units. 
       elif key=='unitlabel':
         self.uax.text(s='$' + val + '$', **targs)
@@ -818,7 +826,7 @@ class plotWindow:
     for cell in self.cells[:-1, :].flatten():
       cell.setParams( xlabel='', xticklabels=() )
     # Use the most extreme contour value among all plots to set the color bar. 
-    kargs = {'cax':self.cax, 'colorbar':self.colorbar, 'ncolors':self.ncolors}
+    kargs = {'cax':self.cax, 'colorbar':self.colorbar, 'ncolors':self.ncolors, 'unit':self.unit}
     if self.zmaxManual is not None:
       colors = plotColors(zmax=self.zmaxManual, **kargs)
     else:
@@ -846,7 +854,7 @@ class plotCell:
 
   # If this cell contains a contour, we'll need to hold the spatial coordinates
   # and the data values. We also keep room for any arguments for contourf. 
-  x, y, cz, mz, kargs = None, None, None, None, None
+  x, y, cz, mz, ckargs, mkargs = None, None, None, None, None, None
   # A plot can have any number of lines drawn on it. Those will be stored here. 
   lines = None
   # If we manually set the axis limits, we want to ignore the automatically-set
@@ -855,8 +863,8 @@ class plotCell:
   # If we're on a log scale, we need different rules for placing ticks. 
   xlog, ylog = False, False
   # Keep track if we're supposed to be tracing the outline of our domain, such
-  # as if the data is dipole-shaped. 
-  outline = False
+  # as if the data is dipole-shaped. Or the whole grid. 
+  grid, outline = False, False
   # Cells can be small. Let's try to keep the number of ticks under control.
   nxticks, nyticks = 3, 4
   # Sometimes we want an extra axis label on the right. Make sure the window
@@ -889,6 +897,14 @@ class plotCell:
         self.ax.yaxis.set_label_position('right')
         self.ax.yaxis.tick_right()
         self.ax.yaxis.set_ticks_position('both')
+      # Draw Earth. 
+      elif key=='earth':
+        q = {'l':90, 'r':270, 't':0, 'b':180}[ val[0] ]
+        self.ax.add_artist( Wedge( (0, 0), 1, q,       q + 180, fc='w') )
+        self.ax.add_artist( Wedge( (0, 0), 1, q + 180, q + 360, fc='k') )
+      # Draw the grid. 
+      elif key=='grid':
+        self.grid = val
       # Sometimes we have to finagle with the number of ticks. 
       elif key=='nxticks':
         self.nxticks = val
@@ -977,7 +993,7 @@ class plotCell:
 
   def setContour(self, *args, **kargs):
     # Store any keyword parameters meant for the contourf call. 
-    self.kargs = kargs
+    self.ckargs = kargs
     # Accept the contour with or without its spatial coordinates. 
     if len(args)==1:
       self.cz = args[0]
@@ -1005,7 +1021,7 @@ class plotCell:
 
   def setMesh(self, *args, **kargs):
     # Store any keyword parameters meant for the contourf call. 
-    self.kargs = kargs
+    self.mkargs = kargs
     # Accept the contour with or without its spatial coordinates. 
     if len(args)==1:
       self.mz = args[0]
@@ -1071,12 +1087,12 @@ class plotCell:
     if self.cz is not None:
       # Use the color params we were passed, but allow keyword arguments from
       # the contour call to overwrite them. 
-      kargs = dict( colors.items() + self.kargs.items() )
+      kargs = dict( colors.items() + self.ckargs.items() )
       self.ax.contourf(self.x, self.y, self.cz, **kargs)
     # Same for a mesh. 
     if self.mz is not None:
       # The mesh wants arguments formulated a bit differently. 
-      kargs = dict( colors.items() + self.kargs.items() )
+      kargs = dict( colors.items() + self.mkargs.items() )
       # Make sure we can call the color map. 
       if 'cmap' not in kargs or kargs['cmap'] is None:
         kargs['cmap'] = plt.get_cmap(None)
@@ -1090,9 +1106,15 @@ class plotCell:
       norm = BoundaryNorm(clevs, cmap.N)
       self.ax.pcolormesh(self.x, self.y, self.mz, cmap=cmap, norm=norm)
     # Optionally, draw the outline of the data. 
-    if self.outline:
+    if self.outline and self.x is not None and self.y is not None:
       [ self.ax.plot(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
       [ self.ax.plot(self.x[:, k], self.y[:, k], 'k') for k in (0, -1) ]
+    # Or the whole grid. 
+    if self.grid and self.x is not None and self.y is not None:
+      x, y = self.x, self.y
+      [ self.setLine(x[i, :], y[i, :], 'k') for i in range( x.shape[0] ) ]
+      [ self.setLine(x[:, j], y[:, j], 'k') for j in range( x.shape[1] ) ]
+
     # Draw any lines. 
     if self.lines is not None:
       [ self.ax.plot(*args, **kargs) for args, kargs in self.lines ]
@@ -1133,7 +1155,7 @@ class plotColors(dict):
   # --------------------------------------------------------- Initialize Colors
   # ---------------------------------------------------------------------------
 
-  def __init__(self, zmax, cax, colorbar=None, ncolors=None):
+  def __init__(self, zmax, cax, colorbar=None, ncolors=None, unit=''):
     # Some plots don't have contours. 
     if not zmax or not cax or not colorbar:
       return dict.__init__(self, {})
@@ -1142,6 +1164,7 @@ class plotColors(dict):
     self.colorbar = colorbar
     self.ncolors = ncolors if ncolors is not None else 8
     self.nticks = self.ncolors - 1
+    self.unit = unit
     # Assemble the keyword parameters in a temporary dictionary. We'll then use
     # the dictionary constructor to build this object based on it. 
     temp = {}
@@ -1156,11 +1179,9 @@ class plotColors(dict):
       temp['ticks'], temp['levels'] = self.phaseTicksLevels(zmax)
       temp['norm'] = Normalize()
 
-
     elif self.colorbar=='pos':
       temp['ticks'], temp['levels'] = self.posTicksLevels(zmax)
       temp['norm'] = Normalize()
-
 
     else:
       temp['ticks'], temp['levels'] = self.linTicksLevels(zmax)
@@ -1396,50 +1417,43 @@ class plotColors(dict):
   # axis is on the unit interval, not the data scale (and may not be normalized
   # properly). Second, because that's how we make sure to get dollar signs in
   # there so LaTeX handles the font rendering. 
-
   def linFormatter(self, x):
     # Zero is always zero. 
     if x==0:
-      return '$0$'
+      return '$0' + self.unit + '$'
     # If our numbers are around order unity, the top tick should show two
     # significant figures, and the rest should match that decimal place. 
     elif 1e-3<self.zmax<1e3:
-
       sign = '' if x<0 else '+'
-
       power = int( format(self.zmax, '.1e').split('e')[-1] )
-
       if power>1:
         xp = x/10.**power
         d0 = int(xp)
         d1 = int( round( 10*(xp - d0) ) )
         fx = format((d0 + 0.1*d1)*10**power, '.0f')
-
       else:
         digs = 1 - power
         fx = format(x, '.' + str(digs) + 'f')
-
-      return '$' + sign + fx + '$'
-
+      return '$' + sign + fx + self.unit + '$'
     else:
       # Cast the number in scientific notation. 
       s = format(x, '.1e').replace('e', ' \\cdot 10^{') + '}'
       # If the number is positive, throw a plus sign on there. 
       s = '+ ' + s if x>0 else s
       # Before returning, get rid of any extra digits in the exponent. 
-      return '$' + s.replace('+0', '').replace('-0', '-') + '$'
+      return '$' + s.replace('+0', '').replace('-0', '-') + self.unit + '$'
 
   def phaseFormatter(self, x):
     # Zero is always zero. 
     if x==0:
-      return '$0$'
+      return '$0' + self.unit + '$'
     else:
       # Fractions of pi. Don't put '1' in the numerator. 
       numer, denom = (x/np.pi).as_integer_ratio()
       if numer==1:
-        return '${\\displaystyle \\frac{\\pi}{' + str(denom) + '}}$'
+        return '${\\displaystyle \\frac{\\pi}{' + str(denom) + '}}' + self.unit + '$'
       else:
-        return '${\\displaystyle \\frac{' + str(numer) + ' \\pi}{' + str(denom) + '}}$'
+        return '${\\displaystyle \\frac{' + str(numer) + ' \\pi}{' + str(denom) + '}}' + self.unit + '$'
 
   def logFormatter(self, x):
     # Zero is always zero. 
@@ -1449,15 +1463,15 @@ class plotColors(dict):
     elif format(x, '.1e').startswith('3'):
       return ''
     # Otherwise, just keep the power of ten. 
-    return '$ 10^{' + format(np.log10(x), '.0f') + '}$'
+    return '$ 10^{' + format(np.log10(x), '.0f') + '}' + self.unit + '$'
 
   def symFormatter(self, x):
     # Zero is always zero. 
     if x==0:
-      return '$0$'
+      return '$0' + self.unit + '$'
     # Otherwise, just keep the sign and the power of ten. 
     power = format(np.log10( np.abs(x) ), '.0f')
-    return '$ ' + ( '-' if x<0 else '+' ) + ' 10^{' + power + '}$'
+    return '$ ' + ( '-' if x<0 else '+' ) + ' 10^{' + power + '}' + self.unit + '$'
 
 # #############################################################################
 # ############################################################ Helper Functions
