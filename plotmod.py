@@ -902,6 +902,12 @@ class plotCell:
         q = {'l':90, 'r':270, 't':0, 'b':180}[ val[0] ]
         self.ax.add_artist( Wedge( (0, 0), 1, q,       q + 180, fc='w') )
         self.ax.add_artist( Wedge( (0, 0), 1, q + 180, q + 360, fc='k') )
+      # Flip an axis. 
+      elif key=='flipx' and bool(val):
+        self.flipx = True
+
+
+
       # Draw the grid. 
       elif key=='grid':
         self.grid = val
@@ -1119,7 +1125,7 @@ class plotCell:
     if self.lines is not None:
       [ self.ax.plot(*args, **kargs) for args, kargs in self.lines ]
     # Set axis limits. 
-    self.ax.set_xlim(self.xlims)
+    self.ax.set_xlim( self.xlims if not self.flipx else self.xlims[::-1] )
     self.ax.set_ylim(self.ylims)
 
     # There can be a lot of cells. Try to be economical. 
@@ -1128,8 +1134,9 @@ class plotCell:
         self.ax.xaxis.set_major_locator( plt.MaxNLocator(self.nxticks,
                                                          integer=True) )
       if not self.xtickrelax:
-        self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
-        self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
+        f, l = ('left', 'right') if not self.flipx else ('right', 'left')
+        self.ax.xaxis.get_majorticklabels()[0].set_horizontalalignment(f)
+        self.ax.xaxis.get_majorticklabels()[-1].set_horizontalalignment(l)
 
     if not self.ylog:
       if self.nyticks is not None:
