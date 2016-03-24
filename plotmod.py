@@ -106,6 +106,7 @@ def tex(x):
              'real':'\\mathbb{R}\\mathrm{e}',
              # Axis labels. 
              'alt':notex('Altitude (km)'), 
+             'f':notex('Frequency (mHz)'), 
              'L':notex('L'), 
              'L0':notex('L'), 
              'lat':notex('Latitude'), 
@@ -872,6 +873,8 @@ class plotCell:
   rightaxis = False
 
   xtickrelax, ytickrelax = False, False
+
+  flipx, flipy = False, False
 
 
   # ---------------------------------------------------------------------------

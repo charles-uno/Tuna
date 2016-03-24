@@ -27,6 +27,9 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
+  # Plot the Alfven bounce profiles.
+  plotBounceFrequency(TP)
+
 #  # Plot the radial distribution in energy. 
 ##  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
 #  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
@@ -73,8 +76,8 @@ def main():
 #  # Sym-H index and its Fourier transform. 
 #  plotSymh(TP)
 
-  # Show waves failing to propagate in when driven from the outer boundary. 
-  plotBdrive(TP, fdrive=0.022)
+#  # Show waves failing to propagate in when driven from the outer boundary. 
+#  plotBdrive(TP, fdrive=0.022)
 
 #  for kargs in loopover( model=TP.getValues('model') ):
 #    plotEnergy(TP, **kargs)
@@ -84,6 +87,45 @@ def main():
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+def plotBounceFrequency(TP):
+  TP.setPaths('/media/My Passport/RUNS/profiles/')
+
+  PW = plotWindow(nrows=3, ncols=2, colorbar=None)
+
+  # Set the labels and title. 
+  collabels = ( notex('Active'), notex('Quiet') )
+  rowlabels = ( notex('Day'), notex('Flank'), notex('Night') )
+  title = notex('Alfv\\acute{e}n Bounce Frequency')
+  PW.setParams(collabels=collabels, rowlabels=rowlabels, title=title)
+
+  # Set ticks and labels. 
+  xlims = (2, 10)
+  xticks = (2, 4, 6, 8, 10)
+  xticklabels = ('$2$', '', '$6$', '', '$10$')
+  ylims = (0, 60)
+  yticks = (0, 10, 20, 30, 40, 50, 60)
+  yticklabels = ('$0$', '', '$20$', '', '$40$', '', '$60$')
+  PW.setParams(xlims=xlims, xticks=xticks, xticklabels=xticklabels, 
+               ylims=ylims, yticks=yticks, yticklabels=yticklabels)
+
+  # Draw the lines. 
+  for i, model in enumerate( (1, 2, 6, 5, 3, 4) ):
+    path = TP.getPath(model=model)
+    PW[i].setParams( **TP.getCoords(path, 'L0', 'f') )
+    va, dz = TP.getArray(path, 'va'), TP.getArray(path, 'dz')
+    fbounce = 1e3/( 2*np.sum(dz/va, axis=1) )
+    L0 = TP.getArray(path, 'L0')
+    PW[i].setLine(L0, fbounce, 'b')
+    # Draw Pc4 frequency range. 
+    PW[i].setLine(L0, 7*np.ones(L0.shape), 'r:')
+    PW[i].setLine(L0, 25*np.ones(L0.shape), 'r:')
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'fa.pdf')
+  else:
+    return PW.render()
 
 # =============================================================================
 # ======================== Contour Plot of Poloidal and Toroidal Energy Density
