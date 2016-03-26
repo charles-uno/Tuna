@@ -27,17 +27,16 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
-  # Plot the Alfven bounce profiles.
-  plotBounceFrequency(TP)
-
 #  # Plot the radial distribution in energy. 
-##  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive') ):
-#  for kargs in loopover( mode=('p', 't'), model=(1, 2) ):
+#  for kargs in loopover( mode=('p', 't'), model=(1, 2, 3, 4), lpp=(4, 5) ):
 #    plotLayers(TP, **kargs)
 
-#  # Plot magnetic field signatures at the ground. 
-#  for kargs in loopover( fdrive=TP.getValues('fdrive') ):
-#    plotGround(TP, **kargs)
+#  for kargs in loopover( model=TP.getValues('model'), lpp=(4, 5) ):
+#    plotEnergy(TP, **kargs)
+
+  # Plot magnetic field signatures at the ground. 
+  for kargs in loopover( fdrive=TP.getValues('fdrive'), side=('day', 'night'), lpp=(4, 5) ):
+    plotGround(TP, **kargs)
 
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
@@ -73,14 +72,14 @@ def main():
 #  # The grid. 
 #  plotGrid(TP)
 
+#  # Plot the Alfven bounce profiles.
+#  plotBounceFrequency(TP)
+
 #  # Sym-H index and its Fourier transform. 
 #  plotSymh(TP)
 
 #  # Show waves failing to propagate in when driven from the outer boundary. 
 #  plotBdrive(TP, fdrive=0.022)
-
-#  for kargs in loopover( model=TP.getValues('model') ):
-#    plotEnergy(TP, **kargs)
 
   return
 
@@ -88,42 +87,95 @@ def main():
 # ########################################################### Plotting Routines
 # #############################################################################
 
-def plotBounceFrequency(TP):
-  TP.setPaths('/media/My Passport/RUNS/profiles/')
+# =============================================================================
+# =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
+# =============================================================================
 
-  PW = plotWindow(nrows=3, ncols=2, colorbar=None)
+def plotGround(TP, fdrive, side='day', lpp=4):
+  azms = TP.getValues('azm')
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=100)
 
-  # Set the labels and title. 
-  collabels = ( notex('Active'), notex('Quiet') )
-  rowlabels = ( notex('Day'), notex('Flank'), notex('Night') )
-  title = notex('Alfv\\acute{e}n Bounce Frequency')
-  PW.setParams(collabels=collabels, rowlabels=rowlabels, title=title)
+  # Active model, quiet model. 
+  am, qm = (1, 2) if side=='day' else (3, 4)
 
-  # Set ticks and labels. 
-  xlims = (2, 10)
-  xticks = (2, 4, 6, 8, 10)
-  xticklabels = ('$2$', '', '$6$', '', '$10$')
-  ylims = (0, 60)
-  yticks = (0, 10, 20, 30, 40, 50, 60)
-  yticklabels = ('$0$', '', '$20$', '', '$40$', '', '$60$')
-  PW.setParams(xlims=xlims, xticks=xticks, xticklabels=xticklabels, 
-               ylims=ylims, yticks=yticks, yticklabels=yticklabels)
+  if lpp==5:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
+  else:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
 
-  # Draw the lines. 
-  for i, model in enumerate( (1, 2, 6, 5, 3, 4) ):
-    path = TP.getPath(model=model)
-    PW[i].setParams( **TP.getCoords(path, 'L0', 'f') )
-    va, dz = TP.getArray(path, 'va'), TP.getArray(path, 'dz')
-    fbounce = 1e3/( 2*np.sum(dz/va, axis=1) )
-    L0 = TP.getArray(path, 'L0')
-    PW[i].setLine(L0, fbounce, 'b')
-    # Draw Pc4 frequency range. 
-    PW[i].setLine(L0, 7*np.ones(L0.shape), 'r:')
-    PW[i].setLine(L0, 25*np.ones(L0.shape), 'r:')
-
+  # Set title and labels. 
+  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current') + notex(', ') + 'L_{PP} = ' + str(lpp)
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( tex(am) + tex('Bq'), tex(am) + tex('Bf'),
+                tex(qm) + tex('Bq'), tex(qm) + tex('Bf') )
+  unitlabel = notex('nT')
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
+  # Iterate through the rows. Each row is its own modenumber. 
+  for row, azm in enumerate(azms):
+    for c0, model in enumerate( (am, qm) ):
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      for dc, name in enumerate( ('BqE', 'BfE') ):
+        col = 2*c0 + dc
+        # Make sure this run exists. 
+        if path is None:
+          PW[row, col].setParams( text=notex('Not Found') )
+          continue
+        PW[row, col].setParams( **TP.getCoords(path, 't', 'lat0') )
+        # If there was a crash, don't show the data. Just say "CRASH."
+        if TP.getArray(path, 't').size < 300:
+          PW[row, col].setParams(text=notex('Unstable'))
+          continue
+        PW[row, col].setContour( TP.getArray(path, name)[:, 0, :] )
+  # Manually clean up the x axis. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
   # Show or save the plot. 
   if TP.savepath is not None:
-    return PW.render(TP.savepath + 'fa.pdf')
+    name = 'ground_' + znt(1e3*fdrive) + 'mHz_' + side + ( '_big' if lpp==5 else '' )
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ==================================================== Electric Field Snapshots
+# =============================================================================
+
+def plotSnapshots(TP, model, fdrive, azm):
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
+  # Each row is a snapshot at a different time. Three rows is probably enough. 
+  steps = (259, 279, 299)
+  # Plot is handled using a Plot Window object. 
+  zmax = 10
+  PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
+  # Grab the path for the run we're looking at. Then grab the field data. 
+  path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+  Ex, Ey, Ez = [ TP.getArray(path, name) for name in ('Ex', 'Ey', 'Ez') ]
+  # Figure out an appropriate factor by which to scale up Ez. 
+  scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
+
+  scalefac = 6
+
+  # Set up the plot axes. 
+  PW.setParams( **TP.getCoords(path) )
+  # Add each contour to the plot. 
+  for row, step in enumerate(steps):
+    PW[row, 0].setContour( Ex[:, :, step] )
+    PW[row, 1].setContour( Ey[:, :, step] )
+    PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
+  # Set the plot title and labels. 
+  collabels = ( tex('Ex'), tex('Ey'), 
+               '10^{' + znt(scalefac) + '} \\times ' + tex('Ez') )
+  rowlabels = [ notex(str(s+1) + 's') for s in steps ]
+  title = ( notex('Electric Field Snapshots: ' + tex(model) + ', ' +
+                  tex(fdrive) + 'Current, ') + 'm = ' + znt(azm) )
+  unitlabel = notex('\\frac{mV}{m}')
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, 
+               unitlabel=unitlabel)
+  # Name this figure, in case we want to save it. 
+  name = ('snapshot_' + str(model) + '_' + znt(azm, 3) + '_' +
+          znt(1e3*fdrive, 3) + 'mHz')
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + name + '.pdf')
   else:
     return PW.render()
 
@@ -131,7 +183,13 @@ def plotBounceFrequency(TP):
 # ======================== Contour Plot of Poloidal and Toroidal Energy Density
 # =============================================================================
 
-def plotLayers(TP, mode, model):
+def plotLayers(TP, mode, model, lpp=4):
+
+  if lpp==5:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
+  else:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
+
   # With only two columns, we can't fit 7 rows without deforming them like
   # crazy. Let's keep the frames legible but have fewer of them. 
   azms = (1, 2, 4, 8, 16, 32, 64)
@@ -140,22 +198,24 @@ def plotLayers(TP, mode, model):
   PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log', zmax=0.1)
   # Set title and labels. 
   modename = {'p':'Poloidal ', 't':'Toroidal '}[mode]
-  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model)
+  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp)
   unitlabel = notex('\\frac{nJ}{m^3}')
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
   collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
-
-#  collabels = ( notex('Poloidal Energy Density'),
-#                notex('Toroidal Energy Density') )
-
-
   PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
   # Find the data and set up the axes. 
   for row, azm in enumerate(azms):
     for col, fdrive in enumerate(fdrives):
       path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      # Make sure this run exists. 
+      if path is None:
+        PW[row, col].setParams( text=notex('Not Found') )
+        continue
       PW[row, col].setParams( **TP.getCoords(path, 't', 'L0') )
+      # If there was a crash, don't show the data. Just say "CRASH."
+      if TP.getArray(path, 't').size < 300:
+        PW[row, col].setParams(text=notex('Unstable'))
+        continue
       # Grab the energy density and the differential volume. 
       uname = {'p':'upol', 't':'utor'}[mode]
       u, dV = TP.getArray(path, uname), TP.getArray(path, 'dV')
@@ -174,7 +234,7 @@ def plotLayers(TP, mode, model):
 
   # Show or save the plot. 
   if TP.savepath is not None:
-    name = 'layers_' + mode + '_' + str(model)
+    name = 'layers_' + mode + '_' + str(model) + ( '_big' if lpp==5 else '' )
     return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
@@ -183,14 +243,20 @@ def plotLayers(TP, mode, model):
 # =================================== Line Plot of Poloidal and Toroidal Energy
 # =============================================================================
 
-def plotEnergy(TP, model):
+def plotEnergy(TP, model, lpp=4):
+
+  if lpp==5:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
+  else:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
+
   # One modenumber per row. One frequency per column, to a maximum of 4. 
-  azms = TP.getValues('azm')
-  fdrives = (0.013, 0.016, 0.019, 0.022)
+  azms = (1, 2, 4, 8, 16, 32, 64)
+  fdrives=(0.013, 0.016, 0.019, 0.022)
   # The Plot Window does the actual plotting. 
   PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
   # Set title and labels. 
-  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)# + notex(', ') + 'L_{PP} = 5'
+  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp)
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
   PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
@@ -199,7 +265,15 @@ def plotEnergy(TP, model):
     for col, fdrive in enumerate(fdrives):
       # Find the data for this cell, and plot it. 
       path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+      # Make sure this run exists. 
+      if path is None:
+        PW[row, col].setParams( text=notex('Not Found') )
+        continue
       PW[row, col].setParams( **TP.getCoords(path, 't', 'logU') )
+      # If there was a crash, don't show the data. Just say "CRASH."
+      if TP.getArray(path, 't').size < 300:
+        PW[row, col].setParams(text=notex('Unstable'))
+        continue
       PW[row, col].setLine( np.log10( TP.getArray(path, 'Upol') ), 'b')
       PW[row, col].setLine( np.log10( TP.getArray(path, 'Utor') ), 'r')
   # Manually clean up the axes. 
@@ -207,8 +281,61 @@ def plotEnergy(TP, model):
   PW.setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
   # Show or save the plot. 
   if TP.savepath is not None:
-    name = 'U_' + str(model)
+    name = 'U_' + str(model) + ( '_big' if lpp==5 else '' )
     return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# =================================================== Bounce Frequency Profiles
+# =============================================================================
+
+
+def plotBounceFrequency(TP, allsix=False):
+
+  # Figure out if we want to do all six models, or just the four we really use. 
+  if allsix:
+    TP.setPaths('/media/My Passport/RUNS/profiles/')
+    PW = plotWindow(nrows=3, ncols=2, colorbar=None)
+    models = (1, 2, 6, 5, 3, 4)
+    rowlabels = ( notex('Day'), notex('Flank'), notex('Night') )
+    kargs = {}
+  else:
+    PW = plotWindow(nrows=2, ncols=2, colorbar=None)
+    models = (1, 2, 3, 4)
+    rowlabels = ( notex('Day'), notex('Night') )
+    kargs = {'fdrive':0.010, 'azm':1}
+
+  # Set the labels and title. 
+  collabels = ( notex('Active'), notex('Quiet') )
+  title = notex('Alfv\\acute{e}n Bounce Frequency')
+  PW.setParams(collabels=collabels, rowlabels=rowlabels, title=title)
+
+  # Set ticks and labels. 
+  xlims = (2, 10)
+  xticks = (2, 4, 6, 8, 10)
+  xticklabels = ('$2$', '', '$6$', '', '$10$')
+  ylims = (0, 60)
+  yticks = (0, 10, 20, 30, 40, 50, 60)
+  yticklabels = ('$0$', '', '$20$', '', '$40$', '', '$60$')
+  PW.setParams(xlims=xlims, xticks=xticks, xticklabels=xticklabels, 
+               ylims=ylims, yticks=yticks, yticklabels=yticklabels)
+
+  # Draw the lines. 
+  for i, model in enumerate(models):
+    path = TP.getPath(model=model, **kargs)
+    PW[i].setParams( **TP.getCoords(path, 'L0', 'f') )
+    va, dz = TP.getArray(path, 'va'), TP.getArray(path, 'dz')
+    fbounce = 1e3/( 2*np.sum(dz/va, axis=1) )
+    L0 = TP.getArray(path, 'L0')
+    PW[i].setLine(L0, fbounce, 'b')
+    # Draw Pc4 frequency range. 
+    PW[i].setLine(L0, 7*np.ones(L0.shape), 'r:')
+    PW[i].setLine(L0, 25*np.ones(L0.shape), 'r:')
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'fa.pdf')
   else:
     return PW.render()
 
@@ -295,7 +422,7 @@ def plotPoloidal(TP):
     return PW.render()
 
 # =============================================================================
-# ======================================= Compressional Alfven Cutoff Frequency
+# ============================================ Odd and Even Harmonic Structures
 # =============================================================================
 
 def plotOddEven(TP):
@@ -743,50 +870,6 @@ def plotCurrentFlux(TP, model, fdrive):
     return PW.render()
 
 # =============================================================================
-# ==================================================== Electric Field Snapshots
-# =============================================================================
-
-def plotSnapshots(TP, model, fdrive, azm):
-  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
-  # Each row is a snapshot at a different time. Three rows is probably enough. 
-  steps = (259, 279, 299)
-  # Plot is handled using a Plot Window object. 
-  zmax = 10
-  PW = plotWindow(ncols=3, nrows=len(steps), colorbar='sym', zmax=zmax)
-  # Grab the path for the run we're looking at. Then grab the field data. 
-  path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-  Ex, Ey, Ez = [ TP.getArray(path, name) for name in ('Ex', 'Ey', 'Ez') ]
-  # Figure out an appropriate factor by which to scale up Ez. 
-  scalefac = np.floor( np.log10( zmax*np.sqrt(10)/np.max(Ez) ) )
-
-  scalefac = 6
-
-
-  # Set up the plot axes. 
-  PW.setParams( **TP.getCoords(path) )
-  # Add each contour to the plot. 
-  for row, step in enumerate(steps):
-    PW[row, 0].setContour( Ex[:, :, step] )
-    PW[row, 1].setContour( Ey[:, :, step] )
-    PW[row, 2].setContour( Ez[:, :, step]*10**scalefac )
-  # Set the plot title and labels. 
-  collabels = ( tex('Ex'), tex('Ey'), 
-               '10^{' + znt(scalefac) + '} \\times ' + tex('Ez') )
-  rowlabels = [ notex(str(s+1) + 's') for s in steps ]
-  title = ( notex('Electric Field Snapshots: ' + tex(model) + ', ' +
-                  tex(fdrive) + 'Current, ') + 'm = ' + znt(azm) )
-  unitlabel = notex('\\frac{mV}{m}')
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, 
-               unitlabel=unitlabel)
-  # Name this figure, in case we want to save it. 
-  name = ('snapshot_' + str(model) + '_' + znt(azm, 3) + '_' +
-          znt(1e3*fdrive, 3) + 'mHz')
-  if TP.savepath is not None:
-    return PW.render(TP.savepath + name + '.pdf')
-  else:
-    return PW.render()
-
-# =============================================================================
 # =========================================== Ionospheric Conductivity Profiles
 # =============================================================================
 
@@ -832,44 +915,6 @@ def plotSigma(TP):
   # Show or save the plot. 
   if TP.savepath is not None:
     return PW.render( TP.savepath + 'sigma.pdf' )
-  else:
-    return PW.render()
-
-# =============================================================================
-# =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
-# =============================================================================
-
-def plotGround(TP, fdrive):
-  azms = TP.getValues('azm')
-  # The Plot Window does the actual plotting. 
-  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=100)
-  # Set title and labels. 
-  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current')
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = ( tex(1) + tex('Bq'), tex(1) + tex('Bf'),
-                tex(2) + tex('Bq'), tex(2) + tex('Bf') )
-
-  unitlabel = notex('nT')
-
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
-  # Iterate through the rows. Each row is its own modenumber. 
-  for row, azm in enumerate(azms):
-    # Grab the data for model 1 and plot it. 
-    path = TP.getPath(model=1, fdrive=fdrive, azm=azm)
-    PW[row, 0].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
-    PW[row, 1].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
-    PW[row, 0:2].setParams( **TP.getCoords(path, 't', 'lat0') )
-    # Grab the data for model 2 and plot it. 
-    path = TP.getPath(model=2, fdrive=fdrive, azm=azm)
-    PW[row, 2].setContour( TP.getArray(path, 'BqE')[:, 0, :] )
-    PW[row, 3].setContour( TP.getArray(path, 'BfE')[:, 0, :] )
-    PW[row, 2:4].setParams( **TP.getCoords(path, 't', 'lat0') )
-  # Manually clean up the x axis. 
-  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'ground_' + znt(1e3*fdrive) + 'mHz'
-    return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
 

@@ -926,9 +926,9 @@ class plotCell:
       # sophisticated with text, like control its position or rotation or
       # color or size, we'll probably need to add a setText method. 
       elif key=='text':
-        targs = {'x':0.5, 'y':0.85, 'horizontalalignment':'center', 
+        targs = {'x':0.5, 'y':0.5, 'horizontalalignment':'center', 
                  'verticalalignment':'center', 'transform':self.ax.transAxes}
-        self.ax.text(s='$' + val + '$', fontsize=9, **targs)
+        self.ax.text(s='$' + val + '$', **targs)
       # Horizontal axis coordinate. 
       elif key=='x':
         self.x = val
@@ -1182,6 +1182,13 @@ class plotColors(dict):
     if self.colorbar=='log':
       temp['ticks'], temp['levels'] = self.logTicksLevels(zmax)
       temp['norm'] = LogNorm()
+
+
+    if self.colorbar=='lg':
+      temp['ticks'], temp['levels'] = self.lgTicksLevels(zmax)
+      temp['norm'] = LogNorm()
+
+
     elif self.colorbar=='sym':
       temp['ticks'], temp['levels'] = self.symTicksLevels(zmax)
       temp['norm'] = Normalize()
@@ -1255,6 +1262,21 @@ class plotColors(dict):
     levels = np.logspace(logMin, logMax, self.ncolors)
     return ticks, levels
 
+
+
+  def lgTicksLevels(self, zmax):
+    # Same as log, but with base 2 instead of 10. 
+    power = np.ceil(np.log2(zmax) - 0.25)
+    self.zmax = 2.**(power + 0.25)
+    self.zmin = self.zmax/2**(self.nticks/2 + 0.5)
+    ticks = [ 2**(power - 0.5*i) for i in range(self.nticks) ]
+    lgMin, lgMax = np.log2(self.zmin), np.log2(self.zmax)
+    levels = np.logspace(lgMin, lgMax, self.ncolors, base=2)
+    return ticks, levels
+
+
+
+
   def symTicksLevels(self, zmax):
     # Ticks are located at powers of ten. Color levels are centered on ticks. 
     power = np.ceil( np.log10( zmax/np.sqrt(10.) ) )
@@ -1326,7 +1348,7 @@ class plotColors(dict):
   # match the normalization of our ticks and color levels. 
   def getCmap(self):
     # Figure out the unit interval renormalization to use. 
-    if self.colorbar=='log' or self.colorbar=='pos':
+    if self.colorbar=='log' or self.colorbar=='pos' or self.colorbar=='lg':
       # Kinda kludgey. See setColorbar for explanation. 
       return None
     elif self.colorbar=='sym':
@@ -1388,6 +1410,16 @@ class plotColors(dict):
                    cmap=colorParams['cmap'])
       cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
       return
+
+    elif self.colorbar=='lg':
+      norm, mron, fmtr = self.logNorm, self.logMron, self.lgFormatter
+      ColorbarBase(cax, boundaries=colorParams['levels'],
+                   ticks=colorParams['ticks'], norm=colorParams['norm'],
+                   cmap=colorParams['cmap'])
+      cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
+      return
+
+
 
     elif self.colorbar=='pos':
       fmtr = self.linFormatter
@@ -1474,6 +1506,20 @@ class plotColors(dict):
       return ''
     # Otherwise, just keep the power of ten. 
     return '$ 10^{' + format(np.log10(x), '.0f') + '}' + self.unit + '$'
+
+
+
+  def lgFormatter(self, x):
+    # Zero is always zero. 
+    if x==0:
+      return '$0$'
+    # Half-power ticks don't get labels. 
+    elif np.log2(x) != np.int( np.log2(x) ):
+      return ''
+    # Otherwise, just keep the power of ten. 
+    return '$ 2^{' + format(np.log2(x), '.0f') + '}' + self.unit + '$'
+
+
 
   def symFormatter(self, x):
     # Zero is always zero. 
