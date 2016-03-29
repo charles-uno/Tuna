@@ -148,7 +148,7 @@ class tunaPlotter:
     # If no paths were given, use the default. 
     if not self.paths:
       print 'Using default data path. '
-      self.setPaths('/media/My Passport/RUNS/JDRIVE')
+      self.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4')
     # Sometimes the plotter isn't supposed to make any plots at all. Instead,
     # its job is to go through and pickle some fresh data. 
     if 'pickle' in argv:
@@ -182,7 +182,7 @@ class tunaPlotter:
   # Grab all parameters from a parameter input file. 
   def getParams(self, path):
     # Parameters are returned as a dictionary. We add some default parameters at the beginning so we don't run into any key errors while filtering runs. 
-    params = {'bdrive':0, 'jdrive':0, 'inertia':-1, 'fdrive':0.016, 'azm':0, 'n1':150}
+    params = {'bdrive':0, 'jdrive':0, 'inertia':-1, 'fdrive':0.016, 'azm':0, 'n1':150, 'lpp':4, 'ldrive':5}
     # The input file has one parameter per line, 'key = val'. 
     with open(path + 'params.in', 'r') as paramsfile:
       paramlines = paramsfile.readlines()
@@ -1184,7 +1184,7 @@ class plotColors(dict):
       temp['norm'] = LogNorm()
 
 
-    if self.colorbar=='lg':
+    elif self.colorbar=='lg':
       temp['ticks'], temp['levels'] = self.lgTicksLevels(zmax)
       temp['norm'] = LogNorm()
 

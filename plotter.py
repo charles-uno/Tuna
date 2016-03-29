@@ -27,16 +27,21 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
-#  # Plot the radial distribution in energy. 
+  # Plot the radial distribution in energy. 
 #  for kargs in loopover( mode=('p', 't'), model=(1, 2, 3, 4), lpp=(4, 5) ):
+#  for kargs in loopover( mode=('p', 't'), model=(3,), lpp=(4, 5) ):
 #    plotLayers(TP, **kargs)
 
 #  for kargs in loopover( model=TP.getValues('model'), lpp=(4, 5) ):
 #    plotEnergy(TP, **kargs)
 
-  # Plot magnetic field signatures at the ground. 
-  for kargs in loopover( fdrive=TP.getValues('fdrive'), side=('day', 'night'), lpp=(4, 5) ):
-    plotGround(TP, **kargs)
+#  # Plot magnetic field signatures at the ground. 
+#  for kargs in loopover( fdrive=TP.getValues('fdrive'), side=('day', 'night'), lpp=(4, 5) ):
+#    plotGround(TP, **kargs)
+
+#  # Look at a snapshot of all fields. Is Jz's Re/Im breakdown unusual? 
+#  for kargs in loopover( path=TP.paths.keys() ):
+#    plotFields(TP, **kargs)
 
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
@@ -60,6 +65,9 @@ def main():
 #  # Comparison of parallel current and Poynting flux. 
 #  plotCurrentFlux(TP, model=1, fdrive=0.016)
 
+#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), alt=(100, 1000) ):
+#    plotSlice(TP, **kargs)
+
 #  # Comparison of J dot E to the divergence of the Poynting flux. 
 #  plotDivFlux(TP, model=1, fdrive=0.016)
 
@@ -72,8 +80,8 @@ def main():
 #  # The grid. 
 #  plotGrid(TP)
 
-#  # Plot the Alfven bounce profiles.
-#  plotBounceFrequency(TP)
+  # Plot the Alfven bounce profiles.
+  plotBounceFrequency(TP)
 
 #  # Sym-H index and its Fourier transform. 
 #  plotSymh(TP)
@@ -86,6 +94,204 @@ def main():
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# =============================================================================
+# ======================== Contour Plot of Poloidal and Toroidal Energy Density
+# =============================================================================
+
+def plotLayers(TP, mode, model, lpp=4):
+
+#  if lpp==5:
+#    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
+#  else:
+#    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
+
+  # With only two columns, we can't fit 7 rows without deforming them like
+  # crazy. Let's keep the frames legible but have fewer of them. 
+  azms = (1, 2, 4, 8, 16, 32, 64)
+  fdrives=(0.013, 0.016, 0.019, 0.022)
+  # The Plot Window does the actual plotting. 
+  PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log', zmax=0.1)
+  # Set title and labels. 
+  modename = {'p':'Poloidal ', 't':'Toroidal '}[mode]
+  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = 6'
+  unitlabel = notex('\\frac{nJ}{m^3}')
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
+  # Find the data and set up the axes. 
+  for row, azm in enumerate(azms):
+    for col, fdrive in enumerate(fdrives):
+      path = TP.getPath(model=model, fdrive=fdrive, azm=azm, lpp=lpp)
+      # Make sure this run exists. 
+      if path is None:
+        PW[row, col].setParams( text=notex('Not Found') )
+        continue
+      PW[row, col].setParams( **TP.getCoords(path, 't', 'L0') )
+      # If there was a crash, don't show the data. Just say "CRASH."
+      if TP.getArray(path, 't').size < 300:
+        PW[row, col].setParams(text=notex('Unstable'))
+        continue
+      # Grab the energy density and the differential volume. 
+      uname = {'p':'upol', 't':'utor'}[mode]
+      u, dV = TP.getArray(path, uname), TP.getArray(path, 'dV')
+      dU = u*dV[:, :, None]
+      # Compute the mean energy density at each L shell. 
+      UofL = np.sum(dU, axis=1)
+      VofL = np.sum(dV, axis=1)
+      # Careful... dV is 0 at the edges. 
+      VofL[0], VofL[-1] = VofL[1], VofL[-2]
+      uofL = UofL/VofL[:, None]
+      PW[row, col].setContour(uofL)
+
+  # Manually clean up the x axis. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$'),
+                ylims=(2, 10), yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'layers_' + mode + '_' + str(model) + ( '_big' if lpp==5 else '' )
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ================================ Parallel Current and Poynting Flux Snapshots
+# =============================================================================
+
+def altslice(arr, r, alt):
+  # Altitude in Mm. 
+  a = 1e3*(r - phys.RE)
+  # Make a new array, skipping the coordinate that indexes along field lines. 
+  n1, n3, nt = arr.shape
+  ret = np.zeros( (n1, nt) )
+  # For each field line, find the k value that is closest to alt. 
+  for i in range(n1):
+    k = np.argmin( np.abs(a[i, :n3/2] - alt) )
+    ret[i, :] = arr[i, k, :]
+  return ret
+
+def plotSlice(TP, model, fdrive, alt=100):
+
+#  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
+
+  # Set up the window. 
+  azms = (1, 4, 16, 64)
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=1)
+  # Set title and labels. 
+  title = ( notex('Current and Poynting Flux at ' + znt(alt) + 'km: ') +
+            tex(model) + notex(', ') + tex(fdrive) + notex(' Current') )
+
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( tex('real') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_P' + notex(' (\\frac{mW}{m^2})'),
+                tex('imag') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_T' + notex(' (\\frac{mW}{m^2})') )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Each row comes from a different run. 
+  for row, azm in enumerate(azms):
+    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+    # Take slices of the field at the boundary and a ways up. 
+    PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
+    r = TP.getArray(path, 'r')
+
+    RJ = altslice(TP.getArray(path, 'Jz', real=True), r, alt)
+    SP = altslice(TP.getArray(path, 'Spol'), r, alt)
+    IJ = altslice(TP.getArray(path, 'Jz', real=False), r, alt)
+    ST = altslice(TP.getArray(path, 'Stor'), r, alt)
+    # Add them to the plot. 
+    PW[row, 0].setContour(RJ)
+    PW[row, 1].setContour(SP)
+    PW[row, 2].setContour(IJ)
+    PW[row, 3].setContour(ST)
+
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'slice_' + znt(1e3*fdrive) + 'mHz_' + str(model) + '_' + znt(alt) + 'km'
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+def plotCurrentFlux(TP, model, fdrive, alt=100):
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
+  # Set up the window. 
+  azms = (1, 4, 16, 64)
+  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=1)
+  # Set title and labels. 
+  title = ( notex('Current and Poynting Flux at ') + 'R_I' + notex(': ') +
+            tex(model) + notex(', ') + tex(fdrive) + notex(' Current') )
+  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  collabels = ( tex('real') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_P' + notex(' (\\frac{mW}{m^2})'),
+                tex('imag') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
+                'S_T' + notex(' (\\frac{mW}{m^2})') )
+  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
+  # Each row comes from a different run. 
+  for row, azm in enumerate(azms):
+    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+    PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
+    # Load up the Poynting flux and the real and imaginary current. 
+    RJ = TP.getArray(path, 'Jz', real=True)[:, 0, :]
+    SP = TP.getArray(path, 'Spol')[:, 0, :]
+    IJ = TP.getArray(path, 'Jz', real=False)[:, 0, :]
+    ST = TP.getArray(path, 'Stor')[:, 0, :]
+    # Add them to the plot. 
+    PW[row, 0].setContour(RJ)
+    PW[row, 1].setContour(SP)
+    PW[row, 2].setContour(IJ)
+    PW[row, 3].setContour(ST)
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'JS_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+# =============================================================================
+# ====================================================== Snapshot of All Fields
+# =============================================================================
+
+def plotFields(TP, path, step=299):
+
+  PW = plotWindow(nrows=4, ncols=4, colorbar='sym', zmax=10)
+
+  fdrive, model, azm = [ TP.getParams(path)[key] for key in ('fdrive', 'model', 'azm') ]
+
+  print 'fdrive = ', fdrive
+  print 'model  = ', model
+  print 'azm    = ', azm
+
+  bi = [ TP.getArray(path, name, real=False)[:, :, step] for name in ('Bx', 'By', 'Bz') ]
+  br = [ TP.getArray(path, name, real=True)[:, :, step] for name in ('Bx', 'By', 'Bz') ]
+
+  ei = [ TP.getArray(path, name, real=False)[:, :, step] for name in ('Ex', 'Ey', 'Ez') ]
+  er = [ TP.getArray(path, name, real=True)[:, :, step] for name in ('Ex', 'Ey', 'Ez') ]
+
+  ei[2] = ei[2]*1e6
+  er[2] = er[2]*1e6
+
+  jj = [ 100*TP.getArray(path, 'Jz', real=tf)[:, :, step] for tf in (False, True) ]
+
+  title = tex(fdrive) + '\\qquad m = ' + znt(azm) + '\qquad ' + tex(model)
+  rowlabels = ('X', 'Y', 'Z', 'J_z')
+  collabels = ( tex('imag') + 'B', tex('real') + 'B', tex('imag') + 'E', tex('real') + 'E' )
+  PW.setParams(title=title, rowlabels=rowlabels, collabels=collabels)
+
+  PW.setParams( **TP.getCoords(path) )
+
+  for col, bbb in enumerate( (bi, br) ):
+    for row, b in enumerate(bbb):
+      PW[row, col].setContour(b)
+
+
+  for col, eee in enumerate( (ei, er) ):
+    for row, e in enumerate(eee):
+      PW[row, col+2].setContour(e)
+
+  [ PW[3, col+2].setContour(j) for col, j in enumerate(jj) ]
+
+  return PW.render()
 
 # =============================================================================
 # =========== Contour Plot of Active/Quiet North/East Dayside Ground Signatures
@@ -176,66 +382,6 @@ def plotSnapshots(TP, model, fdrive, azm):
           znt(1e3*fdrive, 3) + 'mHz')
   if TP.savepath is not None:
     return PW.render(TP.savepath + name + '.pdf')
-  else:
-    return PW.render()
-
-# =============================================================================
-# ======================== Contour Plot of Poloidal and Toroidal Energy Density
-# =============================================================================
-
-def plotLayers(TP, mode, model, lpp=4):
-
-  if lpp==5:
-    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
-  else:
-    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
-
-  # With only two columns, we can't fit 7 rows without deforming them like
-  # crazy. Let's keep the frames legible but have fewer of them. 
-  azms = (1, 2, 4, 8, 16, 32, 64)
-  fdrives=(0.013, 0.016, 0.019, 0.022)
-  # The Plot Window does the actual plotting. 
-  PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log', zmax=0.1)
-  # Set title and labels. 
-  modename = {'p':'Poloidal ', 't':'Toroidal '}[mode]
-  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp)
-  unitlabel = notex('\\frac{nJ}{m^3}')
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels, unitlabel=unitlabel)
-  # Find the data and set up the axes. 
-  for row, azm in enumerate(azms):
-    for col, fdrive in enumerate(fdrives):
-      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-      # Make sure this run exists. 
-      if path is None:
-        PW[row, col].setParams( text=notex('Not Found') )
-        continue
-      PW[row, col].setParams( **TP.getCoords(path, 't', 'L0') )
-      # If there was a crash, don't show the data. Just say "CRASH."
-      if TP.getArray(path, 't').size < 300:
-        PW[row, col].setParams(text=notex('Unstable'))
-        continue
-      # Grab the energy density and the differential volume. 
-      uname = {'p':'upol', 't':'utor'}[mode]
-      u, dV = TP.getArray(path, uname), TP.getArray(path, 'dV')
-      dU = u*dV[:, :, None]
-      # Compute the mean energy density at each L shell. 
-      UofL = np.sum(dU, axis=1)
-      VofL = np.sum(dV, axis=1)
-      # Careful... dV is 0 at the edges. 
-      VofL[0], VofL[-1] = VofL[1], VofL[-2]
-      uofL = UofL/VofL[:, None]
-      PW[row, col].setContour(uofL)
-
-  # Manually clean up the x axis. 
-  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$'),
-                ylims=(2, 10), yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
-
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'layers_' + mode + '_' + str(model) + ( '_big' if lpp==5 else '' )
-    return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
 
@@ -826,45 +972,6 @@ def plotDivFlux(TP, model, fdrive):
   # Show or save the plot. 
   if TP.savepath is not None:
     name = 'JE_' + znt(1e3*fdrive) + 'mHz_' + str(model)
-    return PW.render( TP.savepath + name + '.pdf' )
-  else:
-    return PW.render()
-
-# =============================================================================
-# ================================ Parallel Current and Poynting Flux Snapshots
-# =============================================================================
-
-def plotCurrentFlux(TP, model, fdrive):
-  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
-  # Set up the window. 
-  azms = (1, 4, 16, 64)
-  PW = plotWindow(nrows=len(azms), ncols=4, colorbar='sym', zmax=1)
-  # Set title and labels. 
-  title = ( notex('Current and Poynting Flux at ') + 'R_I' + notex(': ') +
-            tex(model) + notex(', ') + tex(fdrive) + notex(' Current') )
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-  collabels = ( tex('real') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
-                'S_P' + notex(' (\\frac{mW}{m^2})'),
-                tex('imag') + notex(' ') + 'J_z' + notex(' (\\frac{\\mu{}A}{m^2})'),
-                'S_T' + notex(' (\\frac{mW}{m^2})') )
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
-  # Each row comes from a different run. 
-  for row, azm in enumerate(azms):
-    path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-    PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
-    # Load up the Poynting flux and the real and imaginary current. 
-    RJ = TP.getArray(path, 'Jz', real=True)[:, 0, :]
-    SP = TP.getArray(path, 'Spol')[:, 0, :]
-    IJ = TP.getArray(path, 'Jz', real=False)[:, 0, :]
-    ST = TP.getArray(path, 'Stor')[:, 0, :]
-    # Add them to the plot. 
-    PW[row, 0].setContour(RJ)
-    PW[row, 1].setContour(SP)
-    PW[row, 2].setContour(IJ)
-    PW[row, 3].setContour(ST)
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'JS_' + znt(1e3*fdrive) + 'mHz_' + str(model)
     return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
