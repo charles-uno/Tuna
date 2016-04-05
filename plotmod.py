@@ -97,6 +97,7 @@ def tex(x):
              'StFFT':'\\frac{L^3}{\\mu_0}\\widetilde{E}_x\\widetilde{B}^*_y', 
              'BBp':'\\widetilde{B}_z/\\widetilde{B}_x', 
              'BBt':'\\widetilde{B}_z/\\widetilde{B}_y', 
+             'ImS':'|\\mathbb{I}\\mathrm{m}\\widetilde{S}|', 
              # Units. 
              'mHz':notex('mHz'),
              'mV/m':notex('\\frac{mV}{m}'),
@@ -106,6 +107,8 @@ def tex(x):
              'real':'\\mathbb{R}\\mathrm{e}',
              # Axis labels. 
              'alt':notex('Altitude (km)'), 
+             'B':notex('Magnetic Field (nT)'), 
+             'comp':'B_z / B_x', 
              'f':notex('Frequency (mHz)'), 
              'L':notex('L'), 
              'L0':notex('L'), 
@@ -299,6 +302,12 @@ class tunaPlotter:
       cosq = np.cos( self.getArray(path, 'q') )
       cosq0 = cosq[:, 0]
       return cosq/cosq0[:, None]
+
+    if name=='comp':
+      return None
+
+
+
     # Driving electric field in mV/m. 
     elif name=='EyDrive':
       return self.getArray(path, 'JyDrive')/self.getArray(path, 'epsPerp')
@@ -366,6 +375,11 @@ class tunaPlotter:
     # Alfven bounce frequency. The axis will be set by the lines we draw. 
     elif name=='f':
       return None
+
+    elif name=='B':
+      return None
+
+
     # Toroidal Poynting flux. 
     elif name=='Stor':
       return self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'By', real=real) )/phys.mu0
@@ -391,6 +405,13 @@ class tunaPlotter:
     # Toroidal magnetic field contribution to the energy density. 
     elif name=='uBy':
       return 0.5*self.getArray(path, 'By')**2 / phys.mu0
+
+    # Energy in the compressional magnetic field... kinda. This is ignoring the
+    # zeroth-order magnetic field. Really, this is just for computing the RMS
+    # magnetic field. 
+    elif name=='uBz':
+      return 0.5*self.getArray(path, 'Bz')**2 / phys.mu0
+
     # Magnetic field contribution to the energy density. 
     elif name=='uB':
       return self.getArray(path, 'uBx') + self.getArray(path, 'uBy')
@@ -434,6 +455,20 @@ class tunaPlotter:
       ux, uy = self.getArray(path, 'uEx'), self.getArray(path, 'uBy')
       dV = self.getArray(path, 'dV')
       return np.sum( np.sum( (ux + uy)*dV[:, :, None], 1), 0)
+
+    # Integrated energy in each field component. This isn't really physical for
+    # the compressional magnetic field -- it's a tool for computing the RMS. 
+    elif name=='UBx':
+      u, dV = self.getArray(path, 'uBx'), self.getArray(path, 'dV')
+      return np.sum( np.sum( u*dV[:, :, None], 1), 0)
+    elif name=='UBz':
+      u, dV = self.getArray(path, 'uBz'), self.getArray(path, 'dV')
+      return np.sum( np.sum( u*dV[:, :, None], 1), 0)
+
+    # Interated volume. 
+    elif name=='V':
+      return np.sum( self.getArray(path, 'dV') )
+
     # Alfven speed. 
     elif name=='vA' or name=='va':
       return 1/np.sqrt( self.getArray(path, 'epsp')*phys.mu0 )
@@ -929,6 +964,15 @@ class plotCell:
         targs = {'x':0.5, 'y':0.5, 'horizontalalignment':'center', 
                  'verticalalignment':'center', 'transform':self.ax.transAxes}
         self.ax.text(s='$' + val + '$', **targs)
+
+
+      elif key=='toptext':
+        targs = {'x':0.5, 'y':0.90, 'horizontalalignment':'center', 
+                 'verticalalignment':'top', 'transform':self.ax.transAxes}
+        self.ax.text(s='$' + val + '$', **targs)
+
+
+
       # Horizontal axis coordinate. 
       elif key=='x':
         self.x = val
@@ -1096,24 +1140,15 @@ class plotCell:
     if self.cz is not None:
       # Use the color params we were passed, but allow keyword arguments from
       # the contour call to overwrite them. 
-      kargs = dict( colors.items() + self.ckargs.items() )
+      citems = [ ( key, colors[key] ) for key in ('ticks', 'levels', 'norm', 'cmap') ]
+      kargs = dict( citems + self.ckargs.items() )
       self.ax.contourf(self.x, self.y, self.cz, **kargs)
     # Same for a mesh. 
     if self.mz is not None:
-      # The mesh wants arguments formulated a bit differently. 
-      kargs = dict( colors.items() + self.mkargs.items() )
-      # Make sure we can call the color map. 
-      if 'cmap' not in kargs or kargs['cmap'] is None:
-        kargs['cmap'] = plt.get_cmap(None)
-      # Get the colors we want for each color level. 
-      clevs = np.array( kargs['levels'] )
-      ulevs = ( clevs - clevs[0] )/( clevs[-1] - clevs[0] )
-      clist = [ kargs['cmap'](u) for u in 0.5*( ulevs[1:] + ulevs[:-1] ) ]
-      # Create a stepwise color map at those colors. 
-      cmap = ListedColormap(clist)
-      # Also create a norm to deliniate the step boundaries. 
-      norm = BoundaryNorm(clevs, cmap.N)
-      self.ax.pcolormesh(self.x, self.y, self.mz, cmap=cmap, norm=norm)
+      citems = [ ( 'norm', colors['mnorm'] if 'mnorm' in colors else None ), 
+                 ( 'cmap', colors['mcmap'] if 'mcmap' in colors else None ) ]
+      kargs = dict( citems + self.mkargs.items() )
+      self.ax.pcolormesh(self.x, self.y, self.mz, **kargs)
     # Optionally, draw the outline of the data. 
     if self.outline and self.x is not None and self.y is not None:
       [ self.ax.plot(self.x[i, :], self.y[i, :], 'k') for i in (0, -1) ]
@@ -1182,29 +1217,33 @@ class plotColors(dict):
     if self.colorbar=='log':
       temp['ticks'], temp['levels'] = self.logTicksLevels(zmax)
       temp['norm'] = LogNorm()
-
-
     elif self.colorbar=='lg':
       temp['ticks'], temp['levels'] = self.lgTicksLevels(zmax)
       temp['norm'] = LogNorm()
-
-
     elif self.colorbar=='sym':
       temp['ticks'], temp['levels'] = self.symTicksLevels(zmax)
       temp['norm'] = Normalize()
     elif self.colorbar=='phase':
       temp['ticks'], temp['levels'] = self.phaseTicksLevels(zmax)
       temp['norm'] = Normalize()
-
     elif self.colorbar=='pos':
       temp['ticks'], temp['levels'] = self.posTicksLevels(zmax)
       temp['norm'] = Normalize()
 
+    elif self.colorbar=='pct':
+      temp['ticks'], temp['levels'] = self.pctTicksLevels(zmax)
+      temp['norm'] = LogNorm()
+
     else:
       temp['ticks'], temp['levels'] = self.linTicksLevels(zmax)
       temp['norm'] = Normalize()
+
     # Rework the color map to match the normalization of our ticks and levels. 
     temp['cmap'] = self.getCmap()
+
+    # Kludge something together so this works for colormesh as well as contour. 
+    temp['mcmap'], temp['mnorm'] = self.getMesh( temp )
+
     # Draw the color bar. 
     self.setColorbar(cax, **temp)
     # Become a dictionary of color parameters to be used by the contour plots. 
@@ -1237,8 +1276,10 @@ class plotColors(dict):
 
   # Seems to work? Don't lean too heavily... it was just thrown together. 
   def posTicksLevels(self, zmax):
-    # Linear scale from 0 to zmax. Tick at every other level, like with log. 
-    self.zmax = zmax
+    # Linear scale from 0 to zmax. Tick at every other level. Put zmax at the
+    # center of the top bin, and 0 at the bottom edge of the bottom bin. 
+    dz = zmax/(self.nticks - 0.5)
+    self.zmax = zmax + dz/2
     levels = np.linspace(0, self.zmax, self.ncolors)
     ticks = 0.5*( levels[1:] + levels[:-1] )[::2]
     return ticks, levels
@@ -1264,6 +1305,20 @@ class plotColors(dict):
 
 
 
+
+  def pctTicksLevels(self, zmax):
+    # Hard-coded to have ticks at 10%, 1%, 0.1%. Several color levels between each tick. 
+    halves = np.logspace(-1, 1, self.ncolors - 1)
+    self.zmin = halves[0]*np.sqrt( halves[0]/halves[1] )
+    self.zmax = halves[-1]*np.sqrt(halves[-1]/halves[-2] )
+    levels = np.logspace(np.log10(self.zmin), np.log10(self.zmax), self.ncolors)
+    ticks = np.array( (0.1, 1, 10) )
+    return ticks, levels
+
+
+
+
+
   def lgTicksLevels(self, zmax):
     # Same as log, but with base 2 instead of 10. 
     power = np.ceil(np.log2(zmax) - 0.25)
@@ -1273,9 +1328,6 @@ class plotColors(dict):
     lgMin, lgMax = np.log2(self.zmin), np.log2(self.zmax)
     levels = np.logspace(lgMin, lgMax, self.ncolors, base=2)
     return ticks, levels
-
-
-
 
   def symTicksLevels(self, zmax):
     # Ticks are located at powers of ten. Color levels are centered on ticks. 
@@ -1340,6 +1392,28 @@ class plotColors(dict):
       return 0.5
 
   # ---------------------------------------------------------------------------
+  # --------------------------------------------------- Mesh Norm and Color Map
+  # ---------------------------------------------------------------------------
+
+  # This is SUPER kludgey. Sorry. No time to make it pretty while writing! 
+  def getMesh(self, temp):
+    clevs = np.array( temp['levels'] )
+    if self.colorbar in ('lg', 'log', 'pct'):
+      ulevs = np.array( [ self.logMron(c) for c in clevs ] )
+    elif self.colorbar=='pos':
+      ulevs = ( clevs - clevs[0] )/( clevs[-1] - clevs[0] )
+    elif self.colorbar=='lin':
+      ulevs = np.array( [ self.linMron(c) for c in clevs ] )
+    elif self.colorbar=='sym':
+      ulevs = np.array( [ self.symMron(c) for c in clevs ] )
+    else:
+      print 'WARNING: mesh can\'t handle that. '
+    clist = [ temp['cmap'](u) for u in 0.5*( ulevs[1:] + ulevs[:-1] ) ]
+    cmap = ListedColormap(clist)
+    norm = BoundaryNorm(clevs, cmap.N)
+    return cmap, norm
+
+  # ---------------------------------------------------------------------------
   # ----------------------------------------------------------------- Color Map
   # ---------------------------------------------------------------------------
 
@@ -1348,16 +1422,16 @@ class plotColors(dict):
   # match the normalization of our ticks and color levels. 
   def getCmap(self):
     # Figure out the unit interval renormalization to use. 
-    if self.colorbar=='log' or self.colorbar=='pos' or self.colorbar=='lg':
+    if self.colorbar in ('lg', 'log', 'pos', 'pct'):
       # Kinda kludgey. See setColorbar for explanation. 
-      return None
+      return plt.get_cmap(None)
     elif self.colorbar=='sym':
       norm = self.symNorm
     elif self.colorbar=='phase':
       # The physics machines at the U use an old version of Matplotlib. 
       # Cubehelix was added in 1.5. It can also be obtained here: 
       # https://github.com/jradavenport/cubehelix/blob/master/cubehelix.py
-      return None
+      return plt.get_cmap(None)
     else:
       norm = self.linNorm
     # Get a fine sampling of the color map on the unit interval. 
@@ -1419,7 +1493,13 @@ class plotColors(dict):
       cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
       return
 
-
+    elif self.colorbar=='pct':
+      norm, mron, fmtr = self.logNorm, self.logMron, self.pctFormatter
+      ColorbarBase(cax, boundaries=colorParams['levels'],
+                   ticks=colorParams['ticks'], norm=colorParams['norm'],
+                   cmap=colorParams['cmap'])
+      cax.set_yticklabels( [ fmtr(t) for t in colorParams['ticks'] ] )
+      return
 
     elif self.colorbar=='pos':
       fmtr = self.linFormatter
@@ -1428,8 +1508,6 @@ class plotColors(dict):
                    cmap=colorParams['cmap'])
       cax.set_yticklabels( [ fmtr(t).replace('+', '') for t in colorParams['ticks'] ] )
       return
-
-
 
     elif self.colorbar=='sym':
       norm, mron, fmtr = self.symNorm, self.symMron, self.symFormatter
@@ -1465,7 +1543,7 @@ class plotColors(dict):
       return '$0' + self.unit + '$'
     # If our numbers are around order unity, the top tick should show two
     # significant figures, and the rest should match that decimal place. 
-    elif 1e-3<self.zmax<1e3:
+    elif 1e-3<self.zmax<1e4:
       sign = '' if x<0 else '+'
       power = int( format(self.zmax, '.1e').split('e')[-1] )
       if power>1:
@@ -1507,6 +1585,12 @@ class plotColors(dict):
     # Otherwise, just keep the power of ten. 
     return '$ 10^{' + format(np.log10(x), '.0f') + '}' + self.unit + '$'
 
+
+  def pctFormatter(self, x):
+    if x == int(x):
+      return '$' + str( int(x) ) + '\\%$'
+    else:
+      return '$' + str(x) + '\\%$'
 
 
   def lgFormatter(self, x):
@@ -1579,6 +1663,15 @@ def num(x):
 # Turns the number 3 into '003'. If given a float, truncate it. 
 def znt(x, width=0):
   return str( int(x) ).zfill(width)
+
+# Two decimal places. If it's a number bigger than one, that's two sig figs. Less than one, only one sig fig, to save space. 
+def tdp(x):
+  if x < 1:
+    return str( float( format(x, '.0e') ) )
+  elif x < 10:
+    return str( float( format(x, '.1e') ) )
+  else:
+    return str( int( float( format(x, '.1e') ) ) )
 
 # #############################################################################
 # ################################################################ Array Reader
