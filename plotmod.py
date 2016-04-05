@@ -46,6 +46,9 @@ from random import choice
 from sys import argv, stdout
 from time import localtime as lt, time
 
+from numpy.ma import masked_where
+
+
 # #############################################################################
 # ####################################################### Constants of Interest
 # #############################################################################
@@ -1672,6 +1675,16 @@ def tdp(x):
     return str( float( format(x, '.1e') ) )
   else:
     return str( int( float( format(x, '.1e') ) ) )
+
+
+# Make sure we don't throw anything infinite on the plot. 
+def fmask(x):
+  return masked_where(np.logical_not( np.isfinite(x) ), x)
+
+# Also leave out any zeros. 
+def zmask(x, thr=0):
+  return masked_where(np.abs(x) <= thr, x)
+
 
 # #############################################################################
 # ################################################################ Array Reader
