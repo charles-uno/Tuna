@@ -404,7 +404,8 @@ def modcmd():
   if host().endswith('spa.umn.edu'):
     return '/usr/bin/modulecmd python '
   else:
-    return os.environ['MODULESHOME'] + '/bin/modulecmd python '
+#    return os.environ['MODULESHOME'] + '/bin/modulecmd python '
+    return 'modulecmd python '
 
 # What modules are needed for compilation and execution?
 def mods():
