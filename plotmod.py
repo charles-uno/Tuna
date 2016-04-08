@@ -243,7 +243,7 @@ class tunaPlotter:
   def pickle(self):
     # The Tuna Plotter object already tracked down all of the data directories,
     # either from arguments from the terminal or its internal defaults. 
-    for path in self.paths:
+    for path in sorted( self.paths.keys() ):
       print '\n' + path
       # The readArray function makes a pickle whenever it reads in a dat file.
       [ readArray(f) for f in files(path, end='.dat') ]

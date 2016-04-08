@@ -27,32 +27,31 @@ def main():
   # The Tuna Plotter is in charge of data access. 
   TP = tunaPlotter()
 
-
-  # Let's just tally up Bz/Bx as a function of m. 
-  for kargs in loopover( model=(1, 2, 3, 4) ):
-    plotCompression(TP, **kargs)
-
-
-
+#  # Let's just tally up Bz/Bx as a function of m. 
+##  for kargs in loopover( fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025) ):
+#  for kargs in loopover( model=(3, 4), ldrive=(6,) ):
+#    plotCompression(TP, **kargs)
 
 #  # Look at snapshots of a run. 
 #  for kargs in loopover( path=TP.paths.keys() ):
 #    plotFields(TP, **kargs)
 
+#  # Plot the radial distribution in energy. 
+#  for kargs in loopover( mode=('p', 't'), model=(1, 2), ldrive=(5,) ):
+#    plotLayers(TP, **kargs)
+
+#  for kargs in loopover( model=(1, 2), ldrive=(5,) ):
+#    plotEnergy(TP, **kargs)
+
+  # Plot magnetic field signatures at the ground. 
+  for kargs in loopover( fdrive=(0.022,), side=('day',), ldrive=(5,) ):
+    plotGround(TP, **kargs)
+
+
+
 #  # Do poloidal and toroidal waves have opposite phase offsets?
 #  for kargs in loopover( path=TP.paths.keys() ):
 #    plotPhase(TP, **kargs)
-
-#  # Plot the radial distribution in energy. 
-#  for kargs in loopover( mode=('p', 't'), model=(3,), lpp=(4,), ldrive=(7,) ):
-#    plotLayers(TP, **kargs)
-
-#  for kargs in loopover( model=(3,), lpp=(4,), ldrive=(7,) ):
-#    plotEnergy(TP, **kargs)
-
-#  # Plot magnetic field signatures at the ground. 
-#  for kargs in loopover( fdrive=TP.getValues('fdrive'), side=('night',), ldrive=(7,) ):
-#    plotGround(TP, **kargs)
 
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
@@ -107,225 +106,6 @@ def main():
 # #############################################################################
 
 # =============================================================================
-# ================================= Relation Between Modenumber and Compression
-# =============================================================================
-
-def plotCompression(TP, model):
-  # One modenumber per row. One frequency per column, to a maximum of 4. 
-  azms = (1, 2, 4, 8, 16, 32, 64)
-  fdrives=(0.013, 0.016, 0.019, 0.022)
-  # The Plot Window does the actual plotting. 
-
-#  x = np.array( (1, 2, 4, 8, 16, 32, 64) )
-#  y13 = np.array( (110, 83, 42, 17, 6.1, 1.9, 0.5) )/100.
-#  y16 = np.array( (100, 85, 48, 22, 7.2, 2.1, 0.6) )/100.
-#  y19 = np.array( (98, 86, 57, 24, 6.8, 2.1, 0.6) )/100.
-#  y22 = np.array( (97, 86, 63, 22, 6.6, 2.1, 0.6) )/100.
-#  ys = [ y13, y16, y19, y22 ]
-#  zs = [ (1. + 1./y**2)**-0.5 for y in ys ]
-#  [ plt.plot(x, y) for y in ys ]
-#  return plt.show()
-
-  PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
-  # Set title and labels. 
-  title = notex('RMS Compressional Coupling to the Poloidal Mode: ') + tex(model)
-
-  rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
-
-  collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
-
-  PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
-
-  # Iterate over the cells. 
-  for row, azm in enumerate(azms):
-    for col, fdrive in enumerate(fdrives):
-
-      # Find the data for this cell, and plot it. 
-      path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
-      # Make sure this run exists. 
-      if path is None:
-        PW[row, col].setParams( text=notex('Not Found') )
-        continue
-
-      PW[row, col].setParams( **TP.getCoords(path, 't', 'comp') )
-      # If there was a crash, don't show the data. Just say "CRASH."
-      if TP.getArray(path, 't').size < 300:
-        PW[row, col].setParams(text=notex('Unstable'))
-        continue
-
-#      BzBz = TP.getArray(path, 'UBz')*2*phys.mu0
-#      BxBx = TP.getArray(path, 'UBx')*2*phys.mu0
-#      V = TP.getArray(path, 'V')
-#      BzRMS = np.sqrt( BzBz/V )
-#      BxRMS = np.sqrt( BxBx/V )
-#      RMS = np.sqrt( BzBz/BxBx )
-#      PW[row, col].setLine( BzRMS, 'g')
-#      PW[row, col].setLine( BxRMS, 'b')
-#      PW[row, col].setLine( BzRMS/BxRMS, 'k')
-
-      RMS = np.sqrt( TP.getArray(path, 'UBz') / TP.getArray(path, 'UBx') )
-
-      PW[row, col].setLine(RMS, 'r')
-
-      dots = np.mean(RMS)*np.ones( RMS.shape )
-
-      PW[row, col].setLine(dots, 'k:')
-
-      PW[row, col].setParams(toptext=tdp(np.mean(RMS)*100.) + '\\%')
-
-
-  # Manually clean up the axes. 
-  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
-  PW.setParams( ylims=(0, 1.5), yticks=(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5), yticklabels=('$0\\%$', '', '', '$75\\%$', '', '', '$150\\%$'), ylabelpad=-3 )
-  # Show or save the plot. 
-  if TP.savepath is not None:
-    name = 'comp_' + str(model)
-    return PW.render( TP.savepath + name + '.pdf' )
-  else:
-    return PW.render()
-
-
-
-
-
-
-
-# =============================================================================
-# ====================================================== Snapshot of All Fields
-# =============================================================================
-
-def dft(t, x):
-  n = t.size
-  def omega(m):
-    return 2*m*np.pi/n
-  def harm(m):
-    return np.exp(1j*omega(m)*t)
-  weights = np.zeros(n/2, dtype=np.complex)
-  for m in range(n/2):
-    weights[m] = np.sum( x*harm(-m) ) / np.sum( harm(m)*harm(-m) )
-  return np.array( [ omega(m) for m in range(n/2) ] ), weights
-
-def tfd(omega, weights):
-  t = np.arange(2*omega.size)
-  x = np.zeros(2*omega.size, dtype=np.complex)
-
-  m = np.argmax( np.abs(weights) )
-
-  return t, weights[m]*np.exp(1j*omega[m]*t)
-
-#  for m in range(omega.size)[:10]:
-#    x = x + weights[m]*np.exp(1j*omega[m]*t)
-#  return t, x
-
-
-def plotPhase(TP, path):
-  PW = plotWindow(nrows=2, ncols=1, colorbar=None)
-  fdrive, model, azm = [ TP.getParams(path)[key] for key in ('fdrive', 'model', 'azm') ]
-
-  Ex, Ey, Bx, By = [ TP.getArray(path, name) for name in ('Ey', 'Bx', 'Ex', 'By') ]
-
-  t = TP.getArray(path, 't')
-  SP = Ey*Bx
-  ST = Ex*By
-  n1, n3, nt = SP.shape
-  i = np.random.randint(0, n1)
-  k = np.random.randint(0, n3/2)
-
-  E = Ey[i, k, :]
-  B = Bx[i, k, :]
-  PW[0].setLine(t, E, 'b')
-  PW[0].setLine(t, B, 'r')
-
-  omega, Ep = dft(t, E)
-  omega, Bp = dft(t, B) 
-
-  Sp = Ep*np.conj(Bp)
-
-  m = np.argmax(Sp)
-
-  
-
-
-
-  tp, Ep = tfd( *dft(t, E) )
-  PW[0].setLine(tp, Ep, 'b+')
-  tp, Bp = tfd( *dft(t, B) )
-  PW[0].setLine(tp, Bp, 'r+')
-  E = Ex[i, k, :]
-  B = By[i, k, :]
-  PW[1].setLine(t, E, 'b')
-  PW[1].setLine(t, B, 'r')
-  tp, Ep = tfd( *dft(t, E) )
-  PW[1].setLine(tp, Ep, 'b+')
-  tp, Bp = tfd( *dft(t, B) )
-  PW[1].setLine(tp, Bp, 'r+')
-  PW.setParams( ylims=(-10, 10) )
-
-  X, Z = [ TP.getArray(path, name) for name in ('X', 'Z') ]
-
-  title = tex(fdrive) + '\\qquad m = ' + znt(azm) + '\\qquad ' + tex(model) + '\\qquad{}X = ' + format(X[i, k], '.1f') + '\\qquad{}Z = ' + format(Z[i, k], '.1f')
-  rlabs = [ notex(modename) for modename in ('Poloidal', 'Toroidal') ]
-  PW.setParams(title=title, rowlabels=rlabs)
-
-
-
-  return PW.render()
-
-
-
-
-
-
-
-
-def plotFields(TP, path):
-  # What are we looking at? 
-  steps = (269, 274, 279, 284, 289, 294, 299)
-  names = ('Ey', 'Bx', 'Ex', 'By')
-  # Set up the plot window. 
-  PW = plotWindow(nrows=len(steps), ncols=len(names), colorbar='sym', zmax=10)
-  # Titles and labels. 
-  fdrive, model, azm = [ TP.getParams(path)[key] for key in ('fdrive', 'model', 'azm') ]
-  title = tex(fdrive) + '\\qquad m = ' + znt(azm) + '\qquad ' + tex(model)
-  rlabs = [ notex(znt(step + 1) + 's') for step in steps ]
-  clabs = [ tex(name) for name in names ]
-  PW.setParams(title=title, rowlabels=rlabs, collabels=clabs)
-  # Set up the axes and labels. 
-  PW.setParams( **TP.getCoords(path) )
-  # Add the data to the plot. 
-  for col, name in enumerate(names):
-    z = TP.getArray(path, name)
-    for row, step in enumerate(steps):
-      PW[row, col].setContour( z[:, :, step] )
-
-  '''
-  Ey, Bx, Ex, By = [ TP.getArray(path, name) for name in ('Ey', 'Bx', 'Ex', 'By') ]
-  rowlabels = ('X', 'Y', 'Z', 'J_z')
-  collabels = ( tex('imag') + 'B', tex('real') + 'B', tex('imag') + 'E', tex('real') + 'E' )
-  PW.setParams(title=title, rowlabels=rowlabels, collabels=collabels)
-  print 'fdrive = ', fdrive
-  print 'model  = ', model
-  print 'azm    = ', azm
-  bi = [ TP.getArray(path, name, real=False)[:, :, step] for name in ('Bx', 'By', 'Bz') ]
-  br = [ TP.getArray(path, name, real=True)[:, :, step] for name in ('Bx', 'By', 'Bz') ]
-  ei = [ TP.getArray(path, name, real=False)[:, :, step] for name in ('Ex', 'Ey', 'Ez') ]
-  er = [ TP.getArray(path, name, real=True)[:, :, step] for name in ('Ex', 'Ey', 'Ez') ]
-  ei[2] = ei[2]*1e6
-  er[2] = er[2]*1e6
-  jj = [ 100*TP.getArray(path, 'Jz', real=tf)[:, :, step] for tf in (False, True) ]
-  PW.setParams( **TP.getCoords(path) )
-  for col, bbb in enumerate( (bi, br) ):
-    for row, b in enumerate(bbb):
-      PW[row, col].setContour(b)
-  for col, eee in enumerate( (ei, er) ):
-    for row, e in enumerate(eee):
-      PW[row, col+2].setContour(e)
-  [ PW[3, col+2].setContour(j) for col, j in enumerate(jj) ]
-  '''
-
-  return PW.render()
-
-# =============================================================================
 # =================================== Line Plot of Poloidal and Toroidal Energy
 # =============================================================================
 
@@ -333,11 +113,11 @@ def plotEnergy(TP, model, lpp=4, ldrive=5):
 
   if lpp==4 and ldrive==5:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
-  elif lpp==5 and ldrive==5 and model==2:
+  elif lpp==5 and ldrive==5:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
-  elif lpp==4 and ldrive==6 and model==3:
+  elif lpp==4 and ldrive==6:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LDRIVE_6/')
-  elif lpp==4 and ldrive==7 and model==3:
+  elif lpp==4 and ldrive==7:
     TP.setPaths('/media/My Passport/RUNS/LDRIVE_7/')
   else:
     return
@@ -345,10 +125,15 @@ def plotEnergy(TP, model, lpp=4, ldrive=5):
   # One modenumber per row. One frequency per column, to a maximum of 4. 
   azms = (1, 2, 4, 8, 16, 32, 64)
   fdrives=(0.013, 0.016, 0.019, 0.022)
+
   # The Plot Window does the actual plotting. 
   PW = plotWindow( nrows=len(azms), ncols=len(fdrives) )
   # Set title and labels. 
-  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+
+
+#  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+  title = notex('Poloidal (Blue) and Toroidal (Red) Energy: ') + tex(model)
+
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
   PW.setParams(title=title, collabels=collabels, rowlabels=rowlabels)
@@ -386,11 +171,11 @@ def plotLayers(TP, mode, model, lpp=4, ldrive=5):
 
   if lpp==4 and ldrive==5:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
-  elif lpp==5 and ldrive==5 and model==2:
+  elif lpp==5 and ldrive==5:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
-  elif lpp==4 and ldrive==6 and model==3:
+  elif lpp==4 and ldrive==6:
     TP.setPaths('/media/My Passport/RUNS/JDRIVE_LDRIVE_6/')
-  elif lpp==4 and ldrive==7 and model==3:
+  elif lpp==4 and ldrive==7:
     TP.setPaths('/media/My Passport/RUNS/LDRIVE_7/')
   else:
     return
@@ -398,12 +183,15 @@ def plotLayers(TP, mode, model, lpp=4, ldrive=5):
   # With only two columns, we can't fit 7 rows without deforming them like
   # crazy. Let's keep the frames legible but have fewer of them. 
   azms = (1, 2, 4, 8, 16, 32, 64)
+
   fdrives=(0.013, 0.016, 0.019, 0.022)
+
   # The Plot Window does the actual plotting. 
   PW = plotWindow(nrows=len(azms), ncols=len(fdrives), colorbar='log', zmax=0.1)
   # Set title and labels. 
   modename = {'p':'Poloidal ', 't':'Toroidal '}[mode]
-  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+#  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model) + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+  title = notex(modename + 'Energy Density by L-Shell: ') + tex(model)
   unitlabel = notex('\\frac{nJ}{m^3}')
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = [ tex(fdrive) + notex('Current') for fdrive in fdrives ]
@@ -467,7 +255,11 @@ def plotGround(TP, fdrive, side='day', lpp=4, ldrive=5):
   am, qm = (1, 2) if side=='day' else (3, 4)
 
   # Set title and labels. 
-  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current') + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+#  title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current') + notex(', ') + 'L_{PP} = ' + str(lpp) + notex(', ') + 'L_{drive} = ' + znt(ldrive)
+
+  sidename = {'day':'Dayside', 'night':'Nightside'}[side]
+  title = notex(sidename + ' Magnetic Ground Signatures: ') + tex(fdrive) + notex('Current')
+
   rowlabels = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
   collabels = ( tex(am) + tex('Bq'), tex(am) + tex('Bf'),
                 tex(qm) + tex('Bq'), tex(qm) + tex('Bf') )
@@ -489,6 +281,11 @@ def plotGround(TP, fdrive, side='day', lpp=4, ldrive=5):
           PW[row, col].setParams(text=notex('Unstable'))
           continue
         PW[row, col].setContour( TP.getArray(path, name)[:, 0, :] )
+
+        print 'azm, fdrive, model = ', azm, fdrive, model, ' has peak ' + name + ' = ', np.max( TP.getArray(path, name)[:, 0, :] )
+
+
+
   # Manually clean up the x axis. 
   PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
   # Show or save the plot. 
@@ -497,6 +294,208 @@ def plotGround(TP, fdrive, side='day', lpp=4, ldrive=5):
     return PW.render( TP.savepath + name + '.pdf' )
   else:
     return PW.render()
+
+# =============================================================================
+# ================================= Relation Between Modenumber and Compression
+# =============================================================================
+
+def plotCompression(TP, model=None, fdrive=None, lpp=4, ldrive=5):
+  # One modenumber per row. Columns may be frequencies or models. 
+  azms = (1, 2, 4, 8, 16, 32, 64)
+
+
+  if lpp==4 and ldrive==5:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_4/')
+  elif lpp==5 and ldrive==5:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LPP_5/')
+  elif lpp==4 and ldrive==6:
+    TP.setPaths('/media/My Passport/RUNS/JDRIVE_LDRIVE_6/')
+  elif lpp==4 and ldrive==7:
+    TP.setPaths('/media/My Passport/RUNS/LDRIVE_7/')
+  else:
+    return
+
+  if model is None and fdrive is None:
+    print 'What should the columns be? '
+    return
+  elif model is not None:
+    items0 = [ ('model', model) ]
+    key = 'fdrive'
+    vals = (0.013, 0.016, 0.019, 0.022)
+    clabs = [ tex(val) + notex('Current') for val in vals ]
+    title = notex('Compressional Coupling to the Poloidal Mode: ') + tex(model)
+  elif fdrive is not None:
+    items0 = [ ('fdrive', fdrive) ]
+    key = 'model'
+    vals = (1, 2, 3, 4)
+    clabs = [ tex(val) for val in vals ]
+    title = notex('Compressional Coupling to the Poloidal Mode: ') + tex(fdrive) + notex('Current')
+  PW = plotWindow( nrows=len(azms), ncols=len(vals) )
+  # Set title and labels. 
+  rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+  PW.setParams(title=title, collabels=clabs, rowlabels=rlabs)
+
+  # Iterate over the cells. 
+  for row, azm in enumerate(azms):
+    for col, val in enumerate(vals):
+
+      # Find the data for this cell, and plot it. 
+      path = TP.getPath(azm=azm, lpp=lpp, ldrive=ldrive, **dict( items0 + [ (key, val) ] ) )
+      # Make sure this run exists. 
+      if path is None:
+        PW[row, col].setParams( text=notex('Not Found') )
+        continue
+
+      PW[row, col].setParams( **TP.getCoords(path, 't', 'comp') )
+      # If there was a crash, don't show the data. Just say "CRASH."
+      if TP.getArray(path, 't').size < 300:
+        PW[row, col].setParams(text=notex('Unstable'))
+        continue
+
+      RMS = np.sqrt( TP.getArray(path, 'UBz') / TP.getArray(path, 'UBx') )
+
+      PW[row, col].setLine(RMS, 'r')
+
+      dots = np.mean(RMS)*np.ones( RMS.shape )
+
+      PW[row, col].setLine(dots, 'k:')
+
+      PW[row, col].setParams(toptext=tdp(np.mean(RMS)*100.) + '\\%')
+
+
+  print 'LPP, LDRIVE = ', lpp, ldrive
+
+
+  # Manually clean up the axes. 
+  PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+  PW.setParams( ylims=(0, 1.5), yticks=(0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5), yticklabels=('$0\\%$', '', '', '$75\\%$', '', '', '$150\\%$'), ylabelpad=-3 )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'comp_' + ( str(model) if model is not None else znt(1000*fdrive) + 'mHz' )
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+
+
+
+
+
+
+# =============================================================================
+# ====================================================== Snapshot of All Fields
+# =============================================================================
+
+def plotFields(TP, path):
+  # What are we looking at? 
+  steps = (259, 269, 279, 289, 299)
+  names = ('Bx', 'By', 'Bz')
+  # Set up the plot window. 
+  PW = plotWindow(nrows=len(steps), ncols=len(names), colorbar='sym', zmax=10)
+  # Titles and labels. 
+  fdrive, model, azm = [ TP.getParams(path)[key] for key in ('fdrive', 'model', 'azm') ]
+
+  title = notex('Magnetic Field Snapshots: ') + tex(model) + notex(', ') + tex(fdrive) + notex('Current, ') +  'm = ' + znt(azm)
+
+  rlabs = [ notex(znt(step + 1) + 's') for step in steps ]
+
+
+#  clabs = [ tex(name) for name in names ]
+  clabs = ( 'B_x' + notex(' (Poloidal)'), 
+            'B_y' + notex(' (Toroidal)'), 
+            'B_z' + notex(' (Compressional)') )
+
+  PW.setParams(title=title, rowlabels=rlabs, collabels=clabs, unitlabel=notex('nT'))
+  # Set up the axes and labels. 
+  PW.setParams( **TP.getCoords(path) )
+  # Add the data to the plot. 
+  for col, name in enumerate(names):
+    z = TP.getArray(path, name)
+    for row, step in enumerate(steps):
+      PW[row, col].setContour( z[:, :, step] )
+  # Show or save the plot. 
+  if TP.savepath is not None:
+    name = 'snapshot_' + str(model) + '_' + znt(1000*fdrive) + 'mHz_' + znt(azm, 3)
+    return PW.render( TP.savepath + name + '.pdf' )
+  else:
+    return PW.render()
+
+
+  return PW.render()
+
+# =============================================================================
+# ============================================ Finagling with Phase... Not Done
+# =============================================================================
+
+def dft(t, x):
+  n = t.size
+  def omega(m):
+    return 2*m*np.pi/n
+  def harm(m):
+    return np.exp(1j*omega(m)*t)
+  weights = np.zeros(n/2, dtype=np.complex)
+  for m in range(n/2):
+    weights[m] = np.sum( x*harm(-m) ) / np.sum( harm(m)*harm(-m) )
+  return np.array( [ omega(m) for m in range(n/2) ] ), weights
+
+def tfd(omega, weights):
+  t = np.arange(2*omega.size)
+  x = np.zeros(2*omega.size, dtype=np.complex)
+
+  m = np.argmax( np.abs(weights) )
+
+  return t, weights[m]*np.exp(1j*omega[m]*t)
+
+#  for m in range(omega.size)[:10]:
+#    x = x + weights[m]*np.exp(1j*omega[m]*t)
+#  return t, x
+
+
+def plotPhase(TP, path):
+  PW = plotWindow(nrows=2, ncols=1, colorbar=None)
+  fdrive, model, azm = [ TP.getParams(path)[key] for key in ('fdrive', 'model', 'azm') ]
+
+  Ex, Ey, Bx, By = [ TP.getArray(path, name) for name in ('Ey', 'Bx', 'Ex', 'By') ]
+
+  t = TP.getArray(path, 't')
+  SP = Ey*Bx
+  ST = Ex*By
+  n1, n3, nt = SP.shape
+  i = np.random.randint(0, n1)
+  k = np.random.randint(0, n3/2)
+
+  E = Ey[i, k, :]
+  B = Bx[i, k, :]
+  PW[0].setLine(t, E, 'b')
+  PW[0].setLine(t, B, 'r')
+
+  omega, Ep = dft(t, E)
+  omega, Bp = dft(t, B) 
+
+  Sp = Ep*np.conj(Bp)
+
+  m = np.argmax(Sp)
+
+  tp, Ep = tfd( *dft(t, E) )
+  PW[0].setLine(tp, Ep, 'b+')
+  tp, Bp = tfd( *dft(t, B) )
+  PW[0].setLine(tp, Bp, 'r+')
+  E = Ex[i, k, :]
+  B = By[i, k, :]
+  PW[1].setLine(t, E, 'b')
+  PW[1].setLine(t, B, 'r')
+  tp, Ep = tfd( *dft(t, E) )
+  PW[1].setLine(tp, Ep, 'b+')
+  tp, Bp = tfd( *dft(t, B) )
+  PW[1].setLine(tp, Bp, 'r+')
+  PW.setParams( ylims=(-10, 10) )
+
+  X, Z = [ TP.getArray(path, name) for name in ('X', 'Z') ]
+
+  title = tex(fdrive) + '\\qquad m = ' + znt(azm) + '\\qquad ' + tex(model) + '\\qquad{}X = ' + format(X[i, k], '.1f') + '\\qquad{}Z = ' + format(Z[i, k], '.1f')
+  rlabs = [ notex(modename) for modename in ('Poloidal', 'Toroidal') ]
+  PW.setParams(title=title, rowlabels=rlabs)
+  return PW.render()
 
 # =============================================================================
 # ================================ Parallel Current and Poynting Flux Snapshots
