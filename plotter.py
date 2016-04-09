@@ -36,18 +36,16 @@ def main():
 #  for kargs in loopover( path=TP.paths.keys() ):
 #    plotFields(TP, **kargs)
 
-#  # Plot the radial distribution in energy. 
-#  for kargs in loopover( mode=('p', 't'), model=(1, 2), ldrive=(5,) ):
-#    plotLayers(TP, **kargs)
+  # Plot the radial distribution in energy. 
+  for kargs in loopover( mode=('p', 't'), model=(3, 4), ldrive=(6,) ):
+    plotLayers(TP, **kargs)
 
-#  for kargs in loopover( model=(1, 2), ldrive=(5,) ):
-#    plotEnergy(TP, **kargs)
+  for kargs in loopover( model=(3, 4), ldrive=(6,) ):
+    plotEnergy(TP, **kargs)
 
   # Plot magnetic field signatures at the ground. 
-  for kargs in loopover( fdrive=(0.022,), side=('day',), ldrive=(5,) ):
+  for kargs in loopover( fdrive=(0.013,), side=('night',), ldrive=(6,) ):
     plotGround(TP, **kargs)
-
-
 
 #  # Do poloidal and toroidal waves have opposite phase offsets?
 #  for kargs in loopover( path=TP.paths.keys() ):
