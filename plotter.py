@@ -36,16 +36,16 @@ def main():
 #  for kargs in loopover( path=TP.paths.keys() ):
 #    plotFields(TP, **kargs)
 
-  # Plot the radial distribution in energy. 
-  for kargs in loopover( mode=('p', 't'), model=(3, 4), ldrive=(6,) ):
-    plotLayers(TP, **kargs)
+#  # Plot the radial distribution in energy. 
+#  for kargs in loopover( mode=('p', 't'), model=(3, 4), ldrive=(5,) ):
+#    plotLayers(TP, **kargs)
 
-  for kargs in loopover( model=(3, 4), ldrive=(6,) ):
-    plotEnergy(TP, **kargs)
+#  for kargs in loopover( model=(3, 4), ldrive=(5,) ):
+#    plotEnergy(TP, **kargs)
 
-  # Plot magnetic field signatures at the ground. 
-  for kargs in loopover( fdrive=(0.013,), side=('night',), ldrive=(6,) ):
-    plotGround(TP, **kargs)
+#  # Plot magnetic field signatures at the ground. 
+#  for kargs in loopover( fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025), side=('day', 'night',), ldrive=(5,) ):
+#    plotGround(TP, **kargs)
 
 #  # Do poloidal and toroidal waves have opposite phase offsets?
 #  for kargs in loopover( path=TP.paths.keys() ):
@@ -73,8 +73,8 @@ def main():
 #  # Comparison of parallel current and Poynting flux. 
 #  plotCurrentFlux(TP, model=1, fdrive=0.016)
 
-#  for kargs in loopover( model=(1, 2), fdrive=TP.getValues('fdrive'), alt=(100, 1000) ):
-#    plotSlice(TP, **kargs)
+  for kargs in loopover( model=(1, 2, 3, 4), fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025), alt=(100, 1000) ):
+    plotSlice(TP, **kargs)
 
 #  # Comparison of J dot E to the divergence of the Poynting flux. 
 #  plotDivFlux(TP, model=1, fdrive=0.016)
@@ -278,12 +278,11 @@ def plotGround(TP, fdrive, side='day', lpp=4, ldrive=5):
         if TP.getArray(path, 't').size < 300:
           PW[row, col].setParams(text=notex('Unstable'))
           continue
-        PW[row, col].setContour( TP.getArray(path, name)[:, 0, :] )
-
-        print 'azm, fdrive, model = ', azm, fdrive, model, ' has peak ' + name + ' = ', np.max( TP.getArray(path, name)[:, 0, :] )
-
-
-
+        B = TP.getArray(path, name)[:, 0, :]
+        PW[row, col].setContour(B)
+        Bmax = np.max( np.abs( B[5:-5, 5:-5] ) )
+        if Bmax > np.sqrt(10.):
+          PW[row, col].setParams( bottext=notex('Max: ') + format(Bmax, '.0f') + notex('nT') )
   # Manually clean up the x axis. 
   PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
   # Show or save the plot. 
@@ -513,7 +512,7 @@ def altslice(arr, r, alt):
 
 def plotSlice(TP, model, fdrive, alt=100):
 
-#  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
+  TP.setPaths('/media/My Passport/RUNS/INERTIA/')
 
   # Set up the window. 
   azms = (1, 4, 16, 64)
@@ -531,6 +530,10 @@ def plotSlice(TP, model, fdrive, alt=100):
   # Each row comes from a different run. 
   for row, azm in enumerate(azms):
     path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+    if path is None:
+      print 'No such run. '
+      return False
 
     # Take slices of the field at the boundary and a ways up. 
     PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )

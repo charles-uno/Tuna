@@ -277,11 +277,14 @@ class tunaPlotter:
       elif real is False:
         arr = np.imag( self.readArray(path + name + '.dat') )
       # If not specified, use real for poloidal components. 
-      else:
+      elif real is None:
         if name in ('Ex', 'By', 'Ez', 'Jz', 'BqE', 'BqI'):
           arr = np.imag( self.readArray(path + name + '.dat') )
         else:
           arr = np.real( self.readArray(path + name + '.dat') )
+      # Also can request the whole complex vector. 
+      else:
+        arr = self.readArray(path + name + '.dat')
       # Chop off anything after tmax time steps. 
       return arr[..., :self.tmax] if name=='t' or len(arr.shape)>2 else arr
     # A few quantities get printed out with scale factors. Un-scale them. 
@@ -385,19 +388,23 @@ class tunaPlotter:
 
     # Toroidal Poynting flux. 
     elif name=='Stor':
-      return self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'By', real=real) )/phys.mu0
+      return np.real( self.getArray(path, 'Ex', real='complex')*np.conj( self.getArray(path, 'By', real='complex') ) )/phys.mu0
     # Poloidal Poynting flux. 
     elif name=='Spol':
-      return -self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bx', real=real) )/phys.mu0
+      return -np.real( self.getArray(path, 'Ey', real='complex')*np.conj( self.getArray(path, 'Bx', real='complex') ) )/phys.mu0
     # Crosswise Poynting flux. 
     elif name=='Sx':
-      return self.getArray(path, 'Ey', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
+      return np.real( self.getArray(path, 'Ey', real='complex')*np.conj( self.getArray(path, 'Bz', real='complex') ) )/phys.mu0
     # Azimuthal Poynting flux. 
     elif name=='Sy':
-      return -self.getArray(path, 'Ex', real=real)*np.conj( self.getArray(path, 'Bz', real=real) )/phys.mu0
+      return -np.real( self.getArray(path, 'Ex', real='complex')*np.conj( self.getArray(path, 'Bz', real='complex') ) )/phys.mu0
     # Parallel Poynting flux. 
     elif name=='Sz' or name=='S':
       return self.getArray(path, 'Spol') + self.getArray(path, 'Stor')
+
+
+
+
     # Sometimes we don't actually need the array, such as when we're grabbing
     # the y axis for a line plot... so the axis will be set by line values. 
     elif name in ('logU', 'U'):
@@ -938,6 +945,16 @@ class plotCell:
         self.ax.yaxis.set_label_position('right')
         self.ax.yaxis.tick_right()
         self.ax.yaxis.set_ticks_position('both')
+
+
+
+      elif key=='bottext':
+        targs = {'x':0.5, 'y':0.10, 'horizontalalignment':'center', 
+                 'verticalalignment':'bottom', 'transform':self.ax.transAxes}
+        self.ax.text(s='$' + val + '$', **targs)
+
+
+
       # Draw Earth. 
       elif key=='earth':
         q = {'l':90, 'r':270, 't':0, 'b':180}[ val[0] ]
