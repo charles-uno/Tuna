@@ -754,7 +754,7 @@ def plotPoloidal(TP):
   x, z = r*np.sin(q), r*np.cos(q)
   [ PW.setLine(sign*x, z, 'k') for sign in (-1, 1) ]
   # Draw Earth. This is a bit kludgey. 
-  ax = ax = PW.cells.flatten()[0].ax
+  ax = PW.cells.flatten()[0].ax
   ax.add_artist( Wedge( (0, 0), 1, 0, 360, fc='w' ) )
   # Normalized coordinate for convenience. 
   u = np.pi*( q - q[0] )/( q[-1] - q[0] )
