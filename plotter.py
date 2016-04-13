@@ -67,14 +67,14 @@ def main():
 #  # Compressional Alfven frequency cutoff. 
 #  plotAlfvenCutoff(TP, model=2)
 
-#  # Snapshots of the electric field components. 
-#  plotSnapshots(TP, model=2, fdrive=0.010, azm=16)
+  # Snapshots of the electric field components. 
+  plotSnapshots(TP, model=2, fdrive=0.016, azm=16)
 
 #  # Comparison of parallel current and Poynting flux. 
 #  plotCurrentFlux(TP, model=1, fdrive=0.016)
 
-  for kargs in loopover( model=(1, 2, 3, 4), fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025), alt=(100, 1000) ):
-    plotSlice(TP, **kargs)
+#  for kargs in loopover( model=(1, 2, 3, 4), fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025), alt=(100, 1000) ):
+#    plotSlice(TP, **kargs)
 
 #  # Comparison of J dot E to the divergence of the Poynting flux. 
 #  plotDivFlux(TP, model=1, fdrive=0.016)
