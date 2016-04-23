@@ -145,7 +145,7 @@ class tunaPlotter:
   def __init__(self):
     # Check if we're supposed to be saving this image or showing it. 
     if '-i' in argv:
-      self.savepath = '/home/user1/mceachern/Desktop/plots/' + now() + '/'
+      self.savepath = os.environ['HOME'] + '/Desktop/plots/' + now() + '/'
       os.mkdir(self.savepath)
     else:
       self.savepath = None
@@ -1008,6 +1008,11 @@ class plotCell:
       elif key=='toptext':
         targs = {'x':0.5, 'y':0.90, 'horizontalalignment':'center', 
                  'verticalalignment':'top', 'transform':self.ax.transAxes}
+        self.ax.text(s='$' + val + '$', **targs)
+
+      elif key=='bigtoptext':
+        targs = {'x':0.5, 'y':0.90, 'horizontalalignment':'center', 
+                 'verticalalignment':'top', 'transform':self.ax.transAxes, 'fontsize':15}
         self.ax.text(s='$' + val + '$', **targs)
 
 

@@ -31,6 +31,8 @@ def main():
 
 #  waveProperties(TP)
 
+#  modenumber(TP)
+
 #  for kargs in loopover( fdrive=(0.010, 0.016, 0.022) ):
 #    driveComparison(TP, **kargs)
 
@@ -44,8 +46,7 @@ def main():
 #  energy(TP, model=2, fdrive=0.022)
 #  energy(TP, model=4, fdrive=0.013)
 
-  ground(TP, side='night', fdrive=0.016)
-
+#  ground(TP, side='night', fdrive=0.016)
 
 #  # Let's just tally up Bz/Bx as a function of m. 
 ##  for kargs in loopover( fdrive=(0.007, 0.010, 0.013, 0.016, 0.019, 0.022, 0.025) ):
@@ -74,7 +75,7 @@ def main():
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
 #  plotPoloidal(TP)
-#  plotPoloidalToroidal(TP)
+  plotPoloidalToroidal(TP)
 
 #  # Schematic illustrating first and second harmonics. 
 #  plotOddEven(TP)
@@ -190,6 +191,36 @@ def waveProperties(TP):
     return PW.render(TP.savepath + 'properties.pdf')
   else:
     return PW.render()
+
+
+
+def modenumber(TP):
+  PW = plotWindow(nrows=1, ncols=4, colorbar=None, landscape=True, square=True)
+  lims = (-8, 8)
+  PW.setParams(xlims=lims, xticks=lims, xticklabels=(), 
+               ylims=lims, yticks=lims, yticklabels=() )
+
+  clabs = [ 'm = ' + str(4**i) for i in range(4) ]
+  PW.setParams( earth='top', title=notex('Azimuthal Modenumbers (Top View)'), collabels=clabs )
+
+  # Azimuthal modenumber. 
+  q = np.linspace(0, 2*np.pi, 1000)
+  r = 4
+
+  for i in range(4):
+    dr = np.sin(q*4**i)
+    PW[i].setLine( (r + dr)*np.sin(q), (r + dr)*np.cos(q), 'k' )
+    PW[i].setLine( (r + dr)*np.cos(q), (r + dr)*np.sin(q), 'k:' )
+
+  if TP.savepath is not None:
+    return PW.render(TP.savepath + 'modenumber.pdf')
+  else:
+    return PW.render()
+
+
+
+
+
 
 # =============================================================================
 # ======================================== Driving with Compression and Current
@@ -1086,18 +1117,23 @@ def plotPoloidal(TP):
 # =============================================================================
 
 def plotPoloidalToroidal(TP):
-  PW = plotWindow(nrows=2, ncols=-2, colorbar=None, joinlabel=False)
+  PW = plotWindow(nrows=2, ncols=1, colorbar=None, joinlabel=False)
   # Set title and labels. 
-  title = notex('Poloidal and Toroidal Polarizations')
-  clabs = ( notex('First Harmonic'), notex('Second Harmonic') )
-  rlabs = ( notex('Poloidal'), notex('Toroidal') )
+#  title = notex('Poloidal and Toroidal Polarizations (Side View)')
+#  clabs = ( notex('First Harmonic'), notex('Second Harmonic') )
 
-  PW.setParams(title=title, collabels=clabs, rowlabels=rlabs)
+  PW[0].setParams(bigtoptext=notex('Poloidal Polarization (Side View)'))
+  PW[1].setParams(bigtoptext=notex('Toroidal Polarization (Side View)'))
+
+#  rlabs = ( notex('Poloidal'), notex('Toroidal') )
+
+#  PW.setParams(title=title, collabels=clabs, rowlabels=rlabs)
+#  PW.setParams(title=title)
   # Set ticks and limits. No tick labels. 
 #  xtks = np.linspace(-10, 10, 9)
 #  ytks = np.linspace(-4, 4, 5)
   xtls, ytls = (), ()
-  xlms, ylms = (-10, 10), (-4, 4)
+  xlms, ylms = (-10, 10), (-8, 8)
   xlbl, ylbl = notex('X'), notex('Z')
   PW.setParams(xlabel=xlbl, xlims=xlms, xticks=xlms, xticklabels=xtls, 
                ylabel=ylbl, ylims=ylms, yticks=ylms, yticklabels=ytls)
@@ -1107,7 +1143,7 @@ def plotPoloidalToroidal(TP):
   q = np.linspace(q0, np.pi - q0, 100)
   r = L*np.sin(q)**2
   x, z = r*np.sin(q), r*np.cos(q)
-  [ PW[0].setLine(sign*x, z, 'k') for sign in (-1, 1) ]
+#  [ PW[0].setLine(sign*x, z, 'k') for sign in (-1, 1) ]
   # Draw Earth. This is a bit kludgey. 
   axes = [ cell.ax for cell in PW.cells.flatten() ]
   [ ax.add_artist( Wedge( (0, 0), 1, 0, 360, fc='w' ) ) for ax in axes ]
@@ -1117,7 +1153,7 @@ def plotPoloidalToroidal(TP):
     dr = dL*np.sin( (i+1)*u )
     xm, zm = (-1)**(i+1)*(r - dr)*np.sin(q), (r - dr)*np.cos(q)
     xp, zp = (-1)**(i+1)*(r + dr)*np.sin(q), (r + dr)*np.cos(q)
-    PW[0].setLine(xm, zm, 'k')
+    PW[0].setLine(xm, zm, 'k:')
     PW[0].setLine(xp, zp, 'k')
 
   L, dL = 8, 0.2
