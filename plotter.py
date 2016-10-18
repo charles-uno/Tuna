@@ -24,8 +24,8 @@ from plotmod import *
 
 def main():
 
-  # The Tuna Plotter is in charge of data access. 
-  TP = tunaPlotter()
+    # The Tuna Plotter is in charge of data access. 
+    TP = tunaPlotter()
 
   # Plots for the defense...
 
@@ -43,8 +43,26 @@ def main():
 #  path = TP.getPath(azm=32, fdrive=0.022, model=2)
 #  plotFields(TP, path=path)
 
-#  energy(TP, model=2, fdrive=0.022)
 #  energy(TP, model=4, fdrive=0.013)
+
+
+
+#    jgr_rms_fields(TP, model=2, fdrive=0.022)
+
+#    jgr_energy(TP, models=(2, 4), fdrives=(0.022, 0.016))
+
+#    jgr_layers(TP, model=2, fdrive=0.022)
+
+#    jgr_layers(TP, model=4, fdrive=0.016)
+
+#    jgr_ground(TP, model=2, fdrive=0.022)
+
+#    jgr_ground(TP, model=4, fdrive=0.016)
+
+    jgr_grounds(TP, models=(2, 4), fdrives=(0.022, 0.016))
+
+    return
+
 
 #  ground(TP, side='night', fdrive=0.016)
 
@@ -75,7 +93,7 @@ def main():
 #  # Schematic illustrating poloidal and toroidal waves. 
 #  plotToroidal(TP)
 #  plotPoloidal(TP)
-  plotPoloidalToroidal(TP)
+#  plotPoloidalToroidal(TP)
 
 #  # Schematic illustrating first and second harmonics. 
 #  plotOddEven(TP)
@@ -116,11 +134,239 @@ def main():
 #  # Show waves failing to propagate in when driven from the outer boundary. 
 #  plotBdrive(TP, fdrive=0.022)
 
-  return
+    return
 
 # #############################################################################
 # ########################################################### Plotting Routines
 # #############################################################################
+
+# ======================================================================
+# ==================================================== For the JGR Paper
+# ======================================================================
+
+def jgr_rms_fields(TP, model=2, fdrive=0.022):
+
+    azms = (1, 4, 16, 64)
+
+    fields = ('Bx', 'By', 'Bz')
+
+    # Let's look at the poloidal, toroidal, and compressional magnetic
+    # fields, at m=2 and m=32, in terms of their RMS values over the
+    # whole 300s simulation. 
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='log')
+
+    # Title and labels. 
+    title = notex('RMS Magnetic Field Components: ') + tex(fdrive) + notex('Driving, ') + tex(model)
+    ulab = notex('\\frac{nJ}{m^3}')
+    rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    clabs = [ notex('Poloidal'), notex('Toroidal'), notex('Compressional')  ]
+
+    PW.setParams(title=title, collabels=clabs, rowlabels=rlabs, unitlabel=ulab, zmax=10)
+
+    for row, azm in enumerate(azms):
+        path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+        if path is None:
+            PW[row, :].setParams( text=notex('Not Found') )
+            continue
+
+        for col, field in enumerate(fields):
+
+            PW[row, col].setParams( **TP.getCoords(path) )
+
+            brms = np.std(TP.getArray(path, field), axis=-1)
+
+            PW[row, col].setContour(brms)
+
+    # Show or save the plot. 
+    if TP.savepath is not None:
+        name = 'drivers_' + znt(1e3*fdrive) + 'mHz'
+        return PW.render( TP.savepath + name + '.pdf' )
+    else:
+        return PW.render()
+
+# ----------------------------------------------------------------------
+
+def jgr_energy(TP, models=(2,), fdrives=(0.022,)):
+
+    azms = (1, 4, 16, 64)
+
+    PW = plotWindow(nrows=len(azms), ncols=len(models), colorbar=None)
+
+    title = notex('Poloidal (Blue) and Toroidal (Red) Energy')
+
+    rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+    clabs = []
+    for model, fdrive in zip(models, fdrives):
+        clab = tex(model) + notex(', ') + tex(fdrive) + notex(' Driving')
+        clabs.append(clab)
+
+    PW.setParams(collabels=clabs, rowlabels=rlabs, title=title)
+
+    for row, azm in enumerate(azms):
+        for col, (model, fdrive) in enumerate( zip(models, fdrives) ):
+
+            path = TP.getPath(azm=azm, fdrive=fdrive, model=model)
+            if not path:
+                continue
+
+
+            PW[row, col].setParams( **TP.getCoords(path, 't', 'logU') )
+            PW[row, col].setLine( np.log10( TP.getArray(path, 'Upol') ), 'b')
+            PW[row, col].setLine( np.log10( TP.getArray(path, 'Utor') ), 'r')
+
+            # Manually clean up the y axes. 
+            PW[row, col].setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$'), ylabelpad=-2, ylabel=notex('Log') + 'U' + notex(' (\\frac{GJ}{rad})') )
+
+            # Manually clean up the x axis. 
+            PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+
+    # Show or save the plot. 
+    if TP.savepath is not None:
+        name = 'energy_' + str(model) + '_' + znt(1e3*fdrive)
+        return PW.render( TP.savepath + name + '.pdf' )
+    else:
+        return PW.render()
+
+# ----------------------------------------------------------------------
+
+def jgr_layers(TP, model=2, fdrive=0.022):
+
+    azms = (1, 4, 16, 64)
+
+    PW = plotWindow(nrows=len(azms), ncols=2, colorbar='log')
+
+    title = notex('Poloidal and Toroidal Energy Density: ') + tex(fdrive) + notex('Driving, ') + tex(model)
+    rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    clabs = (
+        notex('Poloidal Energy Density'), 
+        notex('Toroidal Energy Density'),
+    )
+    PW.setParams(collabels=clabs, unitlabel=tex('mW/m^2'), rowlabels=rlabs, title=title, zmax=0.1)
+
+    for row, azm in enumerate(azms):
+        path = TP.getPath(azm=azm, fdrive=fdrive, model=model)
+
+        PW[row, :].setParams( **TP.getCoords(path, 't', 'L0') )
+
+        # Grab the energy density. 
+        upt = [ TP.getArray(path, name) for name in ('upol', 'utor') ]
+        dV = TP.getArray(path, 'dV')
+        # Compute differential energy. 
+        dUpt = [ u*dV[:, :, None] for u in upt ]
+        # Mean energy density in each L-shell. 
+        UofLpt = [ np.sum(dU, axis=1) for dU in dUpt ]
+        VofL = np.sum(dV, axis=1)
+        # Careful... dV is 0 at the edges. 
+        VofL[0], VofL[-1] = VofL[1], VofL[-2]
+
+        uofLpt = [ UofL/VofL[:, None] for UofL in UofLpt ]
+        [ PW[row, i].setContour(uofL) for i, uofL in enumerate(uofLpt) ]
+
+        # Manually clean up the y axes. 
+#        PW[:, col].setParams( ylims=(2, 10), yticks=(2, 4, 6, 8, 10), yticklabels=(), ylabelpad=-2 )
+#        PW[0, col].setParams( ylims=(2, 6), yticks=(2, 3, 4, 5, 6), yticklabels=('$2$', '', '$4$', '', '$6$') )
+    PW.setParams( ylims=(2, 10), yticks=(2, 4, 6, 8, 10), yticklabels=('$2$', '', '$6$', '', '$10$') )
+
+    # Manually clean up the x axis. 
+#    PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=() )
+    PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+
+    # Show or save the plot. 
+    if TP.savepath is not None:
+        name = 'layers_' + str(model) + '_' + znt(1e3*fdrive)
+        return PW.render( TP.savepath + name + '.pdf' )
+    else:
+        return PW.render()
+
+# ----------------------------------------------------------------------
+
+def jgr_ground(TP, model=2, fdrive=0.022):
+
+    azms = (1, 4, 16, 64)
+
+    fields = ('BfE', 'BqE')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(fields), colorbar='sym')
+
+    title = notex('Magnetic Ground Signatures: ') + tex(fdrive) + notex('Driving, ') + tex(model)
+    rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+    clabs = [ tex( x[:2] ) for x in fields ]
+    PW.setParams(collabels=clabs, unitlabel=notex('nT'), rowlabels=rlabs, title=title, zmax=100)
+
+    for row, azm in enumerate(azms):
+        path = TP.getPath(azm=azm, fdrive=fdrive, model=model)
+
+        PW[row, :].setParams( **TP.getCoords(path, 't', 'lat0') )
+
+        path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+        for col, field in enumerate(fields):
+            B = TP.getArray(path, field)[:, 0, :]
+            PW[row, col].setContour(B)
+            Bmax = np.max( np.abs( B[5:-5, 5:-5] ) )
+            if Bmax > np.sqrt(10.):
+                PW[row, col].setParams( bottext=notex('Max: ') + format(Bmax, '.0f') + notex('nT') )
+
+
+    # Manually clean up the x axis. 
+    PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+    # Show or save the plot. 
+    if TP.savepath is not None:
+        name = 'ground_' + znt(1e3*fdrive) + 'mHz_' + str(model)
+        return PW.render( TP.savepath + name + '.pdf' )
+    else:
+        return PW.render()
+
+# ----------------------------------------------------------------------
+
+def jgr_grounds(TP, models, fdrives):
+
+    azms = (1, 4, 16, 64)
+
+    fields = ('BfE', 'BqE')
+
+    PW = plotWindow(nrows=len(azms), ncols=len(models)*len(fields), colorbar='sym')
+
+    title = notex('Magnetic Ground Signatures')
+
+    rlabs = [ 'm \\! = \\! ' + str(azm) for azm in azms ]
+
+
+    clabs = []
+    for model in models:
+        clabs += [ tex(model) + tex( x[:2] ) for x in fields]
+
+    PW.setParams(collabels=clabs, unitlabel=notex('nT'), rowlabels=rlabs, title=title, zmax=100)
+
+    for row, azm in enumerate(azms):
+
+        for i, (model, fdrive) in enumerate( zip(models, fdrives) ):
+
+            path = TP.getPath(model=model, fdrive=fdrive, azm=azm)
+
+            PW[row, 2*i:2*i+2].setParams( **TP.getCoords(path, 't', 'lat0') )
+
+            Bs = [ TP.getArray(path, x)[:, 0, :] for x in fields ]
+            Bmaxes = [ np.max( np.abs( x[5:-5, 5:-5] ) ) for x in Bs ]
+            
+            [ PW[row, 2*i+j].setContour(x) for j, x in enumerate(Bs) ]
+
+            [ PW[row, 2*i+j].setParams( bottext=notex('Max: ') + format(x, '.0f') + notex('nT') ) for j, x in enumerate(Bmaxes) if x > np.sqrt(10.) ]
+
+
+    # Manually clean up the x axis. 
+    PW.setParams( xlims=(0, 300), xticks=(0, 100, 200, 300), xticklabels=('$0$', '', '', '$300$') )
+    # Show or save the plot. 
+    if TP.savepath is not None:
+        name = 'grounds_' + '_'.join( str(x) for x in models )
+        return PW.render( TP.savepath + name + '.pdf' )
+    else:
+        return PW.render()
+
+
 
 # =============================================================================
 # ====================================== Harmonic, Polarization, and Modenumber
